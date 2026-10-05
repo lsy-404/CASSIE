@@ -26,3 +26,24 @@ node scripts\build-phonemes.mjs
 ```
 
 The builder uses Echogarden's English eSpeak-reference DTW path and its nested word/token/phone timeline. Schema version 2 retains measured first, middle, and last phone intervals of each word, with phone position and adjacent IPA labels; windows shorter than 20 ms or outside the source clip are omitted. Multiword clips also retain Echogarden's measured word intervals in `wordTimings`, only when every aligned word has a valid interval. All timestamps are seconds relative to the source clip. IPA lookup keys remove a leading or trailing stress marker, while each unit retains its original IPA label, source clip ID, source SHA-256, and timestamps. Alignment timelines are cached under ignored `work/phoneme-alignments` by clip hash and transcript. Failures are recorded in `public/phonemes.json` and `data/phonemes-manifest.json`; no equal-duration boundaries are synthesized. The aligner package is a build-time tool and is not included in the browser bundle.
+
+## WORLD vocoder runtime
+
+The checked-in runtime is built from the pinned WORLD source and Emscripten SDK:
+
+```powershell
+git submodule update --init -- src/audio/world/vendor
+git clone https://github.com/emscripten-core/emsdk.git work\emsdk
+work\emsdk\emsdk install 6.0.10
+work\emsdk\emsdk activate 6.0.10
+```
+
+In a Command Prompt shell, load the SDK environment and build:
+
+```cmd
+call work\emsdk\emsdk_env.bat
+set EMSDK=work\emsdk
+node scripts\build-world.mjs
+```
+
+The script rejects other upstream revisions or SDK versions and only replaces `src/audio/world/runtime` after a successful build. Vite imports those two checked-in artifacts as URL assets so production bundles emit content-hashed module and WebAssembly URLs. The runtime is prebuilt and checked in; normal installs do not need Emscripten.
