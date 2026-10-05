@@ -1,5 +1,5 @@
 import { OggOpusDecoder } from 'ogg-opus-decoder';
-import { mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchVowelLoop, transformWord } from './dsp';
+import { appendTimelineEntry, clipTimelineToDuration, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchVowelLoop, transformWord } from './dsp';
 import type { Bank, BankClip, RenderOptions, TimelineEntry, WordPlan } from './types';
 
 type RequestMessage = { type: 'render'; bank: Bank; plan: WordPlan[]; options: RenderOptions };
@@ -66,9 +66,9 @@ scope.onmessage = async ({ data }) => {
           : nextClipStart(previousEnd, previousKind, 'pause', data.options.gap, word.sleep ?? 0));
         const samples = new Float32Array(Math.ceil(word.pauseDuration * OUTPUT_SAMPLE_RATE));
         if (start > previousEnd && word.gapSourceStart !== undefined && word.gapSourceEnd !== undefined) {
-          timeline.push({ startSeconds: previousEnd, endSeconds: start, sourceStart: word.gapSourceStart, sourceEnd: word.gapSourceEnd, kind: 'gap' });
+          appendTimelineEntry(timeline, { startSeconds: previousEnd, endSeconds: start, sourceStart: word.gapSourceStart, sourceEnd: word.gapSourceEnd, kind: 'gap' });
         }
-        timeline.push({ startSeconds: start, endSeconds: start + samples.length / OUTPUT_SAMPLE_RATE, sourceStart: word.sourceStart ?? 0, sourceEnd: word.sourceEnd ?? 0, kind: 'gap' });
+        appendTimelineEntry(timeline, { startSeconds: start, endSeconds: start + samples.length / OUTPUT_SAMPLE_RATE, sourceStart: word.sourceStart ?? 0, sourceEnd: word.sourceEnd ?? 0, kind: 'gap' });
         if (samples.length) {
           audioSampleCount += samples.length;
           if (audioSampleCount > maxLayerSamples) throw new Error('Audio content exceeds the five-minute processing limit.');
@@ -152,7 +152,7 @@ scope.onmessage = async ({ data }) => {
       const actualStart = frameStart / OUTPUT_SAMPLE_RATE;
       const actualEnd = actualStart + samples.length / OUTPUT_SAMPLE_RATE;
       if (actualStart > previousEnd && word.gapSourceStart !== undefined && word.gapSourceEnd !== undefined) {
-        timeline.push({ startSeconds: previousEnd, endSeconds: actualStart, sourceStart: word.gapSourceStart, sourceEnd: word.gapSourceEnd, kind: 'gap' });
+        appendTimelineEntry(timeline, { startSeconds: previousEnd, endSeconds: actualStart, sourceStart: word.gapSourceStart, sourceEnd: word.gapSourceEnd, kind: 'gap' });
       }
       if (word.sourceWordTimings?.length && !word.phonemeUnits?.length) {
         const sourceDuration = decoded.length / OUTPUT_SAMPLE_RATE;
@@ -175,9 +175,9 @@ scope.onmessage = async ({ data }) => {
             spans.push({ startSample: gapStart, endSample: gapEnd, sourceStart, sourceEnd, kind: 'gap' });
           }
         }
-        timeline.push(...mapSourceTimeline(spans, decoded.length, word, data.options.pitch, OUTPUT_SAMPLE_RATE, actualStart, samples.length));
+        for (const entry of mapSourceTimeline(spans, decoded.length, word, data.options.pitch, OUTPUT_SAMPLE_RATE, actualStart, samples.length)) appendTimelineEntry(timeline, entry);
       } else {
-        timeline.push({ startSeconds: actualStart, endSeconds: actualEnd, sourceStart: word.sourceStart ?? 0, sourceEnd: word.sourceEnd ?? 0, kind: word.timelineKind ?? (sourceClip.kind === 'effect' ? 'cue' : 'word') });
+        appendTimelineEntry(timeline, { startSeconds: actualStart, endSeconds: actualEnd, sourceStart: word.sourceStart ?? 0, sourceEnd: word.sourceEnd ?? 0, kind: word.timelineKind ?? (sourceClip.kind === 'effect' ? 'cue' : 'word') });
       }
       if (samples.length && frameStart + samples.length > 0) {
         audioSampleCount += samples.length;
@@ -209,7 +209,8 @@ scope.onmessage = async ({ data }) => {
       duration: samples.length / OUTPUT_SAMPLE_RATE,
       words: plan.map((word) => word.display),
       warnings,
-      timeline: timeline.sort((left, right) => left.startSeconds - right.startSeconds || left.endSeconds - right.endSeconds),
+      timeline: clipTimelineToDuration(timeline, samples.length / OUTPUT_SAMPLE_RATE)
+        .sort((left, right) => left.startSeconds - right.startSeconds || left.endSeconds - right.endSeconds),
     };
     scope.postMessage(result, [samples.buffer]);
   } catch (error) {

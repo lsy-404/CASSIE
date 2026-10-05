@@ -366,7 +366,7 @@ function compileWordPlan(
         }
         unresolvedWords.add(spoken.toLocaleLowerCase('en-US'));
         warnings.push(`No audio clip for “${spoken}”.`);
-      classifications.set(tokenIndex, 'error');
+        classifications.set(tokenIndex, 'error');
         continue;
       }
       const item: WordPlan = {
@@ -395,7 +395,7 @@ function compileWordPlan(
   const analyzedTokens = tokens.map((token, index) => ({
     sourceStart: scanned.spans[index].start,
     sourceEnd: scanned.spans[index].end,
-    kind: classifications.get(index) ?? (token.startsWith('/') || token.startsWith('$') ? 'error' : 'error'),
+    kind: classifications.get(index) ?? 'error',
     text: token,
   }));
   return { plan, warnings, unresolvedWords: [...unresolvedWords], tokens: analyzedTokens };

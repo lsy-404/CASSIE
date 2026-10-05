@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { analyzeText, createWordPlan } from '../src/audio/parser';
 import { getClipUsage } from '../src/audio/catalog';
 import { analyzeAnnouncement, renderAnnouncement } from '../src/audio/engine';
-import { applyStutter, encodeWav, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, splicePhonemeWindows, stretchVowelLoop, transformWord } from '../src/audio/dsp';
+import { appendTimelineEntry, applyStutter, clipTimelineToDuration, encodeWav, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, splicePhonemeWindows, stretchVowelLoop, transformWord } from '../src/audio/dsp';
 import type { Bank } from '../src/audio/types';
 import type { PhonemeCatalog } from '../src/audio/phonemes';
 import { parseGeneratedPhones, resolvePhoneUnits } from '../src/audio/phonemes';
@@ -421,6 +421,27 @@ describe('audio DSP', () => {
     expect(repeatedWord).toHaveLength(3);
     expect(repeatedGap).toHaveLength(4);
     expect(timeline.every((entry) => entry.startSeconds >= 2 && entry.endSeconds <= 2.8 && entry.endSeconds > entry.startSeconds)).toBe(true);
+  });
+
+  it('omits zero-length pause and fully cropped audio spans from the timeline', () => {
+    const timeline: ReturnType<typeof mapSourceTimeline> = [];
+    expect(appendTimelineEntry(timeline, { startSeconds: 1, endSeconds: 1, sourceStart: 0, sourceEnd: 8, kind: 'gap' })).toBe(false);
+    expect(appendTimelineEntry(timeline, { startSeconds: 2.5, endSeconds: 2.5, sourceStart: 9, sourceEnd: 13, kind: 'word' })).toBe(false);
+    expect(appendTimelineEntry(timeline, { startSeconds: 1, endSeconds: 1.25, sourceStart: 0, sourceEnd: 8, kind: 'gap' })).toBe(true);
+    expect(timeline).toEqual([{ startSeconds: 1, endSeconds: 1.25, sourceStart: 0, sourceEnd: 8, kind: 'gap' }]);
+  });
+
+  it('keeps timeline entries inside the final rendered PCM duration', () => {
+    const timeline = [
+      { startSeconds: 0, endSeconds: 0.5, sourceStart: 0, sourceEnd: 4, kind: 'word' as const },
+      { startSeconds: 0.5, endSeconds: 0.75, sourceStart: 4, sourceEnd: 8, kind: 'gap' as const },
+      { startSeconds: 0.75, endSeconds: 1, sourceStart: 8, sourceEnd: 13, kind: 'cue' as const },
+    ];
+    expect(clipTimelineToDuration(timeline, 0.6)).toEqual([
+      timeline[0],
+      { ...timeline[1], endSeconds: 0.6 },
+    ]);
+    expect(clipTimelineToDuration(timeline, 0.5)).toEqual([timeline[0]]);
   });
 
   it('lengthens vowel centers without changing pitch and fades phone sequence boundaries', () => {
