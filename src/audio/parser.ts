@@ -1,6 +1,7 @@
 import type { Bank, BankClip, WordPlan } from './types';
 
 const MAX_TOKENS = 512;
+const MAX_INPUT_LENGTH = 8192;
 const MAX_REPEAT = 32;
 const MAX_NUMBER = 999_999_999_999;
 const ONES = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
@@ -36,7 +37,7 @@ function numberWords(value: string): string[] {
   const integer = Number(integerText);
   let result: string[];
   if (!Number.isFinite(integer) || integer > MAX_NUMBER) {
-    result = [...unsigned.replace(/\D/g, '').split('').map((digit) => ONES[Number(digit)])];
+    result = [...integerText.replace(/\D/g, '').split('').map((digit) => ONES[Number(digit)])];
   } else if (integer === 0) {
     result = ['zero'];
   } else {
@@ -55,42 +56,64 @@ function numberWords(value: string): string[] {
   return result;
 }
 
-function tokenPattern(text: string): RegExp {
-  return /\$[A-Za-z]+_[^\s$]+|-?\d+(?:\.\d+)?|[\p{L}]+(?:['’][\p{L}]+)*(?:-[\p{L}]+)?/gu;
+function tokenPattern(): RegExp {
+  return /\$[A-Za-z]+_[^\s$]+|-?\d+(?:\.\d+)?|[\p{L}_-][\p{L}\p{N}_-]*(?:['’][\p{L}]+)*/gu;
 }
 
 function resolveClip(token: string, lookup: Map<string, BankClip>): BankClip | undefined {
-  const direct = lookup.get(normalize(token));
-  if (direct) return direct;
-  const candidates: string[] = [];
-  const addStem = (stem: string) => {
-    candidates.push(stem);
-    if (stem.length > 2 && stem.at(-1) === stem.at(-2)) candidates.push(stem.slice(0, -1));
-    if (stem.endsWith('i')) candidates.push(`${stem.slice(0, -1)}y`);
-    candidates.push(`${stem}e`);
+  return lookup.get(normalize(token));
+}
+
+function inflection(token: string, lookup: Map<string, BankClip>): { clip: BankClip; suffix: BankClip } | undefined {
+  const suffixClip = (id: string) => lookup.get(id);
+  const tryBases = (bases: string[], suffixId: string) => {
+    const suffix = suffixClip(suffixId);
+    if (!suffix) return undefined;
+    for (const base of bases) {
+      const clip = resolveClip(base, lookup);
+      if (clip) return { clip, suffix };
+    }
+    return undefined;
   };
-  if (token.endsWith('ies') && token.length > 3) candidates.push(`${token.slice(0, -3)}y`);
-  if (token.endsWith('es') && token.length > 2) candidates.push(token.slice(0, -2));
-  if (token.endsWith('s') && token.length > 1) candidates.push(token.slice(0, -1));
+  const deduplicate = (stem: string) => stem.length > 2 && stem.at(-1) === stem.at(-2) ? stem.slice(0, -1) : '';
+
+  if (token.endsWith('ies') && token.length > 3) {
+    return tryBases([`${token.slice(0, -3)}y`], '_suffix_plural_regular');
+  }
+  if (token.endsWith('es') && token.length > 2) {
+    const base = token.slice(0, -2);
+    const syllabic = /(?:s|x|z|ch|sh)$/.test(base);
+    return tryBases([base], syllabic ? '_suffix_plural_syllabic' : '_suffix_plural_regular');
+  }
+  if (token.endsWith('s') && token.length > 1) {
+    const base = token.slice(0, -1);
+    const syllabic = /(?:s|x|z|ch|sh)$/.test(base);
+    return tryBases([base], syllabic ? '_suffix_plural_syllabic' : '_suffix_plural_regular');
+  }
   if (token.endsWith('ing') && token.length > 4) {
     const stem = token.slice(0, -3);
-    addStem(stem);
+    return tryBases([stem, deduplicate(stem), `${stem}e`].filter(Boolean), '_suffix_ing');
+  }
+  if (token.endsWith('ied') && token.length > 4) {
+    return tryBases([`${token.slice(0, -3)}y`], '_suffix_past_d');
   }
   if (token.endsWith('ed') && token.length > 3) {
     const stem = token.slice(0, -2);
-    addStem(stem);
-  }
-  if (token.endsWith('er') && token.length > 3) {
-    const stem = token.slice(0, -2);
-    addStem(stem);
+    const bases = [stem, deduplicate(stem), `${stem}e`].filter(Boolean);
+    for (const base of bases) {
+      const ending = base.toLocaleLowerCase('en-US');
+      const suffix = /(?:t|d)$/.test(ending) ? '_suffix_past_id' : /(?:p|k|f|s|x|ch|sh|c)$/.test(ending) ? '_suffix_past_t' : '_suffix_past_d';
+      const result = tryBases([base], suffix);
+      if (result) return result;
+    }
   }
   if (token.endsWith('est') && token.length > 4) {
     const stem = token.slice(0, -3);
-    addStem(stem);
+    return tryBases([stem, deduplicate(stem), `${stem}e`].filter(Boolean), '_suffix_est');
   }
-  for (const candidate of candidates) {
-    const clip = lookup.get(normalize(candidate));
-    if (clip) return clip;
+  if (token.endsWith('er') && token.length > 3) {
+    const stem = token.slice(0, -2);
+    return tryBases([stem, deduplicate(stem), `${stem}e`].filter(Boolean), '_suffix_er');
   }
   return undefined;
 }
@@ -100,11 +123,12 @@ function finiteInRange(value: string, min: number, max: number): number | undefi
   return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : undefined;
 }
 
-export function createWordPlan(text: string, bank: Bank): { plan: WordPlan[]; warnings: string[] } {
+function compileWordPlan(text: string, bank: Bank): { plan: WordPlan[]; warnings: string[] } {
+  if (text.length > MAX_INPUT_LENGTH) throw new Error(`Announcement exceeds the ${MAX_INPUT_LENGTH}-character limit.`);
   const lookup = new Map(bank.clips.filter((clip) => clip.kind === 'word').map((clip) => [normalize(clip.id), clip]));
   const plan: WordPlan[] = [];
   const warnings: string[] = [];
-  const tokens = [...text.matchAll(tokenPattern(text))].map((match) => match[0]);
+  const tokens = [...text.matchAll(tokenPattern())].map((match) => match[0]);
   if (tokens.length > MAX_TOKENS) {
     throw new Error(`Announcement exceeds the ${MAX_TOKENS}-token limit.`);
   }
@@ -157,21 +181,43 @@ export function createWordPlan(text: string, bank: Bank): { plan: WordPlan[]; wa
     for (const spoken of expanded) {
       if (plan.length >= MAX_TOKENS) throw new Error(`Announcement exceeds the ${MAX_TOKENS}-token limit.`);
       const clip = resolveClip(spoken, lookup);
-      if (!clip) {
+      const generated = clip ? undefined : inflection(spoken, lookup);
+      const playableClip = clip ?? generated?.clip;
+      if (!playableClip) {
         warnings.push(`No audio clip for “${spoken}”.`);
         continue;
       }
-      const item: WordPlan = { clipId: clip.id, display: spoken, pitch, volume, ...pending };
+      const item: WordPlan = {
+        clipId: playableClip.id,
+        ...(generated ? { suffixClipIds: [generated.suffix.id] } : {}),
+        display: spoken,
+        pitch,
+        volume,
+        ...pending,
+      };
       plan.push(item);
       pending = {};
     }
   }
-  if (!plan.length) throw new Error('No playable words were found in the announcement.');
   return { plan, warnings };
 }
 
+export function createWordPlan(text: string, bank: Bank): { plan: WordPlan[]; warnings: string[] } {
+  if (!text.trim()) throw new Error('No playable words were found in the announcement.');
+  const result = compileWordPlan(text, bank);
+  if (!result.plan.length) throw new Error('No playable words were found in the announcement.');
+  return result;
+}
+
 export function analyzeText(text: string, bank: Bank): { words: string[]; warnings: string[] } {
-  const { plan, warnings } = createWordPlan(text, bank);
+  if (!text.trim()) return { words: [], warnings: [] };
+  let result: { plan: WordPlan[]; warnings: string[] };
+  try {
+    result = compileWordPlan(text, bank);
+  } catch (error) {
+    return { words: [], warnings: [error instanceof Error ? error.message : 'Could not analyze announcement.'] };
+  }
+  const { plan, warnings } = result;
   return { words: plan.map((item) => item.display), warnings };
 }
 

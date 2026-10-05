@@ -14,7 +14,7 @@ function validateBank(value: unknown): Bank {
   const clips = bank.clips.map((candidate): BankClip => {
     if (!candidate || typeof candidate !== 'object') throw new Error('The audio bank contains an invalid clip.');
     const clip = candidate as BankClip;
-    if (!/^[a-z0-9][a-z0-9_-]*$/i.test(clip.id) || seen.has(clip.id.toLocaleLowerCase('en-US')) ||
+    if (!/^[a-z0-9_-]+$/i.test(clip.id) || seen.has(clip.id.toLocaleLowerCase('en-US')) ||
         typeof clip.file !== 'string' || !clip.file.startsWith('/audio/') || clip.file.includes('..') ||
         !Number.isFinite(clip.duration) || clip.duration <= 0 || clip.duration > 120 ||
         (clip.kind !== 'word' && clip.kind !== 'effect')) {
@@ -53,6 +53,16 @@ export function renderAnnouncement(
   };
   const { plan, warnings } = createWordPlan(text, bank);
   const words = plan.map((word) => word.display);
+  const workerBank: Bank = {
+    version: String(bank.version),
+    source: String(bank.source),
+    clips: bank.clips.map((clip) => ({
+      id: String(clip.id),
+      file: String(clip.file),
+      duration: Number(clip.duration),
+      kind: clip.kind,
+    })),
+  };
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./render.worker.ts', import.meta.url), { type: 'module' });
     let finished = false;
@@ -83,7 +93,11 @@ export function renderAnnouncement(
         resolve({ samples: data.samples, sampleRate: data.sampleRate, duration: data.duration, words: [...words], warnings: [...warnings, ...data.warnings] });
       }
     };
-    worker.postMessage({ type: 'render', bank, plan, options: safeOptions });
+    try {
+      worker.postMessage({ type: 'render', bank: workerBank, plan, options: safeOptions });
+    } catch (error) {
+      finishError(error instanceof Error ? error : new Error('Could not start audio rendering.'));
+    }
   });
 }
 

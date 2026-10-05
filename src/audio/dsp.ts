@@ -37,7 +37,7 @@ export function applyStutter(samples: Float32Array, sampleRate: number, stutter?
   return repeated;
 }
 
-export function transformWord(samples: Float32Array, sampleRate: number, plan: WordPlan, pitchScale: number): Float32Array {
+export function transformWord(samples: Float32Array, sampleRate: number, plan: WordPlan, pitchScale: number, globalGain = 1): Float32Array {
   const pitch = plan.pitch * pitchScale;
   if (!Number.isFinite(pitch) || pitch < 0.0065 || pitch > 20.25) throw new Error(`Invalid pitch for ${plan.display}.`);
   const first = Math.min(samples.length, Math.floor((plan.startAt ?? 0) * sampleRate));
@@ -48,7 +48,7 @@ export function transformWord(samples: Float32Array, sampleRate: number, plan: W
   const outputLength = Math.max(1, Math.ceil(source.length / pitch));
   if (outputLength > MAX_RENDER_SECONDS * sampleRate) throw new Error('Pitch adjustment exceeds the 120-second clip limit.');
   const output = new Float32Array(outputLength);
-  const gain = plan.volume;
+  const gain = plan.volume * globalGain;
   for (let index = 0; index < output.length; index += 1) {
     const position = Math.min(source.length - 1, index * pitch);
     const left = Math.floor(position);
