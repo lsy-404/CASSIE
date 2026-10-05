@@ -11,7 +11,7 @@ const stagedOutput = path.join(build, 'artifacts');
 const output = path.join(source, 'runtime');
 const expectedWorldRevision = 'd625e7608ca23a870018f01e7c562ac683d9847f';
 const expectedEmscripten = '6.0.10';
-const emsdk = process.env.EMSDK;
+const emsdk = process.env.EMSDK ? path.resolve(root, process.env.EMSDK) : undefined;
 const emscriptenBin = emsdk ? path.join(emsdk, 'upstream', 'emscripten') : undefined;
 const pathEntries = process.env.PATH?.split(path.delimiter) ?? [];
 const env = {
@@ -44,6 +44,9 @@ if (worldRevision !== expectedWorldRevision) {
 }
 
 await mkdir(build, { recursive: true });
+if (!path.resolve(stagedOutput).startsWith(`${path.resolve(root, 'work')}${path.sep}`)) {
+  throw new Error('WORLD staging directory must stay inside the workspace work directory.');
+}
 await rm(stagedOutput, { recursive: true, force: true });
 await mkdir(stagedOutput, { recursive: true });
 
