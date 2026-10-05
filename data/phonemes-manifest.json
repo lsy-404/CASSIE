@@ -1,0 +1,25 @@
+{
+  "product": "CASSIE interior phoneme bank",
+  "sourceBankVersion": "SCP: Secret Laboratory build 24956965",
+  "sourceBankSha256": "0b81277a288ef3ae394dedfe14e84b9e2c3896aa87c609f2ed92a34d4dfdab45",
+  "outputSha256": "18bba46a13bc42770e3898d3086b7cfc8fdff90998b27f27c07e7b4df9d08a9f",
+  "aligner": {
+    "package": "echogarden",
+    "version": "3.4.0",
+    "engine": "dtw",
+    "language": "en-US",
+    "timeline": "nested word/token/phone intervals from synthesis-reference MFCC dynamic-time-warping alignment",
+    "ipaKeyRule": "The lookup key removes a leading or trailing primary/secondary stress marker from the aligned IPA phone; the original aligned IPA label is retained on each window."
+  },
+  "selection": {
+    "candidates": 854,
+    "processed": 854,
+    "clipsWithInteriorPhones": 777,
+    "phoneWindows": 2761,
+    "excludedWordEdges": true,
+    "minimumWindowSeconds": 0.02,
+    "failureCount": 0,
+    "failures": []
+  },
+  "licenseNote": "The source speech files remain SCP: Secret Laboratory assets under the included CC BY-SA 3.0 evidence. The phoneme-window generation code is part of this AGPL-3.0-only project; Echogarden alignment used eSpeak-NG reference synthesis."
+}
