@@ -1,5 +1,5 @@
 import { OggOpusDecoder } from 'ogg-opus-decoder';
-import { mixLayers, monoFromChannels, OUTPUT_SAMPLE_RATE, transformWord } from './dsp';
+import { mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, transformWord } from './dsp';
 import type { Bank, BankClip, RenderOptions, WordPlan } from './types';
 
 type RequestMessage = { type: 'render'; bank: Bank; plan: WordPlan[]; options: RenderOptions };
@@ -46,13 +46,15 @@ scope.onmessage = async ({ data }) => {
     }
 
     const layers: Array<{ samples: Float32Array; start: number; gain?: number }> = [];
-    let speechSampleCount = 0;
+    let audioSampleCount = 0;
     const maxLayerSamples = OUTPUT_SAMPLE_RATE * 300;
     let previousStart = 0;
     let previousEnd = 0;
     let timelineEnd = 0;
     for (let index = 0; index < plan.length; index += 1) {
       const word = plan[index];
+      const sourceClip = clipById.get(word.clipId);
+      if (!sourceClip) throw new Error(`Audio bank is missing ${word.clipId}.`);
       const decoded = decodedById.get(word.clipId);
       if (!decoded) throw new Error(`Could not decode ${word.clipId}.`);
       const wordParts = [
@@ -79,29 +81,27 @@ scope.onmessage = async ({ data }) => {
         }
       }
       const samples = transformWord(source, OUTPUT_SAMPLE_RATE, word, data.options.pitch, data.options.volume);
-      let start = index === 0
-        ? (word.sleep ?? 0)
-        : word.spacing !== undefined
-          ? previousStart + word.spacing + (word.sleep ?? 0)
-          : previousEnd + data.options.gap + (word.sleep ?? 0);
-      start = Math.max(0, start);
       if (word.startAt !== undefined && word.startAt >= decoded.length / OUTPUT_SAMPLE_RATE) {
         warnings.push(`Start time skipped all of “${word.display}”.`);
       }
+      const previousClip = index > 0 ? clipById.get(plan[index - 1].clipId) : undefined;
+      const start = Math.max(0, word.spacing !== undefined
+        ? previousStart + word.spacing + (word.sleep ?? 0)
+        : nextClipStart(previousEnd, previousClip?.kind, sourceClip.kind, data.options.gap, word.sleep ?? 0));
       const frameStart = Math.floor(start * OUTPUT_SAMPLE_RATE);
       if (samples.length && frameStart + samples.length > 0) {
-        speechSampleCount += samples.length;
-        if (speechSampleCount > maxLayerSamples) throw new Error('Audio content exceeds the five-minute processing limit.');
+        audioSampleCount += samples.length;
+        if (audioSampleCount > maxLayerSamples) throw new Error('Audio content exceeds the five-minute processing limit.');
         layers.push({ samples, start: frameStart });
       }
-      previousStart = start;
       previousEnd = start + samples.length / OUTPUT_SAMPLE_RATE;
+      previousStart = start;
       timelineEnd = Math.max(timelineEnd, previousEnd);
       if (timelineEnd > 120) throw new Error('Rendered audio exceeds the 120-second limit.');
       scope.postMessage({ type: 'progress', value: 0.6 + 0.35 * (index + 1) / plan.length });
     }
 
-    if (!speechSampleCount) throw new Error('No audio could be rendered from the selected words.');
+    if (!audioSampleCount) throw new Error('No audio could be rendered from the selected clips.');
     if (data.options.background) {
       const background = data.bank.clips.find((clip) => clip.id.toLocaleLowerCase('en-US') === 'cassie-background-std' && clip.kind === 'effect');
       if (!background) warnings.push('CASSIE background audio is not available in this bank.');

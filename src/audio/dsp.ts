@@ -1,7 +1,19 @@
-import type { WordPlan } from './types';
+import type { ClipKind, WordPlan } from './types';
 
 export const OUTPUT_SAMPLE_RATE = 48_000;
 export const MAX_RENDER_SECONDS = 120;
+
+export function nextClipStart(
+  previousEnd: number,
+  previousKind: ClipKind | undefined,
+  nextKind: ClipKind,
+  speechGap: number,
+  sleep = 0,
+): number {
+  if (previousKind === undefined) return Math.max(0, sleep);
+  const gap = previousKind === 'word' && nextKind === 'word' ? speechGap : 0;
+  return Math.max(0, previousEnd + gap + sleep);
+}
 
 export function monoFromChannels(channels: Float32Array[]): Float32Array {
   if (!channels.length || channels.some((channel) => channel.length !== channels[0].length)) {
@@ -41,8 +53,9 @@ export function transformWord(samples: Float32Array, sampleRate: number, plan: W
   const pitch = plan.pitch * pitchScale;
   if (!Number.isFinite(pitch) || pitch < 0.0065 || pitch > 20.25) throw new Error(`Invalid pitch for ${plan.display}.`);
   const first = Math.min(samples.length, Math.floor((plan.startAt ?? 0) * sampleRate));
-  let end = samples.length;
-  if (plan.maxDuration !== undefined) end = Math.min(end, first + Math.floor(plan.maxDuration * sampleRate));
+  const end = plan.maxDuration === undefined
+    ? samples.length
+    : Math.min(samples.length, first + Math.floor(plan.maxDuration * sampleRate));
   const source = applyStutter(samples.subarray(first, end), sampleRate, plan.stutter);
   if (!source.length) return new Float32Array(0);
   const outputLength = Math.max(1, Math.ceil(source.length / pitch));

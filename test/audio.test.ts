@@ -2,7 +2,7 @@ import { reactive } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import { analyzeText, createWordPlan } from '../src/audio/parser';
 import { renderAnnouncement } from '../src/audio/engine';
-import { applyStutter, encodeWav, mixLayers, monoFromChannels, transformWord } from '../src/audio/dsp';
+import { applyStutter, encodeWav, mixLayers, monoFromChannels, nextClipStart, transformWord } from '../src/audio/dsp';
 import type { Bank } from '../src/audio/types';
 
 const bank: Bank = {
@@ -52,10 +52,50 @@ describe('CASSIE announcement parser', () => {
     expect(result.plan[0]).toMatchObject({ clipId: 'all-remaining-personnel', display: 'all remaining personnel' });
   });
 
-  it('applies persistent and one-word modifiers to the following bank clips', () => {
-    const result = createWordPlan('$PITCH_1.25 $VOL_0.4 cassie $SLEEP_0.6 $MAXDUR_0.2 word', bank);
+  it('applies persistent pitch/volume and one-word sleep/stutter modifiers', () => {
+    const result = createWordPlan('$PITCH_1.25 $VOL_0.4 cassie $SLEEP_0.6 $STUTT_0.1_0.1_3 word', bank);
     expect(result.plan[0]).toMatchObject({ pitch: 1.25, volume: 0.4 });
-    expect(result.plan[1]).toMatchObject({ pitch: 1.25, volume: 0.4, sleep: 0.6, maxDuration: 0.2 });
+    expect(result.plan[1]).toMatchObject({ pitch: 1.25, volume: 0.4, sleep: 0.6, stutter: { position: 0.1, length: 0.1, repeats: 3 } });
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('retains the game timing and clip-selection modifiers', () => {
+    const result = createWordPlan('$STARTT_0.1 $MAXDUR_0.3 cassie $SPAC_0.8 word', bank);
+    expect(result.plan[0]).toMatchObject({ startAt: 0.1, maxDuration: 0.3 });
+    expect(result.plan[1]).toMatchObject({ spacing: 0.8 });
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('inserts verified start/end cues at their text positions and direct bank clips', () => {
+    const cueBank = {
+      ...bank,
+      clips: [...bank.clips,
+        { id: 'start_beep', file: '/audio/start_beep.opus', duration: 0.2, kind: 'effect' as const },
+        { id: 'end_beep', file: '/audio/end_beep.opus', duration: 0.2, kind: 'effect' as const },
+      ],
+    };
+    const result = createWordPlan('$START cassie $CLIP_the_vowel $END', cueBank, { start: 'start_beep', end: 'end_beep' });
+    expect(result.plan.map(({ clipId, display }) => [clipId, display])).toEqual([
+      ['start_beep', 'start cue'],
+      ['cassie', 'cassie'],
+      ['the_vowel', 'the_vowel'],
+      ['end_beep', 'end cue'],
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('allows direct effect clips and warns for unknown or unavailable cue assets', () => {
+    const effectBank = {
+      ...bank,
+      clips: [...bank.clips, { id: 'cassie-background-std', file: '/audio/cassie-background-std.opus', duration: 39.43, kind: 'effect' as const }],
+    };
+    const result = analyzeText('$START $CLIP_cassie-background-std $CLIP_not-in-bank $END cassie', effectBank);
+    expect(result.words).toEqual(['cassie-background-std', 'cassie']);
+    expect(result.warnings).toEqual([
+      'The START cue is unavailable in this audio bank.',
+      'Unknown audio clip ID: not-in-bank.',
+      'The END cue is unavailable in this audio bank.',
+    ]);
   });
 
   it('composes generated inflections from the root word and a real suffix clip', () => {
@@ -142,6 +182,13 @@ describe('audio DSP', () => {
     const mixed = mixLayers([{ samples: new Float32Array([0.8, 0.1]), start: 0 }, { samples: new Float32Array([0.8]), start: 0 }]);
     expect(mixed[0]).toBe(1);
     expect(mixed[1]).toBeCloseTo(0.1);
+  });
+
+  it('uses speech gaps only between adjacent words, not around effect cues', () => {
+    expect(nextClipStart(1, 'word', 'word', 0.24)).toBeCloseTo(1.24);
+    expect(nextClipStart(1, 'word', 'effect', 0.24)).toBe(1);
+    expect(nextClipStart(1.2, 'effect', 'word', 0.24)).toBe(1.2);
+    expect(nextClipStart(0, undefined, 'effect', 0.24, 0.5)).toBe(0.5);
   });
 
   it('writes a valid mono 16-bit PCM WAV header and samples', async () => {
