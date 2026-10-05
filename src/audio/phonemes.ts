@@ -33,6 +33,16 @@ function stressless(phone: string): string {
   return phone.normalize('NFC').replace(STRESS, '');
 }
 
+function windowsFor(phone: string, catalog: PhonemeCatalog): PhonemeWindow[] {
+  if (!Object.hasOwn(catalog.phones, phone)) return [];
+  const windows = catalog.phones[phone];
+  return Array.isArray(windows) ? windows : [];
+}
+
+function hasPhone(phone: string, catalog: PhonemeCatalog): boolean {
+  return Object.hasOwn(catalog.phones, phone) && Array.isArray(catalog.phones[phone]);
+}
+
 function validCatalog(value: unknown, bank: Bank): PhonemeCatalog {
   if (!value || typeof value !== 'object') throw new Error('The phoneme catalog is invalid.');
   const catalog = value as Partial<PhonemeCatalog>;
@@ -55,7 +65,7 @@ export function loadPhonemeCatalog(bank: Bank): Promise<PhonemeCatalog> {
 }
 
 function findCandidates(phone: string, catalog: PhonemeCatalog, bankById: Map<string, BankClip>): Array<{ clip: BankClip; window: PhonemeWindow }> {
-  const windows = catalog.phones[stressless(phone)] ?? [];
+  const windows = windowsFor(stressless(phone), catalog);
   return windows.flatMap((window) => {
     const clip = bankById.get(window.clipId);
     if (!clip || clip.kind !== 'word' || !/^[a-f\d]{64}$/i.test(window.sourceSha256) ||
@@ -97,7 +107,8 @@ function isVowel(phone: string): boolean {
 function aliasPhone(input: string): { phone: string; long: boolean } {
   const colonLong = input.endsWith(':');
   const raw = colonLong ? input.slice(0, -1) : input;
-  const alias = ASCII_ALIASES[raw.toLocaleLowerCase('en-US')];
+  const aliasKey = raw.toLocaleLowerCase('en-US');
+  const alias = Object.hasOwn(ASCII_ALIASES, aliasKey) ? ASCII_ALIASES[aliasKey] : undefined;
   let phone = (alias ?? raw).replace(/:/g, 'ː');
   if (colonLong && !phone.endsWith('ː')) phone += 'ː';
   return { phone: stressless(phone), long: colonLong || phone.endsWith('ː') };
@@ -127,8 +138,8 @@ export function parseExplicitPhones(value: string, catalog: PhonemeCatalog): { p
   const keys = Object.keys(catalog.phones);
   for (const token of tokens) {
     const { phone } = aliasPhone(token);
-    if (catalog.phones[phone] || (phone.endsWith('ː') && (catalog.phones[phone.slice(0, -1)] || isVowel(phone))) ||
-        (!phone.endsWith('ː') && isVowel(phone) && catalog.phones[`${phone}ː`])) {
+    if (hasPhone(phone, catalog) || (phone.endsWith('ː') && (hasPhone(phone.slice(0, -1), catalog) || isVowel(phone))) ||
+        (!phone.endsWith('ː') && isVowel(phone) && hasPhone(`${phone}ː`, catalog))) {
       phones.push(phone);
       continue;
     }

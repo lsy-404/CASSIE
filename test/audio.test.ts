@@ -116,6 +116,19 @@ describe('CASSIE announcement parser', () => {
     expect(affricate.warnings).toEqual(['No verified audio window for /dʒ/; the complete segment was skipped.']);
   });
 
+  it.each(['constructor', '__proto__'])('treats inherited catalog key %s as an unsupported phone', (phone) => {
+    const inherited = Object.create(null) as Record<string, unknown>;
+    inherited.constructor = phoneCatalog.phones['ɑː'];
+    Object.defineProperty(inherited, '__proto__', { value: phoneCatalog.phones['ɑː'], enumerable: true });
+    const unsafeCatalog = {
+      ...phoneCatalog,
+      phones: Object.assign(Object.create(inherited), phoneCatalog.phones),
+    } as PhonemeCatalog;
+    const result = createWordPlan(`cassie / ${phone} /`, phoneBank, undefined, unsafeCatalog);
+    expect(result.plan.map((item) => item.clipId)).toEqual(['cassie']);
+    expect(result.warnings).toEqual([`Unsupported phoneme: ${phone}.`]);
+  });
+
   it('inserts verified start/end cues at their text positions and direct bank clips', () => {
     const cueBank = {
       ...bank,
