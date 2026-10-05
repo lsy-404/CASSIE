@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "sourceBank": {
     "version": "SCP: Secret Laboratory build 24956965",
-    "sha256": "0b81277a288ef3ae394dedfe14e84b9e2c3896aa87c609f2ed92a34d4dfdab45"
+    "sha256": "1265ba3d8f958f7b782e0b94d75319200fee29c7e9380fd856901c3cf8f6a975"
   },
   "aligner": {
     "package": "echogarden",
