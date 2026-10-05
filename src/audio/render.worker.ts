@@ -39,9 +39,12 @@ scope.onmessage = async ({ data }) => {
     const decodedById = new Map<string, Float32Array>();
     const warnings: string[] = [];
     let decodedCount = 0;
+    let completedCount = 0;
     let lastProgress = 0;
-    const reportProgress = (value: number) => {
-      lastProgress = Math.max(lastProgress, Math.min(1, value));
+    const reportProgress = () => {
+      const decodeProgress = 0.6 * decodedCount / Math.max(1, uniqueIds.length);
+      const renderProgress = 0.35 * completedCount / Math.max(1, plan.length);
+      lastProgress = Math.max(lastProgress, Math.min(0.95, decodeProgress + renderProgress));
       scope.postMessage({ type: 'progress', value: lastProgress });
     };
     const getDecoded = async (id: string) => {
@@ -53,7 +56,7 @@ scope.onmessage = async ({ data }) => {
       await activeDecoder.reset();
       decodedById.set(id, decoded);
       decodedCount += 1;
-      reportProgress(0.6 * decodedCount / Math.max(1, uniqueIds.length));
+      reportProgress();
       return decoded;
     };
 
@@ -160,7 +163,8 @@ scope.onmessage = async ({ data }) => {
         finishStutterScopes(word);
         if (samples.length) publishPreview(index);
         if (timelineEnd > 120) throw new Error('Rendered audio exceeds the 120-second limit.');
-        reportProgress(0.6 + 0.35 * (index + 1) / plan.length);
+        completedCount += 1;
+        reportProgress();
         continue;
       }
       for (const id of [...(word.prefixClipIds ?? []), word.clipId, ...(word.suffixClipIds ?? []), ...(word.phonemeUnits ?? []).map((unit) => unit.clipId)]) {
@@ -295,7 +299,8 @@ scope.onmessage = async ({ data }) => {
       finishStutterScopes(word);
       if (samples.length) publishPreview(index);
       if (timelineEnd > 120) throw new Error('Rendered audio exceeds the 120-second limit.');
-      reportProgress(0.6 + 0.35 * (index + 1) / plan.length);
+      completedCount += 1;
+      reportProgress();
     }
 
     if (!audioSampleCount) throw new Error('No audio could be rendered from the selected clips.');
