@@ -1,0 +1,49 @@
+:root {
+  --ide-font: "Segoe UI Variable Text", "Segoe UI", system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --ide-mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+  --ide-editor: #1e1e1e;
+  --ide-sidebar: #252526;
+  --ide-activitybar: #333333;
+  --ide-titlebar: #3c3c3c;
+  --ide-ribbon: #2d2d2d;
+  --ide-panel: #1e1e1e;
+  --ide-statusbar: #3a3a3a;
+  --ide-border: #2b2b2b;
+  --ide-border-strong: #454545;
+  --ide-hover: rgba(255, 255, 255, 0.08);
+  --ide-active: rgba(255, 255, 255, 0.14);
+  --ide-selection: rgba(255, 255, 255, 0.24);
+  --ide-line-number: #858585;
+  --ide-titlebar-height: 32px;
+  --ide-statusbar-height: 24px;
+  --ide-activitybar-width: 48px;
+  --ide-sidebar-width: 280px;
+}
+
+.fluent-theme[data-fluent-theme="dark"] {
+  --fluent-bg: var(--ide-editor);
+  --fluent-surface: var(--ide-sidebar);
+  --fluent-mica: rgba(37, 37, 38, 0.92);
+  --fluent-acrylic: rgba(45, 45, 45, 0.96);
+  --fluent-text: #d4d4d4;
+  --fluent-muted: #a0a0a0;
+  --fluent-accent: #ffffff;
+  --fluent-accent-hover: #e6e6e6;
+  --fluent-accent-pressed: #cfcfcf;
+  --fluent-accent-text: #1e1e1e;
+  --fluent-control: #3c3c3c;
+  --fluent-control-hover: #484848;
+  --fluent-control-pressed: #333333;
+  --fluent-border: #454545;
+  --fluent-selection: #3a3a3d;
+  --fluent-radius: 3px;
+  --fluent-panel-radius: 4px;
+  --fluent-font: var(--ide-font);
+  font-family: var(--ide-font);
+}
+
+::selection { background: var(--ide-selection); color: inherit; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

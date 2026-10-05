@@ -1,0 +1,29 @@
+export const MARKERS = {
+  start: "<start>",
+  end: "<end>",
+  pause: '<pause seconds="0.5"/>',
+  clip: '<clip id="a"/>',
+} as const;
+
+export const SCOPES = {
+  stutter: { open: '<stutter repeats="3">', close: "</stutter>" },
+  pitch: { open: '<pitch value="1.2">', close: "</pitch>" },
+  volume: { open: '<volume value="0.7">', close: "</volume>" },
+  offset: { open: '<offset seconds="0.1">', close: "</offset>" },
+  duration: { open: '<duration seconds="0.3">', close: "</duration>" },
+  spacing: { open: '<spacing seconds="0.2">', close: "</spacing>" },
+  rate: { open: '<rate value="1.2">', close: "</rate>" },
+  voice: { open: '<voice pitch="3" loudness="2" tension="0.2" breathiness="0.3" formant="-2">', close: "</voice>" },
+} as const;
+
+export const FIT_RANGE = { min: 0.05, max: 120, step: 0.05, default: 2 } as const;
+
+export function fitScope(seconds: number) {
+  return { open: `<fit seconds="${seconds}">`, close: "</fit>" };
+}
+
+export type MarkerName = keyof typeof MARKERS;
+export type ScopeName = keyof typeof SCOPES;
+
+export const SETTING_IDS = ["pitch", "volume", "gap", "rate", "voicePitch", "loudness", "tension", "breathiness", "formant"] as const;
+export type SettingId = (typeof SETTING_IDS)[number];

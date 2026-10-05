@@ -10,6 +10,15 @@ The interface supports Chinese and English, initially follows the browser langua
 
 The terminal layout references the game's [official CASSIE monitor](https://en.scpslgame.com/index.php?title=File:LCZ_Screen_CASSIE_Scan_Complete.png). Its editable default is an original SCP recruitment broadcast with markup examples. One long playback bar also shows rendering progress, supports already-rendered audio and updates the current time from the media clock. The export panel provides WAV and Opus downloads.
 
+## Interface
+
+The studio is laid out like an editor: a title bar, a Word-style ribbon, an activity bar with a collapsible side bar, the announcement editor with a line-number gutter and token highlighting, a bottom panel (Player, Problems, Analysis, Export) and a status bar. The theme is the Fluent dark scheme with a white accent and neutral greys; all overrides live in `src/theme.css`.
+
+- The ribbon is data driven: `src/ribbon.ts` lists tabs, groups and commands (label, icon, enabled predicate, action id) and one generic `Ribbon.vue` renders them. Double-click the active ribbon tab to collapse or expand it. Adding a command or group is one entry in that table plus its action in `src/studio.ts`.
+- `src/studio.ts` holds the shared state and actions (text, options, render and export lifecycle, analysis, editor insertion) and is provided to the components under `src/components`.
+- The side bar shows the tag outline, the phoneme inventory, the sound settings or the help and markup reference. Shortcuts: `/` focuses the editor, `Ctrl/Cmd+Enter` renders, `Ctrl/Cmd+B` toggles the side bar.
+- Below 820 px the side bar becomes an overlay and the ribbon scrolls horizontally.
+
 ## Development
 
 Use Node.js 22.12+ and pnpm 10.32.1:
@@ -26,7 +35,7 @@ Install the browser once with `pnpm exec playwright install chromium` before bro
 
 ## Announcement syntax
 
-Type complete English words directly. Numbers expand into speech units where available. You can type the tags yourself or insert them from the Fluent toolbar. Rendering updates as you edit; turn off the live-render checkbox to render manually. The audio bar supports seeking, with current words and spaces highlighted in the announcement.
+Type complete English words directly. Numbers expand into speech units where available. You can type the tags yourself or insert them from the ribbon. Rendering updates as you edit; turn off the live-render checkbox to render manually. The audio bar supports seeking, with current words and spaces highlighted in the announcement.
 
 | Modifier | Meaning |
 | --- | --- |

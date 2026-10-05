@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { openStudio } from './helpers';
+import { openSideView, openStudio } from './helpers';
 
 test('phoneme insertion reuses slash blocks and preserves selections and tag slashes', async ({ page }) => {
   await openStudio(page);
   const field = page.locator('textarea');
-  await page.locator('.phone-inventory summary').click();
+  await openSideView(page, '音素');
   const phone = page.getByRole('button', { name: '插入音素 ə', exact: true });
   await expect(phone).toBeVisible();
   await field.fill('<rate value="1.1">cassie</rate> / a e: /');
@@ -24,6 +24,7 @@ test('fine numeric fields stay stable when cleared and accept signed decimal voi
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await openStudio(page);
+  await openSideView(page, '声音设置');
   await expect(page.locator('.voice-processing')).toBeVisible();
   const loudness = page.getByRole('spinbutton', { name: '响度（dB）', exact: true });
   const tension = page.getByRole('spinbutton', { name: '张力', exact: true });
@@ -55,7 +56,7 @@ test('one long timeline combines rendering and seeking and follows the audio clo
   await expect(page.locator('.announcement-player progress')).toHaveCount(0);
   const sliderBox = await seek.boundingBox();
   const trackBox = await page.locator('.timeline-overview').boundingBox();
-  const panelBox = await page.locator('.main-column').boundingBox();
+  const panelBox = await page.locator('.bottom-panel').boundingBox();
   expect(sliderBox!.width).toBeGreaterThan(panelBox!.width * 0.8);
   expect(Math.abs(trackBox!.y + trackBox!.height / 2 - sliderBox!.y - sliderBox!.height / 2)).toBeLessThan(3);
   await page.locator('audio').evaluate((audio: HTMLAudioElement) => audio.addEventListener('timeupdate', (event) => event.stopImmediatePropagation(), { capture: true }));

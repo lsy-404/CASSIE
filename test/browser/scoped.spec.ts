@@ -1,13 +1,14 @@
-import { openStudio } from './helpers';
+import { openPanel, openSideView, openStudio, wavLink } from './helpers';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
 async function renderWav(page: import('@playwright/test').Page, text: string, output: string) {
+  await openPanel(page, '播放器');
   await page.locator('textarea').fill(text);
   await page.getByRole('button', { name: '生成音频', exact: true }).click();
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('src', /^blob:/, { timeout: 60_000 });
   const download = page.waitForEvent('download');
-  await page.getByRole('link', { name: '下载 WAV', exact: true }).click();
+  await (await wavLink(page)).click();
   await (await download).saveAs(output);
   const bytes = await readFile(output);
   expect(bytes.toString('ascii', 0, 4)).toBe('RIFF');
@@ -93,6 +94,7 @@ test('speech rate changes only speech while gaps, pauses and boundary cue PCM st
   await openStudio(page);
   await expect(page.locator('textarea')).toBeEnabled();
   await page.locator('.live-controls label').click();
+  await openSideView(page, '声音设置');
   const slider = page.getByRole('slider', { name: '语速', exact: true });
   await expect(slider).toHaveValue('1');
   const word = await renderWav(page, 'cassie', info.outputPath('rate-one-word.wav'));
@@ -145,7 +147,7 @@ test('custom controls play an early fragment while later audio is still loading'
     await expect(audio).toHaveAttribute('data-complete', 'true', { timeout: 30_000 });
     await expect(page.locator('.timeline-track .timeline-progress')).toHaveCount(0);
     await expect(page.getByText('公告已就绪', { exact: true })).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: '导出', exact: true })).toBeVisible();
+    await expect(page.locator('.panel-tabs').getByRole('tab', { name: '导出', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: '渲染与导出', exact: true })).toHaveCount(0);
     expect(errors).toEqual([]);
   } finally { release(); }

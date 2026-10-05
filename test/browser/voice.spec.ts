@@ -1,13 +1,14 @@
-import { openStudio } from './helpers';
+import { openPanel, openSideView, openStudio, wavLink } from './helpers';
 import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
 async function wav(page: Page, text: string, path: string) {
+  await openPanel(page, '播放器');
   await page.locator('textarea').fill(text);
   await page.getByRole('button', { name: '生成音频', exact: true }).click();
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('src', /^blob:/, { timeout: 60_000 });
   const pending = page.waitForEvent('download');
-  await page.getByRole('link', { name: '下载 WAV', exact: true }).click();
+  await (await wavLink(page)).click();
   await (await pending).saveAs(path);
   const bytes = await readFile(path);
   expect(bytes.toString('ascii', 0, 4)).toBe('RIFF');
@@ -80,6 +81,7 @@ test('WASM post-processing raises and lowers a known fundamental without changin
   expect(Math.abs(peakFrequency(neutral) - 160)).toBeLessThan(2);
   expect(Math.abs(peakFrequency(raised) - 160 * 2 ** (3 / 12))).toBeLessThan(4);
   expect(Math.abs(peakFrequency(lowered) - 160 * 2 ** (-3 / 12))).toBeLessThan(4);
+  await openSideView(page, '声音设置');
   await expect(page.locator('.voice-processing')).toBeVisible();
   const slider = page.getByRole('slider', { name: '音调偏移（半音）', exact: true });
   await expect(slider).toHaveValue('0');
