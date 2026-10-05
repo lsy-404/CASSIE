@@ -49,6 +49,18 @@ test('WASM post-processing raises and lowers a known fundamental without changin
   expect(Math.abs(peakFrequency(neutral) - 160)).toBeLessThan(2);
   expect(Math.abs(peakFrequency(raised) - 160 * 2 ** (3 / 12))).toBeLessThan(4);
   expect(Math.abs(peakFrequency(lowered) - 160 * 2 ** (-3 / 12))).toBeLessThan(4);
+  await page.locator('.voice-processing summary').click();
+  const slider = page.getByRole('slider', { name: '音调偏移（半音）', exact: true });
+  await expect(slider).toHaveValue('0');
+  await slider.evaluate((element: HTMLInputElement) => {
+    element.value = '3';
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const globalRaised = await wav(page, 'cassie', info.outputPath('known-tone-global-raised.wav'));
+  expect(globalRaised.length).toBe(neutral.length);
+  expect(Math.abs(peakFrequency(globalRaised) - 160 * 2 ** (3 / 12))).toBeLessThan(4);
+  const override = await wav(page, '<voice pitch="0">cassie</voice>', info.outputPath('known-tone-neutral-override.wav'));
+  expect(bytes(override)).toEqual(bytes(neutral));
 });
 
 test('neutral voice bypasses processing and scoped voice restores original speech', async ({ page }, info) => {
