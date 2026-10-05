@@ -1,4 +1,5 @@
 import type { Bank, BankClip, WordPlan } from './types';
+import { announcementCueIds } from './catalog';
 
 const MAX_TOKENS = 512;
 const MAX_INPUT_LENGTH = 8192;
@@ -63,7 +64,7 @@ function numberWords(value: string): string[] {
 }
 
 function tokenPattern(): RegExp {
-  return /\$[A-Za-z]+_[^\s$]+|-?\d+(?:\.\d+)?|[\p{L}_-][\p{L}\p{N}_-]*(?:['’][\p{L}]+)*/gu;
+  return /\$START\b|\$END\b|\$CLIP_[A-Za-z0-9_-]+|\$[A-Za-z]+_[^\s$]+|-?\d+(?:\.\d+)?|[\p{L}_-][\p{L}\p{N}_-]*(?:['’][\p{L}]+)*/giu;
 }
 
 function resolveClip(token: string, lookup: Map<string, BankClip>, nextToken?: string): BankClip | undefined {
@@ -160,9 +161,15 @@ function finiteInRange(value: string, min: number, max: number): number | undefi
   return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : undefined;
 }
 
-function compileWordPlan(text: string, bank: Bank): { plan: WordPlan[]; warnings: string[] } {
+export interface AnnouncementCueIds {
+  start: string | null;
+  end: string | null;
+}
+
+function compileWordPlan(text: string, bank: Bank, cueIds: AnnouncementCueIds): { plan: WordPlan[]; warnings: string[] } {
   if (text.length > MAX_INPUT_LENGTH) throw new Error(`Announcement exceeds the ${MAX_INPUT_LENGTH}-character limit.`);
   const lookup = new Map(bank.clips.filter((clip) => clip.kind === 'word').map((clip) => [normalize(clip.id), clip]));
+  const clipLookup = new Map(bank.clips.map((clip) => [normalize(clip.id), clip]));
   const plan: WordPlan[] = [];
   const warnings: string[] = [];
   const tokens = [...text.matchAll(tokenPattern())].map((match) => match[0]);
@@ -177,6 +184,28 @@ function compileWordPlan(text: string, bank: Bank): { plan: WordPlan[]; warnings
     const raw = tokens[tokenIndex];
     const token = raw.toLocaleLowerCase('en-US');
     if (token.startsWith('$')) {
+      if (token === '$start' || token === '$end') {
+        const cueId = token === '$start' ? cueIds.start : cueIds.end;
+        const cue = cueId ? clipLookup.get(normalize(cueId)) : undefined;
+        if (!cue || cue.kind !== 'effect') {
+          warnings.push(`The ${token.slice(1).toUpperCase()} cue is unavailable in this audio bank.`);
+          continue;
+        }
+        plan.push({ clipId: cue.id, display: `${token.slice(1)} cue`, pitch, volume, ...pending });
+        pending = {};
+        continue;
+      }
+      const clipCommand = /^\$clip_([a-z0-9_-]+)$/i.exec(token);
+      if (clipCommand) {
+        const clip = clipLookup.get(normalize(clipCommand[1]));
+        if (!clip) {
+          warnings.push(`Unknown audio clip ID: ${clipCommand[1]}.`);
+          continue;
+        }
+        plan.push({ clipId: clip.id, display: clip.id, pitch, volume, ...pending });
+        pending = {};
+        continue;
+      }
       const match = /^\$(PITCH|VOL|STARTT|MAXDUR|SLEEP|SPAC|STUTT)_(.+)$/i.exec(token);
       if (!match) {
         warnings.push(`Unsupported modifier: ${raw}`);
@@ -200,7 +229,7 @@ function compileWordPlan(text: string, bank: Bank): { plan: WordPlan[]; warnings
         continue;
       }
       const max = name === 'pitch' ? 15 : name === 'vol' ? 1 : 120;
-      const min = name === 'pitch' ? 0.01 : name === 'vol' ? 0 : name === 'startt' ? 0 : Number.EPSILON;
+      const min = name === 'pitch' ? 0.01 : name === 'vol' || name === 'startt' ? 0 : Number.EPSILON;
       const value = finiteInRange(args, min, max);
       if (value === undefined) {
         warnings.push(`Invalid ${name.toUpperCase()} modifier: ${raw}`);
@@ -263,18 +292,26 @@ function compileWordPlan(text: string, bank: Bank): { plan: WordPlan[]; warnings
   return { plan, warnings };
 }
 
-export function createWordPlan(text: string, bank: Bank): { plan: WordPlan[]; warnings: string[] } {
+export function createWordPlan(
+  text: string,
+  bank: Bank,
+  cueIds: AnnouncementCueIds = announcementCueIds,
+): { plan: WordPlan[]; warnings: string[] } {
   if (!text.trim()) throw new Error('No playable words were found in the announcement.');
-  const result = compileWordPlan(text, bank);
+  const result = compileWordPlan(text, bank, cueIds);
   if (!result.plan.length) throw new Error('No playable words were found in the announcement.');
   return result;
 }
 
-export function analyzeText(text: string, bank: Bank): { words: string[]; warnings: string[] } {
+export function analyzeText(
+  text: string,
+  bank: Bank,
+  cueIds: AnnouncementCueIds = announcementCueIds,
+): { words: string[]; warnings: string[] } {
   if (!text.trim()) return { words: [], warnings: [] };
   let result: { plan: WordPlan[]; warnings: string[] };
   try {
-    result = compileWordPlan(text, bank);
+    result = compileWordPlan(text, bank, cueIds);
   } catch (error) {
     return { words: [], warnings: [error instanceof Error ? error.message : 'Could not analyze announcement.'] };
   }
