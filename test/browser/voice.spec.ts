@@ -15,6 +15,42 @@ async function wav(page: Page, text: string, path: string) {
 
 function bytes(samples: Int16Array) { return Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength); }
 
+function peakFrequency(samples: Int16Array): number {
+  const core = samples.subarray(4_800, samples.length - 4_800);
+  let peak = 0;
+  let frequency = 0;
+  for (let hz = 100; hz <= 230; hz += 1) {
+    const coefficient = 2 * Math.cos(2 * Math.PI * hz / 48_000);
+    let previous = 0;
+    let older = 0;
+    for (let index = 0; index < core.length; index += 1) {
+      const window = 0.5 - 0.5 * Math.cos(2 * Math.PI * index / (core.length - 1));
+      const current = core[index] / 32768 * window + coefficient * previous - older;
+      older = previous;
+      previous = current;
+    }
+    const power = previous * previous + older * older - coefficient * previous * older;
+    if (power > peak) { peak = power; frequency = hz; }
+  }
+  return frequency;
+}
+
+test('WASM post-processing raises and lowers a known fundamental without changing duration', async ({ page }, info) => {
+  const tone = await readFile(new URL('../fixtures/voice-tone.opus', import.meta.url));
+  await page.route('**/audio/cassie.opus', (route) => route.fulfill({ body: tone, contentType: 'audio/ogg' }));
+  await page.goto('/');
+  await expect(page.locator('textarea')).toBeEnabled();
+  await page.locator('.live-controls label').click();
+  const neutral = await wav(page, 'cassie', info.outputPath('known-tone.wav'));
+  const raised = await wav(page, '<voice pitch="3">cassie</voice>', info.outputPath('known-tone-raised.wav'));
+  const lowered = await wav(page, '<voice pitch="-3">cassie</voice>', info.outputPath('known-tone-lowered.wav'));
+  expect(raised.length).toBe(neutral.length);
+  expect(lowered.length).toBe(neutral.length);
+  expect(Math.abs(peakFrequency(neutral) - 160)).toBeLessThan(2);
+  expect(Math.abs(peakFrequency(raised) - 160 * 2 ** (3 / 12))).toBeLessThan(4);
+  expect(Math.abs(peakFrequency(lowered) - 160 * 2 ** (-3 / 12))).toBeLessThan(4);
+});
+
 test('neutral voice bypasses processing and scoped voice restores original speech', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
