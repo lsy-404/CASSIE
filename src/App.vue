@@ -4,8 +4,7 @@ import {
   FluentButton, FluentField, FluentNotice, FluentProgressBar, FluentSelect,
   FluentSlider, FluentSwitch, FluentTheme, FluentToggleButton,
 } from "@platform-kit/fluent/vue";
-import { analyzeText } from "./audio/parser";
-import { encodeWav, loadBank, renderAnnouncement } from "./audio/engine";
+import { analyzeAnnouncement, encodeWav, loadBank, renderAnnouncement } from "./audio/engine";
 import { announcementCueIds, getClipUsage } from "./audio/catalog";
 import type { BankClip } from "./audio/types";
 
@@ -19,6 +18,9 @@ const pitch = ref(1);
 const volume = ref(1);
 const gap = ref(0.24);
 const background = ref(false);
+const phonemes = ref(false);
+const selectedStartCue = ref<string | null>(announcementCueIds.start);
+const selectedEndCue = ref<string | null>(announcementCueIds.end);
 const query = ref("");
 const kindFilter = ref<"all" | "word" | "effect">("all");
 const categoryFilter = ref("all");
@@ -33,15 +35,20 @@ const encodingOpus = ref(false);
 const opusMessage = ref("");
 const opusUrl = ref("");
 const previewing = ref("");
+const phoneKeys = ref<string[]>([]);
+const phoneIndexError = ref("");
+const analysis = ref<{ words: string[]; warnings: string[]; ipa: string[] }>({ words: [], warnings: [], ipa: [] });
 const shellElement = ref<HTMLElement | null>(null);
 
 let renderController: AbortController | null = null;
 let previewController: AbortController | null = null;
+let analysisRevision = 0;
+let analysisTimer: ReturnType<typeof setTimeout> | undefined;
+let analysisController: AbortController | null = null;
 let audioContext: AudioContext | null = null;
 let activeSource: AudioBufferSourceNode | null = null;
 let downloadUrl = "";
 
-const analysis = computed(() => bank.value ? analyzeText(text.value, bank.value) : { words: [], warnings: [] });
 const allWarnings = computed(() => [...analysis.value.warnings, ...(rendered.value?.warnings ?? [])]);
 const matchingClips = computed(() => (bank.value?.clips ?? []).filter((clip) => {
   const usage = getClipUsage(clip);
@@ -55,6 +62,8 @@ const categoryOptions = computed(() => [
   { value: "all", label: "全部分类" },
   ...[...new Set((bank.value?.clips ?? []).map((clip) => getClipUsage(clip).category))].sort().map((value) => ({ value, label: value })),
 ]);
+const selectedStartCueLabel = computed(() => bank.value?.clips.find((clip) => clip.id === selectedStartCue.value)?.id ?? "未选择");
+const selectedEndCueLabel = computed(() => bank.value?.clips.find((clip) => clip.id === selectedEndCue.value)?.id ?? "未选择");
 const kindOptions = [
   { value: "all" as const, label: "全部" },
   { value: "word" as const, label: "语音" },
@@ -76,12 +85,40 @@ function insertText(value: string) {
     field?.setSelectionRange(caret, caret);
   });
 }
+function scheduleAnalysis() {
+  const revision = ++analysisRevision;
+  if (analysisTimer) clearTimeout(analysisTimer);
+  analysisController?.abort();
+  analysisController = null;
+  if (!bank.value) { analysis.value = { words: [], warnings: [], ipa: [] }; return; }
+  analysisTimer = setTimeout(async () => {
+    const currentBank = bank.value;
+    if (!currentBank) return;
+    const controller = new AbortController();
+    analysisController = controller;
+    try {
+      const result = await analyzeAnnouncement(text.value, currentBank, phonemes.value, controller.signal);
+      if (!controller.signal.aborted && revision === analysisRevision) analysis.value = result;
+    } catch (error) {
+      if (!controller.signal.aborted && revision === analysisRevision) analysis.value = { words: [], warnings: [error instanceof Error ? error.message : "无法分析公告文本"], ipa: [] };
+    } finally {
+      if (analysisController === controller) analysisController = null;
+    }
+  }, 120);
+}
 function insertClip(clip: BankClip) { insertText(getClipUsage(clip).insertText); }
 function insertCue(which: "start" | "end") {
-  const id = announcementCueIds[which];
+  const id = which === "start" ? selectedStartCue.value : selectedEndCue.value;
   if (id) insertText(`$CLIP_${id}`);
 }
+function setCue(which: "start" | "end", clip: BankClip) {
+  if (which === "start") selectedStartCue.value = clip.id;
+  else selectedEndCue.value = clip.id;
+}
 function stopPlayback() {
+  previewController?.abort();
+  previewController = null;
+  previewing.value = "";
   if (!activeSource) return;
   const source = activeSource;
   activeSource = null;
@@ -90,6 +127,7 @@ function stopPlayback() {
   playing.value = false;
 }
 function cancelRender() {
+  stopPlayback();
   renderController?.abort();
   renderController = null;
   rendering.value = false;
@@ -151,7 +189,7 @@ async function compose() {
   renderController = controller;
   try {
     const result = await renderAnnouncement(text.value, bank.value,
-      { pitch: pitch.value, volume: volume.value, gap: gap.value, background: background.value },
+      { pitch: pitch.value, volume: volume.value, gap: gap.value, background: background.value, phonemes: phonemes.value },
       (value) => { progress.value = Math.max(0, Math.min(100, value * 100)); }, controller.signal);
     if (controller.signal.aborted) return;
     const samples = result.samples as Float32Array<ArrayBuffer>;
@@ -206,6 +244,7 @@ function onGlobalKeydown(event: KeyboardEvent) {
   }
 }
 watch([query, kindFilter, categoryFilter], () => { visibleLimit.value = 24; });
+watch([text, phonemes, bank], scheduleAnalysis, { immediate: true });
 watch(text, () => {
   stopPlayback(); rendered.value = null; renderMessage.value = ""; opusMessage.value = "";
   if (opusUrl.value) URL.revokeObjectURL(opusUrl.value);
@@ -215,12 +254,21 @@ watch(text, () => {
 });
 onMounted(async () => {
   window.addEventListener("keydown", onGlobalKeydown);
+  void fetch("/phonemes.json").then(async (response) => {
+    if (!response.ok) throw new Error("无法加载音素索引");
+    const data = await response.json() as { phones?: Record<string, unknown> };
+    phoneKeys.value = Object.keys(data.phones ?? {}).sort((left, right) => left.localeCompare(right));
+  }).catch((error) => { phoneIndexError.value = error instanceof Error ? error.message : "无法加载音素索引"; });
   try { bank.value = await loadBank(); }
   catch (error) { loadError.value = error instanceof Error ? error.message : "语音素材库无法加载"; }
   finally { loading.value = false; }
 });
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onGlobalKeydown);
+  if (analysisTimer) clearTimeout(analysisTimer);
+  analysisRevision += 1;
+  analysisController?.abort();
+  analysisController = null;
   renderController?.abort(); previewController?.abort(); stopPlayback();
   void audioContext?.close();
   if (downloadUrl) URL.revokeObjectURL(downloadUrl);
@@ -248,16 +296,18 @@ onBeforeUnmount(() => {
               <div class="panel-heading"><div><h2>公告内容</h2><p>输入文本，或使用工具栏插入游戏修饰符与素材。</p></div><span>{{ text.length }} 字符</span></div>
               <div class="authoring-tools">
                 <div class="tool-group"><strong>边界提示</strong>
-                  <FluentButton tone="secondary" :disabled="!announcementCueIds.start" :title="announcementCueIds.start ? `插入起始提示素材 ${announcementCueIds.start}` : '未找到可用的起始提示素材'" @click="insertCue('start')">插入开始提示</FluentButton>
-                  <FluentButton tone="secondary" :disabled="!announcementCueIds.end" :title="announcementCueIds.end ? `插入结束提示素材 ${announcementCueIds.end}` : '未找到可用的结束提示素材'" @click="insertCue('end')">插入结束提示</FluentButton>
+                  <FluentButton tone="secondary" :disabled="!selectedStartCue || !bank || rendering || encodingOpus" :title="selectedStartCue ? `插入开始提示素材 ${selectedStartCue}` : '请先在素材目录中选择开始提示素材'" @click="insertCue('start')">插入开始提示</FluentButton>
+                  <FluentButton tone="secondary" :disabled="!selectedEndCue || !bank || rendering || encodingOpus" :title="selectedEndCue ? `插入结束提示素材 ${selectedEndCue}` : '请先在素材目录中选择结束提示素材'" @click="insertCue('end')">插入结束提示</FluentButton>
                 </div>
+                <p class="cue-selection">所选素材：开始 <code>{{ selectedStartCueLabel }}</code> · 结束 <code>{{ selectedEndCueLabel }}</code></p>
                 <div class="tool-group"><strong>游戏修饰符</strong>
                   <FluentButton v-for="command in ['$SLEEP_0.5', '$STUTT_0.1_0.1_3', '$PITCH_1.1', '$VOL_0.8']" :key="command" tone="secondary" :disabled="!bank || rendering || encodingOpus" @click="insertText(command)">{{ command }}</FluentButton>
                 </div>
-                <p class="help-text">修饰符会作用于后续语音片段。边界提示素材已在目录中确认为可用时才可插入；片段本身可用 <code>$CLIP_id</code> 明确引用。</p>
+                <div class="tool-group"><strong>音素输入</strong><FluentButton tone="secondary" :disabled="!bank || rendering || encodingOpus" @click="insertText('/ a e: /')">插入音素</FluentButton></div>
+                <p class="help-text">斜线间的内容会按音素片段拼接，音质仍属实验性。便捷输入 <code>a</code> 映射到库存的 <code>ɑː</code>，<code>e</code> 映射到 <code>ɛ</code>，冒号表示长音（<code>e:</code> 会延长 <code>ɛ</code>）。默认没有已确认的游戏边界提示，可在素材目录为任意可用素材设定开始或结束提示。修饰符会作用于后续语音片段；素材可用 <code>$CLIP_id</code> 明确引用。</p>
               </div>
               <div class="phrase-field"><FluentField v-model="text" label="公告内容" multiline :disabled="!bank || rendering || encodingOpus" placeholder="输入公告内容…" /></div>
-              <div class="token-summary"><strong>识别到的语音：{{ analysis.words.length }}</strong><div v-if="analysis.words.length" class="word-chips"><span v-for="(word, index) in analysis.words.slice(0, 14)" :key="`${word}-${index}`">{{ word }}</span><span v-if="analysis.words.length > 14">+{{ analysis.words.length - 14 }}</span></div><span v-else>输入文本后显示匹配情况</span></div>
+              <div class="token-summary"><strong>识别到的语音：{{ analysis.words.length }}</strong><div v-if="analysis.words.length" class="word-chips"><span v-for="(word, index) in analysis.words.slice(0, 14)" :key="`${word}-${index}`">{{ word }}</span><span v-if="analysis.words.length > 14">+{{ analysis.words.length - 14 }}</span></div><span v-else>输入文本后显示匹配情况</span><div v-if="analysis.ipa.length" class="ipa-summary"><strong>音素片段</strong><span>{{ analysis.ipa.join(' · ') }}</span></div></div>
               <FluentNotice v-if="analysis.warnings.length" tone="warning">{{ analysis.warnings[0] }}<span v-if="analysis.warnings.length > 1">（另有 {{ analysis.warnings.length - 1 }} 条提示）</span></FluentNotice>
             </section>
             <section class="panel">
@@ -276,6 +326,8 @@ onBeforeUnmount(() => {
                   <div class="clip-actions">
                     <FluentButton tone="subtle" :disabled="Boolean(previewing) || rendering || encodingOpus" :busy="previewing === clip.id" :aria-label="`试听 ${clip.id}`" @click="previewClip(clip)">{{ previewing === clip.id ? "正在试听" : "试听" }}</FluentButton>
                     <FluentButton tone="secondary" :disabled="!bank || rendering || encodingOpus" :title="getClipUsage(clip).description" @click="insertClip(clip)">插入</FluentButton>
+                    <FluentButton tone="subtle" :disabled="selectedStartCue === clip.id" :aria-label="`将 ${clip.id} 设为开始提示`" @click="setCue('start', clip)">{{ selectedStartCue === clip.id ? "开始提示已选" : "设为开始" }}</FluentButton>
+                    <FluentButton tone="subtle" :disabled="selectedEndCue === clip.id" :aria-label="`将 ${clip.id} 设为结束提示`" @click="setCue('end', clip)">{{ selectedEndCue === clip.id ? "结束提示已选" : "设为结束" }}</FluentButton>
                   </div>
                 </article>
               </div>
@@ -291,6 +343,8 @@ onBeforeUnmount(() => {
                 <label><span>音量 <b>{{ Math.round(volume * 100) }}%</b></span><FluentSlider v-model="volume" :min="0.1" :max="1" :step="0.01" aria-label="音量" /></label>
                 <label><span>词间间隔 <b>{{ gap.toFixed(2) }}s</b></span><FluentSlider v-model="gap" :min="0" :max="0.8" :step="0.01" aria-label="词间间隔" /></label>
                 <div class="ambient-row"><span>环境底噪<small>加入轻微设施环境声</small></span><FluentSwitch v-model="background" aria-label="环境底噪" /></div>
+                <div class="phoneme-setting"><span>实验音素拼合<small>尝试拼合未收录的英语词</small></span><FluentSwitch v-model="phonemes" aria-label="实验音素拼合" /></div>
+                <div class="phone-inventory"><strong>已测量可用音素（{{ phoneKeys.length }}）</strong><span v-if="phoneIndexError">{{ phoneIndexError }}</span><div v-else class="phone-list"><FluentButton v-for="phone in phoneKeys" :key="phone" tone="subtle" :aria-label="`插入音素 ${phone}`" :title="`插入 / ${phone} /`" @click="insertText(`/ ${phone} /`)">{{ phone }}</FluentButton></div></div>
               </div>
             </section>
             <section class="panel output-panel">
@@ -315,7 +369,7 @@ onBeforeUnmount(() => {
           </aside>
         </div>
       </main>
-      <footer class="footer">CASSIE <span>·</span> 本地语音素材公告编辑器</footer>
+      <footer class="footer">CASSIE <span>·</span> 本地语音素材公告编辑器 <span>·</span> <a href="https://github.com/lsy-404/CASSIE">源代码</a> <span>·</span> <a href="/licenses.html">AGPL-3.0 与第三方许可</a></footer>
     </div>
   </FluentTheme>
 </template>
