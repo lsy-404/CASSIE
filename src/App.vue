@@ -10,6 +10,7 @@ import { checkEnglishSpelling } from "./spelling";
 import AnnouncementPlayer from "./components/AnnouncementPlayer.vue";
 import FineControl from "./components/FineControl.vue";
 import { phonemeInsertion } from "./editor";
+import { DEFAULT_ANNOUNCEMENT } from "./defaultAnnouncement";
 import type { DecodedUrlState } from "./url-state";
 
 const props = defineProps<{ initialState?: DecodedUrlState | null; urlError?: boolean }>();
@@ -21,17 +22,7 @@ type RenderedAnnouncement = Omit<Awaited<ReturnType<typeof renderAnnouncement>>,
 const bank = ref<Bank | null>(null);
 const loading = ref(true);
 const loadError = ref("");
-const text = ref(props.initialState?.text ?? [
-  "<start>",
-  "CASSIE: Attention, future Foundation personnel!",
-  "Join the Foundation. Protect humanity from anomalies. Enjoy paid lunch breaks and a generous one-exit-per-shift policy.",
-  '<stutter repeats="1">Apply now</stutter>: <volume value="0.7">benefits await</volume>. <pause seconds="0.5"/>',
-  '<pitch value="1.2">Stay alert</pitch>; <rate value="1.1">stay employed</rate>.',
-  '<offset seconds="0.1"><duration seconds="0.3"><spacing seconds="0.2">routine forms</spacing></duration></offset>.',
-  '<voice pitch="1.5" loudness="2" tension="0.2" breathiness="0.3" formant="-1">Safety first.</voice>',
-  'Our anom<pitch value="1.1">a</pitch>ly hotline answers in / a e: /: <clip id="cassie"/><br>',
-  "<end>",
-].join("\n"));
+const text = ref(props.initialState?.text ?? DEFAULT_ANNOUNCEMENT);
 const pitch = ref(initialOptions?.pitch ?? 1);
 const volume = ref(initialOptions?.volume ?? 1);
 const gap = ref(initialOptions?.gap ?? 0.24);
