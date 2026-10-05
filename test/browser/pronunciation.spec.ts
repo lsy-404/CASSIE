@@ -13,8 +13,8 @@ test('ordinary English and best-effort phonemes produce audible audio throughout
   await expect(page.locator('textarea')).toBeEnabled();
   for (const word of ['a', 'I', 'unsupport', 'worksheet', 'metrics', 'beyond', 'accuracy']) {
     await page.locator('textarea').fill(word);
-    await page.getByRole('button', { name: '生成公告音频', exact: true }).click();
-    await expect(page.getByText('公告已就绪', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await page.getByRole('button', { name: '生成音频', exact: true }).click();
+    await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 30_000 });
     const download = page.waitForEvent('download');
     await page.getByRole('link', { name: '下载 WAV', exact: true }).click();
     const artifact = await download;
@@ -31,8 +31,8 @@ test('ordinary English and best-effort phonemes produce audible audio throughout
     expect(rms).toBeGreaterThan(0.005);
   }
   await page.locator('textarea').fill(paragraph);
-  await page.getByRole('button', { name: '生成公告音频', exact: true }).click();
-  await expect(page.getByText('公告已就绪', { exact: true })).toBeVisible({ timeout: 60_000 });
+  await page.getByRole('button', { name: '生成音频', exact: true }).click();
+  await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 60_000 });
   await expect(page.getByText(/Could not segment generated pronunciation|No audio clip|complete segment was skipped/)).toHaveCount(0);
   await expect(page.locator('.annotated-editor .token-synthesized').filter({ hasText: /^metrics$/ })).toHaveCount(2);
   await expect(page.locator('.annotated-editor .token-synthesized').filter({ hasText: /^beyond$/ })).toHaveCount(1);
@@ -53,8 +53,8 @@ test('announcement commands play the game boundary excerpts and highlight their 
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
   await expect(page.locator('textarea')).toBeEnabled();
-  await page.locator('textarea').fill('/start cassie /end');
-  await expect(page.getByText('公告已就绪', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await page.locator('textarea').fill('<start/> CASSIE <end/>');
+  await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 30_000 });
   await expect(page.locator('.annotated-editor .token-marker')).toHaveCount(2);
   await expect(page.locator('.annotated-editor .token-error')).toHaveCount(0);
   const audio = page.locator('audio');
@@ -68,14 +68,37 @@ test('announcement commands play the game boundary excerpts and highlight their 
   });
   expect(duration).toBeGreaterThan(13);
   expect(duration).toBeLessThan(16);
-  await expect(page.locator('.annotated-editor .active')).toHaveText('/start');
+  await expect(page.locator('.annotated-editor .active')).toHaveText('<start/>');
   await audio.evaluate((element: HTMLAudioElement) => {
     element.currentTime = element.duration - 0.5;
     element.dispatchEvent(new Event('seeking'));
   });
-  await expect(page.locator('.annotated-editor .active')).toHaveText('/end');
+  await expect(page.locator('.annotated-editor .active')).toHaveText('<end/>');
   const download = page.waitForEvent('download');
   await page.getByRole('link', { name: '下载 WAV', exact: true }).click();
   await (await download).saveAs(info.outputPath('boundary-cues.wav'));
+  expect(errors).toEqual([]);
+});
+
+test('uppercase recorded words stay case-insensitive while standalone I and unknown acronyms are spoken as English', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/');
+  await page.locator('textarea').fill('CASSIE I XYZ');
+  await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 90_000 });
+  await expect(page.locator('.annotated-editor .token-recorded').filter({ hasText: /^CASSIE$/ })).toBeVisible();
+  await expect(page.locator('.annotated-editor .token-synthesized').filter({ hasText: /^I$/ })).toBeVisible();
+  const acronymLetters = page.locator('.annotated-editor .token-synthesized').filter({ hasText: /^[XYZ]$/ });
+  await expect(acronymLetters).toHaveCount(3);
+  expect((await acronymLetters.allTextContents()).join('')).toBe('XYZ');
+  for (const letter of await acronymLetters.all()) await expect(letter).not.toHaveClass(/spell-missing/);
+  const download = page.waitForEvent('download');
+  await page.getByRole('link', { name: '下载 WAV', exact: true }).click();
+  const item = await download;
+  const output = info.outputPath('uppercase-pronunciation.wav');
+  await item.saveAs(output);
+  const bytes = await readFile(output);
+  expect(bytes.toString('ascii', 0, 4)).toBe('RIFF');
+  expect((bytes.length - 44) / 96_000).toBeGreaterThan(0.2);
   expect(errors).toEqual([]);
 });

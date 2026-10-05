@@ -1,10 +1,11 @@
 import { OggOpusDecoder } from 'ogg-opus-decoder';
-import { appendTimelineEntry, clipTimelineToDuration, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchVowelLoop, transformWord } from './dsp';
+import { advancePlaybackCursorAfterRepeat, appendTimelineEntry, clipTimelineToDuration, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchSpeechPreservingGaps, stretchSpeechRate, stretchVowelLoop, transformWord } from './dsp';
 import type { Bank, BankClip, RenderOptions, TimelineEntry, WordPlan } from './types';
 
 type RequestMessage = { type: 'render'; bank: Bank; plan: WordPlan[]; options: RenderOptions };
 type ResponseMessage =
   | { type: 'progress'; value: number }
+  | { type: 'preview'; samples: Float32Array; sampleRate: number; duration: number; words: string[]; warnings: string[]; timeline: TimelineEntry[] }
   | { type: 'done'; samples: Float32Array; sampleRate: number; duration: number; words: string[]; warnings: string[]; timeline: TimelineEntry[] }
   | { type: 'error'; message: string };
 const scope = self as unknown as {
@@ -29,21 +30,35 @@ scope.onmessage = async ({ data }) => {
   if (data.type !== 'render') return;
   let decoder: OggOpusDecoder | undefined;
   try {
-    decoder = new OggOpusDecoder();
-    await decoder.ready;
+    const activeDecoder = new OggOpusDecoder();
+    decoder = activeDecoder;
+    await activeDecoder.ready;
     const clipById = new Map(data.bank.clips.map((clip) => [clip.id, clip]));
     const plan = data.plan;
     const uniqueIds = [...new Set(plan.flatMap((word) => [...(word.prefixClipIds ?? []), ...(word.clipId ? [word.clipId] : []), ...(word.suffixClipIds ?? []), ...(word.phonemeUnits ?? []).map((unit) => unit.clipId)]))];
     const decodedById = new Map<string, Float32Array>();
     const warnings: string[] = [];
-    for (let index = 0; index < uniqueIds.length; index += 1) {
-      const id = uniqueIds[index];
+    let decodedCount = 0;
+    let completedCount = 0;
+    let lastProgress = 0;
+    const reportProgress = () => {
+      const decodeProgress = 0.6 * decodedCount / Math.max(1, uniqueIds.length);
+      const renderProgress = 0.35 * completedCount / Math.max(1, plan.length);
+      lastProgress = Math.max(lastProgress, Math.min(0.95, decodeProgress + renderProgress));
+      scope.postMessage({ type: 'progress', value: lastProgress });
+    };
+    const getDecoded = async (id: string) => {
+      const cached = decodedById.get(id);
+      if (cached) return cached;
       const clip = clipById.get(id);
       if (!clip) throw new Error(`Audio bank is missing ${id}.`);
-      decodedById.set(id, await fetchClip(clip, decoder));
-      await decoder.reset();
-      scope.postMessage({ type: 'progress', value: 0.6 * (index + 1) / uniqueIds.length });
-    }
+      const decoded = await fetchClip(clip, activeDecoder);
+      await activeDecoder.reset();
+      decodedById.set(id, decoded);
+      decodedCount += 1;
+      reportProgress();
+      return decoded;
+    };
 
     const layers: Array<{ samples: Float32Array; start: number; gain?: number }> = [];
     let audioSampleCount = 0;
@@ -52,6 +67,69 @@ scope.onmessage = async ({ data }) => {
     let previousEnd = 0;
     let timelineEnd = 0;
     const timeline: TimelineEntry[] = [];
+    let previewCount = 0;
+    let lastPreviewAt = 0;
+    const publishPreview = (completedIndex: number) => {
+      const now = performance.now();
+      if (previewCount >= 32 || (previewCount > 0 && now - lastPreviewAt < 100)) return;
+      const samples = mixLayers(layers);
+      if (!samples.length) return;
+      const duration = samples.length / OUTPUT_SAMPLE_RATE;
+      const snapshot: ResponseMessage = {
+        type: 'preview',
+        samples,
+        sampleRate: OUTPUT_SAMPLE_RATE,
+        duration,
+        words: plan.slice(0, completedIndex + 1).map((word) => word.display),
+        warnings: [...warnings],
+        timeline: clipTimelineToDuration(timeline, duration)
+          .sort((left, right) => left.startSeconds - right.startSeconds || left.endSeconds - right.endSeconds),
+      };
+      scope.postMessage(snapshot, [samples.buffer]);
+      previewCount += 1;
+      lastPreviewAt = now;
+    };
+    const stutterGroups = new Map<number, { start: number; end: number; repeats: number }>();
+    const finishStutterScopes = (word: WordPlan) => {
+      for (const id of word.stutterScopeEnds ?? []) {
+        const group = stutterGroups.get(id);
+        if (!group) continue;
+        const start = Math.floor(group.start * OUTPUT_SAMPLE_RATE);
+        const end = Math.ceil(group.end * OUTPUT_SAMPLE_RATE);
+        const length = Math.max(0, end - start);
+        const added = length * group.repeats;
+        if (!length || added + audioSampleCount > maxLayerSamples) {
+          stutterGroups.delete(id);
+          if (length) throw new Error('Scoped stutter exceeds the five-minute processing limit.');
+          continue;
+        }
+        if (end + added > OUTPUT_SAMPLE_RATE * 120) throw new Error('Scoped stutter exceeds the 120-second render limit.');
+        const groupLayers = layers.filter((layer) => layer.start >= start && layer.start + layer.samples.length <= end)
+          .map((layer) => ({ samples: layer.samples, start: layer.start - start, gain: layer.gain }));
+        const segment = mixLayers(groupLayers);
+        if (!segment.length) {
+          stutterGroups.delete(id);
+          continue;
+        }
+        for (let repeat = 0; repeat < group.repeats; repeat += 1) {
+          layers.push({ samples: segment, start: end + repeat * length });
+        }
+        const originals = timeline.filter((entry) => entry.startSeconds >= group.start && entry.endSeconds <= group.end);
+        for (let repeat = 0; repeat < group.repeats; repeat += 1) {
+          const shift = (group.end - group.start) * (repeat + 1);
+          for (const entry of originals) appendTimelineEntry(timeline, { ...entry, startSeconds: entry.startSeconds + shift, endSeconds: entry.endSeconds + shift });
+        }
+        audioSampleCount += added;
+        const repeatedEnd = (end + added) / OUTPUT_SAMPLE_RATE;
+        ({ previousEnd, previousStart } = advancePlaybackCursorAfterRepeat(previousEnd, previousStart, repeatedEnd));
+        timelineEnd = Math.max(timelineEnd, repeatedEnd);
+        for (const active of word.stutterScopes ?? []) {
+          const outer = stutterGroups.get(active.id);
+          if (outer && active.id !== id) outer.end += added / OUTPUT_SAMPLE_RATE;
+        }
+        stutterGroups.delete(id);
+      }
+    };
     for (let index = 0; index < plan.length; index += 1) {
       const word = plan[index];
       if (word.pauseDuration !== undefined) {
@@ -64,6 +142,7 @@ scope.onmessage = async ({ data }) => {
         const start = Math.max(0, word.spacing !== undefined
           ? previousStart + word.spacing + (word.sleep ?? 0)
           : nextClipStart(previousEnd, previousKind, 'pause', data.options.gap, word.sleep ?? 0));
+        for (const scope of word.stutterScopes ?? []) if (!stutterGroups.has(scope.id)) stutterGroups.set(scope.id, { start, end: start, repeats: scope.repeats });
         const samples = new Float32Array(Math.ceil(word.pauseDuration * OUTPUT_SAMPLE_RATE));
         if (start > previousEnd && word.gapSourceStart !== undefined && word.gapSourceEnd !== undefined) {
           appendTimelineEntry(timeline, { startSeconds: previousEnd, endSeconds: start, sourceStart: word.gapSourceStart, sourceEnd: word.gapSourceEnd, kind: 'gap' });
@@ -77,9 +156,19 @@ scope.onmessage = async ({ data }) => {
         previousEnd = start + samples.length / OUTPUT_SAMPLE_RATE;
         previousStart = start;
         timelineEnd = Math.max(timelineEnd, previousEnd);
+        for (const scope of word.stutterScopes ?? []) {
+          const group = stutterGroups.get(scope.id);
+          if (group) group.end = Math.max(group.end, previousEnd);
+        }
+        finishStutterScopes(word);
+        if (samples.length) publishPreview(index);
         if (timelineEnd > 120) throw new Error('Rendered audio exceeds the 120-second limit.');
-        scope.postMessage({ type: 'progress', value: 0.6 + 0.35 * (index + 1) / plan.length });
+        completedCount += 1;
+        reportProgress();
         continue;
+      }
+      for (const id of [...(word.prefixClipIds ?? []), word.clipId, ...(word.suffixClipIds ?? []), ...(word.phonemeUnits ?? []).map((unit) => unit.clipId)]) {
+        if (id && !decodedById.has(id)) await getDecoded(id);
       }
       const sourceClip = clipById.get(word.clipId);
       if (!sourceClip) throw new Error(`Audio bank is missing ${word.clipId}.`);
@@ -138,22 +227,9 @@ scope.onmessage = async ({ data }) => {
           }
         }
       }
-      const samples = transformWord(source, OUTPUT_SAMPLE_RATE, word, data.options.pitch, data.options.volume);
-      if (word.startAt !== undefined && word.startAt >= source.length / OUTPUT_SAMPLE_RATE) {
-        warnings.push(`Start time skipped all of “${word.display}”.`);
-      }
-      const previousPlan = index > 0 ? plan[index - 1] : undefined;
-      const previousClip = previousPlan?.clipId ? clipById.get(previousPlan.clipId) : undefined;
-      const previousKind = previousPlan?.pauseDuration !== undefined ? 'pause' : previousClip?.kind;
-      const start = Math.max(0, word.spacing !== undefined
-        ? previousStart + word.spacing + (word.sleep ?? 0)
-        : nextClipStart(previousEnd, previousKind, sourceClip.kind, data.options.gap, word.sleep ?? 0));
-      const frameStart = Math.floor(start * OUTPUT_SAMPLE_RATE);
-      const actualStart = frameStart / OUTPUT_SAMPLE_RATE;
-      const actualEnd = actualStart + samples.length / OUTPUT_SAMPLE_RATE;
-      if (actualStart > previousEnd && word.gapSourceStart !== undefined && word.gapSourceEnd !== undefined) {
-        appendTimelineEntry(timeline, { startSeconds: previousEnd, endSeconds: actualStart, sourceStart: word.gapSourceStart, sourceEnd: word.gapSourceEnd, kind: 'gap' });
-      }
+      const pitched = transformWord(source, OUTPUT_SAMPLE_RATE, word, data.options.pitch, data.options.volume);
+      const rate = (word.rate ?? 1) * (data.options.rate ?? 1);
+      let phraseTimeline: TimelineEntry[] | undefined;
       if (word.sourceWordTimings?.length && !word.phonemeUnits?.length) {
         const sourceDuration = decoded.length / OUTPUT_SAMPLE_RATE;
         const spans: Array<{ startSample: number; endSample: number; sourceStart: number; sourceEnd: number; kind: 'word' | 'gap' }> = [];
@@ -175,7 +251,36 @@ scope.onmessage = async ({ data }) => {
             spans.push({ startSample: gapStart, endSample: gapEnd, sourceStart, sourceEnd, kind: 'gap' });
           }
         }
-        for (const entry of mapSourceTimeline(spans, decoded.length, word, data.options.pitch, OUTPUT_SAMPLE_RATE, actualStart, samples.length)) appendTimelineEntry(timeline, entry);
+        phraseTimeline = mapSourceTimeline(spans, decoded.length, { ...word, rate: 1 }, data.options.pitch, OUTPUT_SAMPLE_RATE, 0, pitched.length);
+      }
+      let samples = pitched;
+      if (sourceClip.kind === 'word') {
+        if (phraseTimeline) {
+          const stretched = stretchSpeechPreservingGaps(pitched, OUTPUT_SAMPLE_RATE, rate, phraseTimeline);
+          samples = stretched.samples;
+          phraseTimeline = stretched.timeline;
+        } else samples = stretchSpeechRate(pitched, OUTPUT_SAMPLE_RATE, rate);
+      }
+      if (word.startAt !== undefined && word.startAt >= source.length / OUTPUT_SAMPLE_RATE) {
+        warnings.push(`Start time skipped all of “${word.display}”.`);
+      }
+      const previousPlan = index > 0 ? plan[index - 1] : undefined;
+      const previousClip = previousPlan?.clipId ? clipById.get(previousPlan.clipId) : undefined;
+      const previousKind = previousPlan?.pauseDuration !== undefined ? 'pause' : previousClip?.kind;
+      const start = Math.max(0, word.joinPrevious
+        ? previousEnd
+        : word.spacing !== undefined
+        ? previousStart + word.spacing + (word.sleep ?? 0)
+        : nextClipStart(previousEnd, previousKind, sourceClip.kind, data.options.gap, word.sleep ?? 0));
+      const frameStart = Math.floor(start * OUTPUT_SAMPLE_RATE);
+      const actualStart = frameStart / OUTPUT_SAMPLE_RATE;
+      const actualEnd = actualStart + samples.length / OUTPUT_SAMPLE_RATE;
+      for (const scope of word.stutterScopes ?? []) if (!stutterGroups.has(scope.id)) stutterGroups.set(scope.id, { start: actualStart, end: actualStart, repeats: scope.repeats });
+      if (actualStart > previousEnd && word.gapSourceStart !== undefined && word.gapSourceEnd !== undefined) {
+        appendTimelineEntry(timeline, { startSeconds: previousEnd, endSeconds: actualStart, sourceStart: word.gapSourceStart, sourceEnd: word.gapSourceEnd, kind: 'gap' });
+      }
+      if (phraseTimeline) {
+        for (const entry of phraseTimeline) appendTimelineEntry(timeline, { ...entry, startSeconds: entry.startSeconds + actualStart, endSeconds: entry.endSeconds + actualStart });
       } else {
         appendTimelineEntry(timeline, { startSeconds: actualStart, endSeconds: actualEnd, sourceStart: word.sourceStart ?? 0, sourceEnd: word.sourceEnd ?? 0, kind: word.timelineKind ?? (sourceClip.kind === 'effect' ? 'cue' : 'word') });
       }
@@ -187,20 +292,18 @@ scope.onmessage = async ({ data }) => {
       previousEnd = start + samples.length / OUTPUT_SAMPLE_RATE;
       previousStart = start;
       timelineEnd = Math.max(timelineEnd, previousEnd);
+      for (const scope of word.stutterScopes ?? []) {
+        const group = stutterGroups.get(scope.id);
+        if (group) group.end = Math.max(group.end, previousEnd);
+      }
+      finishStutterScopes(word);
+      if (samples.length) publishPreview(index);
       if (timelineEnd > 120) throw new Error('Rendered audio exceeds the 120-second limit.');
-      scope.postMessage({ type: 'progress', value: 0.6 + 0.35 * (index + 1) / plan.length });
+      completedCount += 1;
+      reportProgress();
     }
 
     if (!audioSampleCount) throw new Error('No audio could be rendered from the selected clips.');
-    if (data.options.background) {
-      const background = data.bank.clips.find((clip) => clip.id.toLocaleLowerCase('en-US') === 'cassie-background-std' && clip.kind === 'effect');
-      if (!background) warnings.push('CASSIE background audio is not available in this bank.');
-      else {
-        const backgroundSamples = await fetchClip(background, decoder);
-        const length = Math.min(backgroundSamples.length, Math.ceil(timelineEnd * OUTPUT_SAMPLE_RATE));
-        if (length > 0) layers.push({ samples: backgroundSamples.subarray(0, length), start: 0, gain: 0.2 });
-      }
-    }
     const samples = mixLayers(layers);
     const result = {
       type: 'done' as const,

@@ -1,6 +1,7 @@
 {
   "name": "cassie",
-  "version": "0.3.0",
+  "version": "0.4.0",
+  "packageManager": "pnpm@10.32.1",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
@@ -11,19 +12,22 @@
     "test": "vitest run",
     "test:browser": "playwright test",
     "preview": "vite preview --host 127.0.0.1",
-    "deploy:check": "npm run build && wrangler deploy --dry-run",
-    "deploy": "npm run build && wrangler deploy",
-    "package:overture": "npm run build && node scripts/package-overture.mjs"
+    "deploy:check": "pnpm run build && wrangler deploy --dry-run",
+    "deploy": "pnpm run build && wrangler deploy",
+    "package:overture": "pnpm run build && node scripts/package-overture.mjs"
   },
   "dependencies": {
     "@ffmpeg/core": "0.12.10",
     "@ffmpeg/ffmpeg": "0.12.15",
     "@platform-kit/fluent": "https://github.com/lsy-404/platform-kit/releases/download/fluent-v0.2.6/platform-kit-fluent-0.2.6.tgz",
+    "@soundtouchjs/core": "2.1.1",
     "dictionary-en": "4.0.0",
     "dictionary-en-gb": "3.0.0",
+    "htmlparser2": "12.0.0",
     "nspell": "2.1.5",
     "ogg-opus-decoder": "1.7.5",
     "phonemizer": "1.2.1",
+    "vue-i18n": "11.4.13",
     "vue": "3.5.43"
   },
   "devDependencies": {

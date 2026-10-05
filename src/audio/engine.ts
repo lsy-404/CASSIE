@@ -63,7 +63,9 @@ async function preparePlan(text: string, bank: Bank, phonemesEnabled: boolean, s
   }
 
   try {
-    const phonemized = await phonemizeWords(initial.unresolvedWords, signal);
+    const letterNames = [...new Set(initial.unresolvedWords.filter((word) => word.startsWith('letter:')).map((word) => word.slice(7)))];
+    const spokenWords = initial.unresolvedWords.filter((word) => !word.startsWith('letter:'));
+    const phonemized = await phonemizeWords(spokenWords, signal, letterNames);
     if (signal?.aborted) throw new DOMException('The audio render was cancelled.', 'AbortError');
     const resolved = createWordPlan(text, bank, undefined, catalog, phonemized, true);
     return { plan: resolved.plan, warnings: resolved.warnings, tokens: resolved.tokens };
@@ -99,13 +101,14 @@ export async function renderAnnouncement(
   options: RenderOptions,
   onProgress?: (value: number) => void,
   signal?: AbortSignal,
+  onPreview?: (preview: RenderResult) => void,
 ): Promise<RenderResult> {
   if (signal?.aborted) return Promise.reject(new DOMException('The audio render was cancelled.', 'AbortError'));
   const safeOptions: RenderOptions = {
     pitch: Number.isFinite(options.pitch) ? Math.min(1.35, Math.max(0.65, options.pitch)) : 1,
     volume: Number.isFinite(options.volume) ? Math.min(1, Math.max(0, options.volume)) : 1,
     gap: Number.isFinite(options.gap) ? Math.min(0.8, Math.max(0, options.gap)) : 0.24,
-    background: options.background === true,
+    rate: Number.isFinite(options.rate) ? Math.min(2, Math.max(0.5, options.rate!)) : 1,
     phonemes: options.phonemes !== false,
   };
   const { plan, warnings } = await preparePlan(text, bank, safeOptions.phonemes === true, signal);
@@ -142,8 +145,18 @@ export async function renderAnnouncement(
     worker.onerror = (event) => finishError(new Error(event.message || 'Audio worker failed.'));
     worker.onmessageerror = () => finishError(new Error('Audio worker returned an unreadable response.'));
     worker.onmessage = ({ data }) => {
+      if (finished) return;
       if (data.type === 'progress') {
         onProgress?.(Math.min(1, Math.max(0, data.value)));
+      } else if (data.type === 'preview') {
+        onPreview?.({
+          samples: data.samples,
+          sampleRate: data.sampleRate,
+          duration: data.duration,
+          words: [...data.words],
+          warnings: [...warnings, ...data.warnings],
+          timeline: [...data.timeline],
+        });
       } else if (data.type === 'error') {
         finishError(new Error(data.message));
       } else if (data.type === 'done') {

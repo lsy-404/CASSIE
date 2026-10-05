@@ -19,7 +19,9 @@ The word selection uses the mono, word-like AudioClip names in `SCPSL_Data/share
 Install the pinned aligner into the ignored work directory, then build the derived phone-window index from the checked-in Opus bank:
 
 ```powershell
-npm install --prefix work\phoneme-tools --no-save echogarden@3.4.0
+New-Item -ItemType Directory -Force work\phoneme-tools
+pnpm --dir work\phoneme-tools init --bare
+pnpm --dir work\phoneme-tools add --save-exact echogarden@3.4.0
 node scripts\build-phonemes.mjs
 ```
 

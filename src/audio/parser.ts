@@ -2,6 +2,7 @@ import type { AnalysisToken, Bank, BankClip, WordPlan } from './types';
 import { announcementCueIds } from './catalog';
 import { parseExplicitPhones, parseGeneratedPhones, resolvePhoneUnits } from './phonemes';
 import type { PhonemeCatalog } from './phonemes';
+import { ElementType, parseDocument } from 'htmlparser2';
 
 const MAX_TOKENS = 512;
 const MAX_INPUT_LENGTH = 8192;
@@ -65,30 +66,103 @@ function numberWords(value: string): string[] {
   return result;
 }
 
-function tokenizeInput(text: string): { tokens: string[]; spans: Array<{ start: number; end: number }>; warnings: string[] } {
+interface MarkupTag {
+  name: string;
+  closing: boolean;
+  selfClosing: boolean;
+  attrs: Record<string, string>;
+  pairedIndex?: number;
+  valid: boolean;
+}
+
+interface ScanResult {
+  tokens: string[];
+  spans: Array<{ start: number; end: number }>;
+  warnings: string[];
+  tags: Map<number, MarkupTag>;
+  spaces: Array<{ start: number; end: number }>;
+  spellingWord: Array<string | undefined>;
+  inlineFragment: boolean[];
+  inlineGroups: Map<number, number[]>;
+  inlineGroupId: Array<number | undefined>;
+  scopeAtToken: Array<{ pitch: number; volume: number; rate: number; startAt?: number; maxDuration?: number; spacing?: number; stutters: Array<{ id: number; repeats: number }> }>;
+  stutterEnds: Map<number, number>;
+}
+
+const SCOPED_TAGS = new Set(['pitch', 'volume', 'rate', 'stutter', 'offset', 'duration', 'spacing']);
+const MARKER_TAGS = new Set(['start', 'end', 'pause', 'clip', 'br']);
+
+function parseMarkupTag(raw: string): MarkupTag | undefined {
+  const close = /^<\/([A-Za-z][\w-]*)\s*>$/u.exec(raw);
+  if (close) return { name: close[1].toLocaleLowerCase('en-US'), closing: true, selfClosing: false, attrs: {}, valid: false };
+  const match = /^<([A-Za-z][\w-]*)([\s\S]*)>$/u.exec(raw);
+  if (!match) return undefined;
+  const name = match[1].toLocaleLowerCase('en-US');
+  let attrText = match[2];
+  const selfClosing = /\/\s*$/u.test(attrText);
+  if (selfClosing) attrText = attrText.replace(/\/\s*$/u, '');
+  const parsed = parseDocument(raw, { xmlMode: true, recognizeSelfClosing: true });
+  if (parsed.children.length !== 1 || parsed.children[0].type !== ElementType.Tag ||
+      (parsed.children[0] as { name?: string }).name?.toLocaleLowerCase('en-US') !== name) return undefined;
+  const attrs: Record<string, string> = {};
+  let cursor = 0;
+  const attrPattern = /\s+([A-Za-z][\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/y;
+  while (cursor < attrText.length) {
+    if (!attrText.slice(cursor).trim()) break;
+    attrPattern.lastIndex = cursor;
+    const attribute = attrPattern.exec(attrText);
+    if (!attribute) return undefined;
+    const key = attribute[1].toLocaleLowerCase('en-US');
+    if (Object.hasOwn(attrs, key)) return undefined;
+    attrs[key] = attribute[2] ?? attribute[3] ?? '';
+    cursor = attrPattern.lastIndex;
+  }
+  return { name, closing: false, selfClosing, attrs, valid: false };
+}
+
+function tokenizeInput(text: string): ScanResult {
   const tokens: string[] = [];
   const spans: Array<{ start: number; end: number }> = [];
   const warnings: string[] = [];
-  const push = (value: string, start: number) => {
+  const tags = new Map<number, MarkupTag>();
+  const spaces: Array<{ start: number; end: number }> = [];
+  const push = (value: string, start: number, tag?: MarkupTag) => {
     tokens.push(value);
     spans.push({ start, end: start + value.length });
+    if (tag) tags.set(tokens.length - 1, tag);
   };
-  const command = /^\/(?:start|end)(?=$|[\s/])|^\/(?:pause|pitch|volume|offset|duration|spacing|stutter|clip)(?::[^\s/]*)?(?=$|[\s/])/iu;
   const ipaBlock = /^\/\s*[^/\r\n]{1,256}?\s*\//u;
-  const legacy = /^\$[A-Za-z]+_[^\s$]+/u;
   const number = /^-?\d+(?:\.\d+)?/u;
   const word = /^[\p{L}_-][\p{L}\p{N}_-]*(?:['’][\p{L}]+)*/u;
   let cursor = 0;
   while (cursor < text.length) {
     if (/\s/u.test(text[cursor])) {
+      const start = cursor;
       cursor += 1;
+      while (cursor < text.length && /\s/u.test(text[cursor])) cursor += 1;
+      spaces.push({ start, end: cursor });
       continue;
     }
     const remaining = text.slice(cursor);
-    const slashCommand = remaining.match(command)?.[0];
-    if (slashCommand) {
-      push(slashCommand, cursor);
-      cursor += slashCommand.length;
+    if (text[cursor] === '<') {
+      let quote = '';
+      let end = cursor + 1;
+      for (; end < text.length; end += 1) {
+        const character = text[end];
+        if (quote) {
+          if (character === quote) quote = '';
+        } else if (character === '"' || character === "'") quote = character;
+        else if (character === '>') break;
+      }
+      if (end < text.length) {
+        const raw = text.slice(cursor, end + 1);
+        push(raw, cursor, parseMarkupTag(raw) ?? { name: '', closing: false, selfClosing: false, attrs: {}, valid: false });
+        cursor = end + 1;
+      } else {
+        push('<', cursor, { name: '', closing: false, selfClosing: false, attrs: {}, valid: false });
+        warnings.push('Malformed markup tag; the remaining text was parsed normally.');
+        cursor += 1;
+      }
       continue;
     }
     const direct = remaining.match(ipaBlock)?.[0];
@@ -97,22 +171,16 @@ function tokenizeInput(text: string): { tokens: string[]; spans: Array<{ start: 
       cursor += direct.length;
       continue;
     }
-    const oldModifier = remaining.match(legacy)?.[0];
-    if (oldModifier) {
-      push(oldModifier, cursor);
-      cursor += oldModifier.length;
-      continue;
-    }
     if (text[cursor] === '$') {
       const token = remaining.match(/^\$[^\s]*/u)?.[0] ?? '$';
       push(token, cursor);
+      warnings.push(`Dollar-prefixed syntax is unsupported: ${token}`);
       cursor += token.length;
       continue;
     }
     if (text[cursor] === '/') {
-      if (/\s/u.test(text[cursor + 1] ?? '')) warnings.push('Unclosed IPA segment; text after the slash was parsed normally.');
-      else push(remaining.match(/^\/[^\s]*/u)?.[0] ?? '/', cursor);
-      cursor += text[cursor + 1] && !/\s/u.test(text[cursor + 1]) ? (tokens.at(-1)?.length ?? 1) : 1;
+      warnings.push('Unclosed IPA segment; text after the slash was parsed normally.');
+      cursor += 1;
       continue;
     }
     const match = remaining.match(number)?.[0] ?? remaining.match(word)?.[0];
@@ -123,7 +191,128 @@ function tokenizeInput(text: string): { tokens: string[]; spans: Array<{ start: 
       cursor += 1;
     }
   }
-  return { tokens, spans, warnings };
+  const stack: number[] = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const tag = tags.get(index);
+    if (!tag) continue;
+    const validShape = tag.closing
+      ? SCOPED_TAGS.has(tag.name) && !Object.keys(tag.attrs).length
+      : SCOPED_TAGS.has(tag.name)
+        ? !tag.selfClosing && Object.keys(tag.attrs).length === 1 && Object.hasOwn(tag.attrs, tag.name === 'stutter' ? 'repeats' : tag.name === 'pitch' || tag.name === 'volume' || tag.name === 'rate' ? 'value' : 'seconds')
+        : MARKER_TAGS.has(tag.name) && (tag.name === 'br' ? !Object.keys(tag.attrs).length : tag.name === 'pause' ? Object.keys(tag.attrs).length === 1 && Object.hasOwn(tag.attrs, 'seconds') : tag.name === 'clip' ? Object.keys(tag.attrs).length === 1 && Object.hasOwn(tag.attrs, 'id') : !Object.keys(tag.attrs).length);
+    const valueName = tag.name === 'stutter' ? 'repeats' : tag.name === 'pitch' || tag.name === 'volume' || tag.name === 'rate' ? 'value' : 'seconds';
+    const rawScopedValue = tag.attrs[valueName];
+    const scopedValue = Number(rawScopedValue);
+    const validValue = tag.closing || !SCOPED_TAGS.has(tag.name) && tag.name !== 'pause' ||
+      rawScopedValue?.trim() !== '' && Number.isFinite(scopedValue) && scopedValue >= (tag.name === 'pitch' ? 0.01 : tag.name === 'volume' || tag.name === 'offset' || tag.name === 'pause' ? 0 : tag.name === 'rate' ? 0.5 : Number.EPSILON) &&
+      scopedValue <= (tag.name === 'pitch' ? 15 : tag.name === 'volume' ? 1 : tag.name === 'rate' ? 2 : tag.name === 'stutter' ? MAX_REPEAT : 120) &&
+      (tag.name !== 'stutter' || Number.isInteger(scopedValue));
+    if (!validShape || !validValue) {
+      warnings.push(`Invalid markup tag: ${tokens[index]}`);
+      continue;
+    }
+    if (tag.closing) {
+      const openIndex = stack.at(-1);
+      const open = openIndex === undefined ? undefined : tags.get(openIndex);
+      if (!open || open.name !== tag.name) {
+        warnings.push(`Mismatched closing tag: ${tokens[index]}`);
+        while (stack.length) {
+          const unmatched = tags.get(stack.pop()!);
+          if (unmatched) unmatched.valid = false;
+        }
+        continue;
+      }
+      stack.pop();
+      open.pairedIndex = index;
+      tag.pairedIndex = openIndex;
+      tag.valid = true;
+      open.valid = true;
+    } else if (SCOPED_TAGS.has(tag.name)) {
+      if (stack.length >= 32) {
+        warnings.push('Markup nesting exceeds the 32-level limit.');
+        continue;
+      }
+      stack.push(index);
+    } else {
+      tag.valid = true;
+    }
+  }
+  for (const index of stack) {
+    const tag = tags.get(index);
+    if (tag) warnings.push(`Unclosed markup tag: ${tokens[index]}`);
+  }
+  const spellingWord: Array<string | undefined> = Array(tokens.length).fill(undefined);
+  const inlineFragment = Array(tokens.length).fill(false) as boolean[];
+  const inlineGroupId: Array<number | undefined> = Array(tokens.length).fill(undefined);
+  const inlineGroups = new Map<number, number[]>();
+  let priorWordIndex = -1;
+  let group = '';
+  let groupId = 0;
+  const wordIndexes = tokens.map((token, index) => /^-?[\p{L}\p{N}_-][\p{L}\p{N}_'’\-]*$/u.test(token) ? index : -1).filter((index) => index >= 0);
+  for (const index of wordIndexes) {
+    const previous = priorWordIndex;
+    const betweenIndices = previous < 0 ? [] : Array.from({ length: index - previous - 1 }, (_, offset) => previous + offset + 1);
+    const hasTextWhitespace = previous >= 0 && spaces.some((space) => space.start >= spans[previous].end && space.end <= spans[index].start);
+    const joins = previous >= 0 && !hasTextWhitespace && betweenIndices.length > 0 && betweenIndices.every((betweenIndex) => {
+      const tag = tags.get(betweenIndex);
+      return Boolean(tag?.valid && SCOPED_TAGS.has(tag.name));
+    });
+    if (!joins) {
+      group = tokens[index];
+      groupId += 1;
+    } else group += tokens[index];
+    spellingWord[index] = group;
+    inlineGroupId[index] = groupId;
+    const groupIndexes = inlineGroups.get(groupId) ?? [];
+    groupIndexes.push(index);
+    inlineGroups.set(groupId, groupIndexes);
+    inlineFragment[index] = joins;
+    priorWordIndex = index;
+  }
+  for (const indexes of inlineGroups.values()) {
+    const completeSpelling = indexes.map((index) => tokens[index]).join('');
+    for (const index of indexes) {
+      spellingWord[index] = completeSpelling;
+      if (indexes.length > 1) inlineFragment[index] = true;
+    }
+  }
+  const defaultScope = { pitch: 1, volume: 1, rate: 1, stutters: [] as Array<{ id: number; repeats: number }> };
+  const scopeAtToken: ScanResult['scopeAtToken'] = Array.from({ length: tokens.length }, () => defaultScope);
+  const stutterEnds = new Map<number, number>();
+  const activeStack: Array<{ before: typeof defaultScope & { startAt?: number; maxDuration?: number; spacing?: number }; name: string; stutterId?: number }> = [];
+  let activeScope: typeof defaultScope & { startAt?: number; maxDuration?: number; spacing?: number } = defaultScope;
+  let nextScopeStutterId = 1;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const tag = tags.get(index);
+    if (tag?.valid) {
+      if (tag.closing) {
+        const frame = activeStack.pop();
+        if (frame) {
+          activeScope = frame.before;
+          if (frame.stutterId !== undefined) stutterEnds.set(index, frame.stutterId);
+        }
+      } else if (SCOPED_TAGS.has(tag.name)) {
+        let stutterId: number | undefined;
+        let next = { ...activeScope };
+        const attr = tag.name === 'stutter' ? 'repeats' : tag.name === 'pitch' || tag.name === 'volume' || tag.name === 'rate' ? 'value' : 'seconds';
+        const value = Number(tag.attrs[attr]);
+        if (tag.name === 'pitch') next.pitch = value;
+        else if (tag.name === 'volume') next.volume = value;
+        else if (tag.name === 'rate') next.rate = value;
+        else if (tag.name === 'offset') next.startAt = value;
+        else if (tag.name === 'duration') next.maxDuration = value;
+        else if (tag.name === 'spacing') next.spacing = value;
+        else {
+          stutterId = nextScopeStutterId++;
+          next.stutters = [...activeScope.stutters, { id: stutterId, repeats: value }];
+        }
+        activeStack.push({ before: activeScope, name: tag.name, stutterId });
+        activeScope = next;
+      }
+    }
+    scopeAtToken[index] = activeScope;
+  }
+  return { tokens, spans, warnings, tags, spaces, spellingWord, inlineFragment, inlineGroups, inlineGroupId, scopeAtToken, stutterEnds };
 }
 
 function resolveClip(token: string, lookup: Map<string, BankClip>, nextToken?: string): BankClip | undefined {
@@ -141,6 +330,34 @@ function resolveClip(token: string, lookup: Map<string, BankClip>, nextToken?: s
 function finiteInRange(value: string, min: number, max: number): number | undefined {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : undefined;
+}
+
+function alignPhoneBoundary(fullPhones: string[], prefixPhones: string[], minimum: number): number {
+  const distance = (left: string[], right: string[]) => {
+    let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+    for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+      const current = [leftIndex];
+      for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+        current[rightIndex] = Math.min(
+          previous[rightIndex] + 1,
+          current[rightIndex - 1] + 1,
+          previous[rightIndex - 1] + Number(left[leftIndex - 1] !== right[rightIndex - 1]),
+        );
+      }
+      previous = current;
+    }
+    return previous[right.length];
+  };
+  let best = Math.max(minimum, 0);
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let index = Math.max(minimum, 0); index <= fullPhones.length; index += 1) {
+    const score = distance(fullPhones.slice(0, index), prefixPhones);
+    if (score < bestDistance || (score === bestDistance && index > best)) {
+      best = index;
+      bestDistance = score;
+    }
+  }
+  return best;
 }
 
 export interface AnnouncementCueIds {
@@ -165,25 +382,33 @@ function compileWordPlan(
   const scanned = tokenizeInput(text);
   const tokens = scanned.tokens;
   warnings.push(...scanned.warnings);
+  for (const [index, tag] of scanned.tags) classifications.set(index, tag.valid ? 'marker' : 'error');
   if (tokens.length > MAX_TOKENS) {
     throw new Error(`Announcement exceeds the ${MAX_TOKENS}-token limit.`);
   }
-  let pitch = 1;
-  let volume = 1;
-  let pending: Omit<WordPlan, 'clipId' | 'display' | 'pitch' | 'volume'> = {};
-  const pushPlan = (item: WordPlan, firstToken: number, lastToken = firstToken, kind: NonNullable<WordPlan['timelineKind']> = 'word', classification: AnalysisToken['kind'] = 'recorded') => {
+  const pushPlan = (item: WordPlan, firstToken: number, lastToken = firstToken, kind: NonNullable<WordPlan['timelineKind']> = 'word', classification: AnalysisToken['kind'] = 'recorded', sourceRange?: { start: number; end: number }) => {
     for (let sourceToken = firstToken; sourceToken <= lastToken; sourceToken += 1) classifications.set(sourceToken, classification);
-    plan.push({
+    const scope = scanned.scopeAtToken[firstToken];
+    const planned: WordPlan = {
       ...item,
-      sourceStart: scanned.spans[firstToken]?.start ?? 0,
-      sourceEnd: scanned.spans[lastToken]?.end ?? 0,
+      rate: item.rate ?? scope.rate,
+      sourceStart: sourceRange?.start ?? scanned.spans[firstToken]?.start ?? 0,
+      sourceEnd: sourceRange?.end ?? scanned.spans[lastToken]?.end ?? 0,
       timelineKind: kind,
-    });
+      ...(scope.stutters.length ? { stutterScopes: scope.stutters.map((active) => ({ ...active })) } : {}),
+    };
+    plan.push(planned);
   };
 
   for (let tokenIndex = 0; tokenIndex < tokens.length; tokenIndex += 1) {
     const raw = tokens[tokenIndex];
     const token = raw.toLocaleLowerCase('en-US');
+    const scope = scanned.scopeAtToken[tokenIndex];
+    const pitch = scope.pitch;
+    const volume = scope.volume;
+    const startAt = scope.startAt;
+    const maxDuration = scope.maxDuration;
+    const spacing = scope.spacing;
     const directPhones = /^\/\s*(.*?)\s*\/$/u.exec(raw);
     if (directPhones) {
       if (!phonemeCatalog) {
@@ -207,96 +432,59 @@ function compileWordPlan(
         pitch,
         volume,
         phonemeUnits: resolved.units,
-        ...pending,
+        ...(startAt !== undefined ? { startAt } : {}),
+        ...(maxDuration !== undefined ? { maxDuration } : {}),
+        ...(spacing !== undefined ? { spacing } : {}),
       }, tokenIndex, tokenIndex, 'word', resolved.warnings.length ? 'error' : 'synthesized');
-      pending = {};
       continue;
     }
-    if (token.startsWith('/')) {
-      const slashCommand = /^\/(start|end|pause|pitch|volume|offset|duration|spacing|stutter|clip)(?::(.*))?$/iu.exec(raw);
-      if (!slashCommand) {
-        warnings.push(`Unsupported slash command: ${raw}`);
+    const tag = scanned.tags.get(tokenIndex);
+    if (tag) {
+      if (!tag.valid) {
+        classifications.set(tokenIndex, 'error');
         continue;
       }
-      const [, commandName, args = ''] = slashCommand;
-      const name = commandName.toLocaleLowerCase('en-US');
-      if (name === 'start' || name === 'end') {
-        if (args) {
-          warnings.push(`Invalid /${name} command: ${raw}`);
+      const name = tag.name;
+      if (tag.closing || SCOPED_TAGS.has(name)) {
+        classifications.set(tokenIndex, 'marker');
+        continue;
+      }
+      if (name === 'br' || name === 'pause') {
+        const duration = name === 'br' ? 0.5 : finiteInRange(tag.attrs.seconds ?? '', 0, 120);
+        if (duration === undefined) {
+          warnings.push(`Invalid markup tag: ${raw}`);
+          classifications.set(tokenIndex, 'error');
           continue;
         }
+        pushPlan({ clipId: '', display: `pause ${duration}s`, pitch, volume, pauseDuration: duration, ...(startAt !== undefined ? { startAt } : {}), ...(spacing !== undefined ? { spacing } : {}) }, tokenIndex, tokenIndex, 'gap', 'marker');
+      } else if (name === 'start' || name === 'end') {
         const cueId = name === 'start' ? cueIds.start : cueIds.end;
         const cue = cueId ? clipLookup.get(normalize(cueId)) : undefined;
         if (!cue || cue.kind !== 'effect') {
           warnings.push(`The ${name.toUpperCase()} cue is unavailable in this audio bank.`);
+          classifications.set(tokenIndex, 'error');
           continue;
         }
-        pushPlan({ clipId: cue.id, display: `${name} cue`, pitch, volume, ...pending }, tokenIndex, tokenIndex, 'cue', 'marker');
-        classifications.set(tokenIndex, 'marker');
-        pending = {};
-        continue;
-      }
-      if (name === 'clip') {
-        const clipId = /^[a-z0-9_-]+$/i.test(args) ? args : '';
-        const clip = clipId ? clipLookup.get(normalize(clipId)) : undefined;
+        else pushPlan({ clipId: cue.id, display: `${name} cue`, pitch, volume, ...(startAt !== undefined ? { startAt } : {}), ...(maxDuration !== undefined ? { maxDuration } : {}), ...(spacing !== undefined ? { spacing } : {}) }, tokenIndex, tokenIndex, 'cue', 'marker');
+      } else if (name === 'clip') {
+        const clip = /^[a-z0-9_-]+$/i.test(tag.attrs.id ?? '') ? clipLookup.get(normalize(tag.attrs.id)) : undefined;
         if (!clip) {
-          warnings.push(args ? `Unknown audio clip ID: ${args}.` : 'Invalid /clip command.');
+          warnings.push(`Unknown audio clip ID: ${tag.attrs.id ?? ''}.`);
+          classifications.set(tokenIndex, 'error');
           continue;
         }
-        pushPlan({ clipId: clip.id, display: clip.id, pitch, volume, ...pending }, tokenIndex, tokenIndex, clip.kind === 'effect' ? 'cue' : 'word', 'marker');
-        classifications.set(tokenIndex, 'marker');
-        pending = {};
-        continue;
+        else pushPlan({ clipId: clip.id, display: clip.id, pitch, volume, ...(startAt !== undefined ? { startAt } : {}), ...(maxDuration !== undefined ? { maxDuration } : {}), ...(spacing !== undefined ? { spacing } : {}) }, tokenIndex, tokenIndex, clip.kind === 'effect' ? 'cue' : 'word', 'marker');
       }
-      if (name === 'pause') {
-        const duration = finiteInRange(args, 0, 120);
-        if (duration === undefined) {
-          warnings.push(`Invalid /pause command: ${raw}`);
-          continue;
-        }
-        pushPlan({ clipId: '', display: `pause ${duration}s`, pitch, volume, pauseDuration: duration, ...pending }, tokenIndex, tokenIndex, 'gap');
-        classifications.set(tokenIndex, 'marker');
-        pending = {};
-        continue;
-      }
-      if (name === 'stutter') {
-        const parts = args.split(':');
-        if (parts.length !== 3) {
-          warnings.push(`Invalid /stutter command: ${raw}`);
-          continue;
-        }
-        const position = finiteInRange(parts[0], 0, 1);
-        const length = finiteInRange(parts[1], Number.EPSILON, 120);
-        const repeats = finiteInRange(parts[2], 1, MAX_REPEAT);
-        if (position === undefined || length === undefined || repeats === undefined) {
-          warnings.push(`Invalid /stutter command: ${raw}`);
-          continue;
-        }
-        pending.stutter = { position, length, repeats: Math.floor(repeats) };
-        classifications.set(tokenIndex, 'marker');
-        continue;
-      }
-      if (!args) {
-        warnings.push(`Invalid /${name} command: ${raw}`);
-        continue;
-      }
-      const max = name === 'pitch' ? 15 : name === 'volume' ? 1 : 120;
-      const min = name === 'pitch' ? 0.01 : name === 'volume' || name === 'offset' ? 0 : Number.EPSILON;
-      const value = finiteInRange(args, min, max);
-      if (value === undefined) {
-        warnings.push(`Invalid /${name} command: ${raw}`);
-        continue;
-      }
-      if (name === 'pitch') pitch = value;
-      else if (name === 'volume') volume = value;
-      else if (name === 'offset') pending.startAt = value;
-      else if (name === 'duration') pending.maxDuration = value;
-      else if (name === 'spacing') pending.spacing = value;
       classifications.set(tokenIndex, 'marker');
       continue;
     }
+    if (raw.startsWith('/')) {
+      warnings.push(`Unsupported slash command: ${raw}`);
+      classifications.set(tokenIndex, 'error');
+      continue;
+    }
     if (token.startsWith('$')) {
-      warnings.push(`Dollar-prefixed syntax is unsupported: ${raw}`);
+      classifications.set(tokenIndex, 'error');
       continue;
     }
 
@@ -305,7 +493,9 @@ function compileWordPlan(
     let phraseEnd = tokenIndex;
     for (let candidateIndex = tokenIndex + 1; candidateIndex < Math.min(tokens.length, tokenIndex + 12); candidateIndex += 1) {
       const candidate = tokens[candidateIndex].toLocaleLowerCase('en-US');
-      if (candidate.startsWith('$') || candidate.startsWith('/')) break;
+      if (candidate.startsWith('$') || candidate.startsWith('/') || candidate.startsWith('<')) break;
+      const priorSpan = scanned.spans[candidateIndex - 1];
+      if (!scanned.spaces.some((space) => space.start >= priorSpan.end && space.end <= scanned.spans[candidateIndex].start)) break;
       phraseParts.push(candidate);
       const match = lookup.get(normalize(phraseParts.join('-')));
       if (match) {
@@ -328,17 +518,117 @@ function compileWordPlan(
           sourceToken += 1;
         }
       }
-      pushPlan({ clipId: phraseClip.id, display, pitch, volume, ...(sourceWordTimings.length ? { sourceWordTimings } : {}), ...pending }, tokenIndex, phraseEnd);
-      pending = {};
+      pushPlan({ clipId: phraseClip.id, display, pitch, volume, ...(startAt !== undefined ? { startAt } : {}), ...(maxDuration !== undefined ? { maxDuration } : {}), ...(spacing !== undefined ? { spacing } : {}), ...(sourceWordTimings.length ? { sourceWordTimings } : {}) }, tokenIndex, phraseEnd);
       tokenIndex = phraseEnd;
       continue;
     }
 
-    const expanded = /^-?\d/.test(token) ? numberWords(token) : [token.replace(/[’]/g, "'")];
-    const nextToken = tokens.slice(tokenIndex + 1).find((candidate) => !candidate.startsWith('$') && !candidate.startsWith('/'));
+    const fullWord = scanned.spellingWord[tokenIndex] ?? raw;
+    const inlineGroup = scanned.inlineGroupId[tokenIndex];
+    const inlineIndexes = inlineGroup === undefined ? undefined : scanned.inlineGroups.get(inlineGroup);
+    if (scanned.inlineFragment[tokenIndex] && inlineIndexes?.[0] === tokenIndex) {
+      const fullPronunciation = phonemized.get(fullWord.toLocaleLowerCase('en-US'));
+      if (!phonemeCatalog || !fullPronunciation) {
+        unresolvedWords.add(fullWord.toLocaleLowerCase('en-US'));
+        for (let fragment = 0; fragment < inlineIndexes.length - 1; fragment += 1) {
+          const prefix = inlineIndexes.slice(0, fragment + 1).map((part) => tokens[part]).join('').toLocaleLowerCase('en-US');
+          unresolvedWords.add(prefix);
+        }
+        warnings.push(`No audio clip for “${fullWord}”.`);
+        for (const index of inlineIndexes) classifications.set(index, 'error');
+        tokenIndex = inlineIndexes.at(-1)!;
+        continue;
+      }
+      const complete = parseGeneratedPhones(fullPronunciation, phonemeCatalog);
+      if (complete.warnings.length) {
+        warnings.push(...complete.warnings.map((warning) => `“${fullWord}”: ${warning}`));
+        for (const index of inlineIndexes) classifications.set(index, 'error');
+        tokenIndex = inlineIndexes.at(-1)!;
+        continue;
+      }
+      const completeResolution = resolvePhoneUnits(complete.phones, phonemeCatalog, bank, false);
+      if (!completeResolution.units.length) {
+        warnings.push(...completeResolution.warnings.map((warning) => `“${fullWord}”: ${warning}`));
+        for (const index of inlineIndexes) classifications.set(index, 'error');
+        tokenIndex = inlineIndexes.at(-1)!;
+        continue;
+      }
+      warnings.push(...completeResolution.warnings.map((warning) => `“${fullWord}”: ${warning}`));
+      const boundaries = [0];
+      for (let fragment = 0; fragment < inlineIndexes.length - 1; fragment += 1) {
+        const prefix = inlineIndexes.slice(0, fragment + 1).map((part) => tokens[part]).join('').toLocaleLowerCase('en-US');
+        const prefixPronunciation = phonemized.get(prefix);
+        if (!prefixPronunciation) {
+          unresolvedWords.add(prefix);
+          warnings.push(`Could not align the scoped pronunciation boundary in “${fullWord}”.`);
+          boundaries.push(boundaries.at(-1)!);
+          continue;
+        }
+        const prefixPhones = parseGeneratedPhones(prefixPronunciation, phonemeCatalog);
+        if (prefixPhones.warnings.length) {
+          warnings.push(`Could not align the scoped pronunciation boundary in “${fullWord}”.`);
+          boundaries.push(boundaries.at(-1)!);
+          continue;
+        }
+        boundaries.push(alignPhoneBoundary(complete.phones, prefixPhones.phones, boundaries.at(-1)!));
+      }
+      boundaries.push(complete.phones.length);
+      warnings.push(`Scoped pronunciation boundaries in “${fullWord}” use nearest IPA-phone alignment.`);
+      for (let fragment = 0; fragment < inlineIndexes.length; fragment += 1) {
+        const sourceToken = inlineIndexes[fragment];
+        const units = completeResolution.units.slice(boundaries[fragment], boundaries[fragment + 1]);
+        if (!units.length) {
+          warnings.push(`The scoped text fragment “${tokens[sourceToken]}” maps to no IPA phones.`);
+          classifications.set(sourceToken, 'error');
+          continue;
+        }
+        const fragmentScope = scanned.scopeAtToken[sourceToken];
+        const classification = 'error';
+        pushPlan({
+          clipId: units[0].clipId,
+          display: fullWord,
+          pitch: fragmentScope.pitch,
+          volume: fragmentScope.volume,
+          phonemeUnits: units,
+          ...(fragmentScope.startAt !== undefined ? { startAt: fragmentScope.startAt } : {}),
+          ...(fragmentScope.maxDuration !== undefined ? { maxDuration: fragmentScope.maxDuration } : {}),
+          ...(fragmentScope.spacing !== undefined ? { spacing: fragmentScope.spacing } : {}),
+          ...(fragment > 0 ? { joinPrevious: true } : {}),
+        }, sourceToken, sourceToken, 'word', classification);
+      }
+      tokenIndex = inlineIndexes.at(-1)!;
+      continue;
+    }
+    const isUppercaseSpelling = (/^[A-Z]+$/u.test(fullWord) && fullWord !== 'I') && !resolveClip(fullWord, lookup);
+    if (isUppercaseSpelling) {
+      const letters = [...raw];
+      for (let letterIndex = 0; letterIndex < letters.length; letterIndex += 1) {
+        const letter = letters[letterIndex].toLocaleUpperCase('en-US');
+        const generatedPhones = phonemized.get(`letter:${letter}`);
+        const sourceRange = { start: scanned.spans[tokenIndex].start + letterIndex, end: scanned.spans[tokenIndex].start + letterIndex + 1 };
+        if (!generatedPhones || !phonemeCatalog) {
+          unresolvedWords.add(`letter:${letter}`);
+          warnings.push(`No verified letter-name pronunciation for “${letter}”.`);
+          classifications.set(tokenIndex, 'error');
+          continue;
+        }
+        const parsed = parseGeneratedPhones(generatedPhones, phonemeCatalog);
+        const resolved = parsed.warnings.length ? { units: [], warnings: parsed.warnings } : resolvePhoneUnits(parsed.phones, phonemeCatalog, bank);
+        if (!resolved.units.length) {
+          warnings.push(...resolved.warnings.map((warning) => `“${letter}”: ${warning}`));
+          classifications.set(tokenIndex, 'error');
+          continue;
+        }
+        pushPlan({ clipId: resolved.units[0].clipId, display: letter, pitch, volume, phonemeUnits: resolved.units, ...(startAt !== undefined ? { startAt } : {}), ...(maxDuration !== undefined ? { maxDuration } : {}), ...(spacing !== undefined ? { spacing } : {}), ...(letterIndex > 0 ? { joinPrevious: true } : {}) }, tokenIndex, tokenIndex, 'word', resolved.warnings.length ? 'error' : 'synthesized', sourceRange);
+      }
+      continue;
+    }
+    const expanded = /^-?\d/.test(token) ? numberWords(token) : [raw === 'I' ? 'I' : token.replace(/[’]/g, "'")];
+    const nextToken = tokens.slice(tokenIndex + 1).find((candidate) => !candidate.startsWith('$') && !candidate.startsWith('/') && !candidate.startsWith('<'));
     for (const spoken of expanded) {
       if (plan.length >= MAX_TOKENS) throw new Error(`Announcement exceeds the ${MAX_TOKENS}-token limit.`);
-      const clip = resolveClip(spoken, lookup, token === 'the' ? nextToken : undefined);
+      const inlineFragment = scanned.inlineFragment[tokenIndex];
+      const clip = inlineFragment ? undefined : resolveClip(spoken, lookup, token === 'the' ? nextToken : undefined);
       const playableClip = clip;
       if (!playableClip) {
         const generatedPhones = phonemized.get(spoken.toLocaleLowerCase('en-US'));
@@ -359,12 +649,14 @@ function compileWordPlan(
             pitch,
             volume,
             phonemeUnits: resolved.units,
-            ...pending,
+            ...(startAt !== undefined ? { startAt } : {}),
+            ...(maxDuration !== undefined ? { maxDuration } : {}),
+            ...(spacing !== undefined ? { spacing } : {}),
+            ...(inlineFragment && plan.length ? { joinPrevious: true } : {}),
           }, tokenIndex, tokenIndex, 'word', resolved.warnings.length ? 'error' : 'synthesized');
-          pending = {};
           continue;
         }
-        unresolvedWords.add(spoken.toLocaleLowerCase('en-US'));
+        unresolvedWords.add(raw === 'I' ? 'I' : spoken.toLocaleLowerCase('en-US'));
         warnings.push(`No audio clip for “${spoken}”.`);
         classifications.set(tokenIndex, 'error');
         continue;
@@ -374,30 +666,41 @@ function compileWordPlan(
         display: spoken,
         pitch,
         volume,
-        ...pending,
+        ...(startAt !== undefined ? { startAt } : {}),
+        ...(maxDuration !== undefined ? { maxDuration } : {}),
+        ...(spacing !== undefined ? { spacing } : {}),
       };
-      pushPlan(item, tokenIndex);
-      pending = {};
+      pushPlan(item, tokenIndex, tokenIndex, 'word', 'recorded');
     }
+  }
+  for (const [tokenIndex, id] of scanned.stutterEnds) {
+    const source = scanned.spans[tokenIndex].start;
+    let last = -1;
+    for (let index = 0; index < plan.length; index += 1) {
+      if ((plan[index].sourceEnd ?? 0) <= source && plan[index].stutterScopes?.some((scope) => scope.id === id)) last = index;
+    }
+    if (last >= 0) plan[last].stutterScopeEnds = [...(plan[last].stutterScopeEnds ?? []), id];
   }
   for (let index = 1; index < plan.length; index += 1) {
     const previousEnd = plan[index - 1].sourceEnd ?? 0;
     const currentStart = plan[index].sourceStart ?? 0;
-    const between = text.slice(previousEnd, currentStart);
-    const spaces = [...between.matchAll(/\s+/gu)];
-    const lastSpace = spaces.at(-1);
-    if (lastSpace?.index !== undefined) {
-      const gapSourceStart = previousEnd + lastSpace.index;
-      plan[index].gapSourceStart = gapSourceStart;
-      plan[index].gapSourceEnd = gapSourceStart + lastSpace[0].length;
+    const gap = scanned.spaces.filter((space) => space.start >= previousEnd && space.end <= currentStart).at(-1);
+    if (gap) {
+      plan[index].gapSourceStart = gap.start;
+      plan[index].gapSourceEnd = gap.end;
     }
   }
-  const analyzedTokens = tokens.map((token, index) => ({
-    sourceStart: scanned.spans[index].start,
-    sourceEnd: scanned.spans[index].end,
-    kind: classifications.get(index) ?? 'error',
-    text: token,
-  }));
+  const analyzedTokens = tokens.map((token, index) => {
+    const hint = scanned.spellingWord[index];
+    const hasSpellingHint = Boolean(hint) && !/^[A-Z]{2,}$/u.test(hint!) && hint !== 'A' && hint !== 'I';
+    return {
+      sourceStart: scanned.spans[index].start,
+      sourceEnd: scanned.spans[index].end,
+      kind: classifications.get(index) ?? 'error',
+      text: token,
+      ...(hasSpellingHint ? { spellingWord: hint } : {}),
+    };
+  });
   return { plan, warnings, unresolvedWords: [...unresolvedWords], tokens: analyzedTokens };
 }
 

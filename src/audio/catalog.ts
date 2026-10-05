@@ -62,7 +62,7 @@ export function getClipUsage(clip: BankClip): ClipUsage {
   const internalLetter = /^_[a-z]$/i.test(clip.id);
   const singleLetter = category === "letter";
   const needsExplicitClipCommand = internalLetter || singleLetter || ["prefix", "suffix", "article", "pause", "background", "effect"].includes(category);
-  const insertText = needsExplicitClipCommand ? `/clip:${clip.id}` : clip.id;
+  const insertText = needsExplicitClipCommand ? `<clip id="${clip.id}"/>` : clip.id;
   const name = chineseNames[clip.id] ?? clip.id.replace(/^_([a-z])$/i, "$1").replaceAll("-", " ").replaceAll("_", " ");
   const speechReady = !internalLetter && !singleLetter && ["word", "phrase", "digit"].includes(category);
 

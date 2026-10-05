@@ -2,8 +2,26 @@ import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { OggOpusDecoder } from 'ogg-opus-decoder';
 
+test('default announcement exposes the complete editable markup example', async ({ page }) => {
+  await page.goto('/');
+  const editor = page.locator('textarea');
+  const value = await editor.inputValue();
+  expect(value.split('\n')).toHaveLength(10);
+  for (const sample of [
+    '<start>', '<end>', '<br>', '<pause seconds="0.5"/>',
+    '<pitch value="1.2">', '</pitch>', '<volume value="0.7">', '</volume>',
+    '<stutter repeats="1">', '</stutter>', '<offset seconds="0.1">', '</offset>',
+    '<duration seconds="0.3">', '</duration>', '<spacing seconds="0.2">', '</spacing>', '<rate value="1.1">', '</rate>',
+    'me<pitch value="1.1">tri</pitch>cs', 'ROC AUC I a A', '<clip id="cassie"/>', '/ a e: /',
+  ]) expect(value).toContain(sample);
+  await expect(editor).toHaveCSS('min-height', '250px');
+  await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 90_000 });
+  await expect(page.locator('.announcement-player')).toBeVisible();
+  await expect(page.locator('.annotated-editor .token-error').filter({ hasText: /^</ })).toHaveCount(0);
+});
+
 async function waitForReady(page: import('@playwright/test').Page, timeout = 90000) {
-  await expect(page.getByText('公告已就绪', { exact: true })).toBeVisible({ timeout });
+  await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout });
 }
 
 async function saveWav(page: import('@playwright/test').Page, path: string) {
@@ -14,7 +32,7 @@ async function saveWav(page: import('@playwright/test').Page, path: string) {
   return readFile(path);
 }
 
-test('live render creates local WAV, native player tracks words and gaps, and Opus export remains valid', async ({ page }, info) => {
+test('live render creates local WAV, custom player tracks words and gaps, and Opus export remains valid', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   const remoteRequests: string[] = [];
@@ -40,7 +58,7 @@ test('live render creates local WAV, native player tracks words and gaps, and Op
   await page.locator('textarea').fill('attention lockdown personnel');
   await waitForReady(page);
   const audio = page.locator('audio');
-  await expect(audio).toBeVisible();
+  await expect(page.locator('.announcement-player')).toBeVisible();
   expect(await audio.evaluate((element: HTMLAudioElement) => element.paused)).toBe(true);
   expect(await page.locator('.token-recorded, .token-synthesized').count()).toBeGreaterThanOrEqual(3);
   await audio.evaluate((element: HTMLAudioElement) => {
@@ -101,18 +119,18 @@ test('manual rendering can be cancelled and restarted', async ({ page }) => {
   await page.goto('/');
   await page.locator('.live-controls .fluent-checkbox__box').click();
   await expect(page.getByRole('checkbox', { name: '实时渲染' })).not.toBeChecked();
-  await expect(page.getByRole('button', { name: '生成公告音频' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '生成音频' })).toBeVisible();
   await page.locator('textarea').fill('zzyyxxunrecorded');
   await page.route('**/audio/**', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     await route.continue();
   });
-  await page.getByRole('button', { name: '生成公告音频' }).click();
-  await page.getByRole('button', { name: '取消任务' }).click();
+  await page.getByRole('button', { name: '生成音频' }).click();
+  await page.getByRole('button', { name: '取消渲染' }).click();
   await expect(page.getByText('渲染已取消')).toBeVisible();
   await page.unroute('**/audio/**');
   await page.locator('textarea').fill('attention all personnel');
-  await page.getByRole('button', { name: '生成公告音频' }).click();
+  await page.getByRole('button', { name: '生成音频' }).click();
   await waitForReady(page);
   expect(errors).toEqual([]);
 });
@@ -122,14 +140,62 @@ test('command authoring and editor remain compact at mobile widths with system F
   await page.goto('/');
   await expect(page.getByRole('button', { name: '停顿', exact: true })).toBeEnabled();
   await expect(page.getByRole('button', { name: '卡顿', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '开始', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '结束', exact: true })).toBeVisible();
+  await expect(page.getByRole('switch', { name: '环境底噪' })).toHaveCount(0);
   await page.getByRole('button', { name: '停顿', exact: true }).click();
-  await expect(page.locator('textarea')).toHaveValue(/\/pause:0\.5/);
+  await expect(page.locator('textarea')).toHaveValue(/<pause seconds="0\.5"\/>/);
   await expect(page.getByRole('heading', { name: '素材目录' })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.emulateMedia({ colorScheme: 'dark' });
   await expect(page.locator('.fluent-theme')).toHaveAttribute('data-fluent-theme', 'dark');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath('mobile.png'), fullPage: true });
+});
+
+test('markup help and insertion preserve exact inline text and selections', async ({ page }) => {
+  await page.goto('/');
+  const field = page.locator('textarea');
+  await expect(field).toBeEnabled();
+  await expect(page.getByText(/me<pitch value="1.2">tri<\/pitch>cs/)).toBeVisible();
+  await page.locator('.advanced-tools summary').click();
+
+  await field.fill('attention');
+  await field.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(element.value.length, element.value.length));
+  await page.getByRole('button', { name: '音量', exact: true }).click();
+  await expect(field).toHaveValue('attention<volume value="0.7">word</volume>');
+  await expect.poll(() => field.evaluate((element: HTMLTextAreaElement) => element.value.slice(element.selectionStart, element.selectionEnd))).toBe('word');
+
+  await field.fill('metrics');
+  await field.evaluate((element: HTMLTextAreaElement) => { element.focus(); element.setSelectionRange(2, 5); });
+  await page.getByRole('button', { name: '音高', exact: true }).click();
+  await expect(field).toHaveValue('me<pitch value="1.2">tri</pitch>cs');
+  await expect.poll(() => field.evaluate((element: HTMLTextAreaElement) => element.value.slice(element.selectionStart, element.selectionEnd))).toBe('tri');
+
+  await field.fill('metrics');
+  await field.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(2, 2));
+  await page.getByRole('button', { name: '素材片段', exact: true }).click();
+  await expect(field).toHaveValue('me<clip id="a"/>trics');
+  await expect.poll(() => field.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe('me<clip id="a"/>'.length);
+
+  await field.fill('metrics');
+  await field.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(2, 2));
+  await page.getByRole('button', { name: '插入音素', exact: true }).click();
+  await expect(field).toHaveValue('me/ a e: /trics');
+
+  await field.fill('me<pitch value="1.2">tri</pitch>cs');
+  await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 90_000 });
+  await expect(page.locator('.highlight-layer')).toHaveText('me<pitch value="1.2">tri</pitch>cs');
+  await expect(page.locator('.annotated-editor .token-gap')).toHaveCount(0);
+  await expect(page.locator('.annotated-editor .token-marker')).toHaveCount(2);
+  await expect(page.locator('.annotated-editor .token-error')).toHaveCount(3);
+  await expect(page.locator('.annotated-editor .token-error.spell-missing')).toHaveCount(0);
+
+  await field.fill('<pitch value="1.2">attention</pitch> <volume value="0.7">personnel</volume> <pause seconds="0.5"/>');
+  await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 90_000 });
+  await expect(page.locator('.annotated-editor .token-marker')).toHaveCount(5);
+  await expect(page.locator('.annotated-editor .token-error')).toHaveCount(0);
+  expect(await page.locator('.highlight-layer').textContent()).toBe('<pitch value="1.2">attention</pitch> <volume value="0.7">personnel</volume> <pause seconds="0.5"/>');
 });
 
 test('direct phonemes and unknown English words synthesize locally by default', async ({ page }, info) => {
@@ -148,7 +214,7 @@ test('direct phonemes and unknown English words synthesize locally by default', 
   await expect(page.locator('.analysis-details summary')).toBeVisible();
   await waitForReady(page, 90000);
   await expect(page.locator('.annotated-editor .token-error')).toHaveText('/ a e: /');
-  await expect(page.getByText(/was stretched from/).last()).toBeVisible();
+  await expect(page.locator('.warning-item').filter({ hasText: /was stretched from/ })).toBeVisible();
   const phonemePath = info.outputPath('phonemes.wav');
   const bytes = await saveWav(page, phonemePath);
   expect(bytes.toString('ascii', 0, 4)).toBe('RIFF');

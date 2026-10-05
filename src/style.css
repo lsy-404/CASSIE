@@ -10,6 +10,7 @@ a { color: inherit; }
 .brand { display: inline-flex; align-items: baseline; gap: 12px; text-decoration: none; }
 .brand strong { font-size: 18px; font-weight: 650; }
 .brand span, .topbar > a:last-child { font-size: 12px; }
+.topbar-actions { display: flex; align-items: center; gap: 12px; }
 .workspace { width: min(1240px, calc(100% - 40px)); margin: 0 auto; padding: 36px 0; flex: 1; }
 .page-heading { margin-bottom: 22px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .page-heading p { margin: 0 0 4px; }
@@ -24,9 +25,12 @@ h1 { margin: 0 0 5px; font-size: clamp(27px, 4vw, 36px); font-weight: 600; }
 .authoring-tools { margin-bottom: 16px; display: grid; gap: 12px; }
 .tool-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .tool-group strong { min-width: 90px; font-size: 13px; }
-.help-text { margin: 0; font-size: 12px; }
-.help-text code { font-family: ui-monospace, monospace; }
-.phrase-field .fluent-field__input { min-height: 150px; resize: vertical; }
+.markup-inline-note { margin: -4px 0 0; color: var(--fluent-muted); font-size: 12px; overflow-wrap: anywhere; }
+.markup-inline-note code { font-family: ui-monospace, monospace; }
+.help-examples { display: grid; gap: 4px; }
+.help-examples p { margin: 0; }
+.help-examples code { overflow-wrap: anywhere; font-family: ui-monospace, monospace; }
+.phrase-field .fluent-field__input { min-height: 250px; resize: vertical; }
 .annotated-editor { position: relative; }
 .annotated-editor .fluent-field__input { position: relative; z-index: 1; color: transparent; caret-color: var(--fluent-text); }
 .annotated-editor .fluent-field__input::selection { color: transparent; background: var(--fluent-selection); }
@@ -45,7 +49,6 @@ h1 { margin: 0 0 5px; font-size: clamp(27px, 4vw, 36px); font-weight: 600; }
 .token-legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 9px; font-size: 12px; }
 .token-legend span { text-decoration-line: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
 .spell-legend { text-decoration-style: wavy !important; text-decoration-color: var(--fluent-danger); }
-.audio-player { width: 100%; margin-top: 12px; }
 .analysis-details { margin-top: 12px; font-size: 12px; }
 .analysis-details summary, .advanced-tools summary { cursor: pointer; }
 .analysis-details p { margin: 8px 0; }
@@ -53,15 +56,13 @@ h1 { margin: 0 0 5px; font-size: clamp(27px, 4vw, 36px); font-weight: 600; }
 .advanced-tools p { margin: 0; }
 .settings { display: grid; gap: 16px; }
 .settings label { display: grid; gap: 5px; }
-.settings label > span, .ambient-row, .phoneme-setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.settings label > span, .phoneme-setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .settings b { font-weight: 500; }
-.ambient-row small { display: block; margin-top: 3px; }
 .phoneme-setting small { display: block; margin-top: 3px; }
 .phone-inventory { display: grid; gap: 8px; }
 .phone-inventory summary { cursor: pointer; }
 .phone-inventory > strong { font-size: 13px; font-weight: 600; }
 .phone-list { max-height: 160px; overflow: auto; display: flex; flex-wrap: wrap; align-content: start; gap: 4px; }
-.ipa-summary { display: grid; gap: 4px; }
 .footer a { text-decoration: underline; text-underline-offset: 2px; }
 .output-panel > .fluent-notice { margin-bottom: 10px; }
 .render-progress { margin-bottom: 14px; display: grid; gap: 6px; }

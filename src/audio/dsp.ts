@@ -1,7 +1,97 @@
 import type { ClipKind, TimelineEntry, WordPlan } from './types';
+import { FifoSampleBuffer, Stretch } from '@soundtouchjs/core';
 
 export const OUTPUT_SAMPLE_RATE = 48_000;
 export const MAX_RENDER_SECONDS = 120;
+
+export function stretchSpeechRate(samples: Float32Array, sampleRate: number, rate: number): Float32Array {
+  if (rate === 1 || samples.length === 0) return samples;
+  if (!Number.isFinite(rate) || rate < 0.25 || rate > 4) throw new Error('Speech rate is outside the supported range.');
+  const outputFrames = Math.ceil(samples.length / rate);
+  if (outputFrames > MAX_RENDER_SECONDS * sampleRate) throw new Error('Speech rate adjustment exceeds the 120-second render limit.');
+
+  const stereo = new Float32Array(samples.length * 2);
+  for (let index = 0; index < samples.length; index += 1) stereo[index * 2] = stereo[index * 2 + 1] = samples[index];
+  const input = new FifoSampleBuffer();
+  const output = new FifoSampleBuffer();
+  input.putSamples(stereo);
+  input.putSamples(new Float32Array(Math.ceil(sampleRate * 0.5) * 2));
+  const stretch = new Stretch({ sampleRate, createBuffers: true });
+  stretch.inputBuffer = input;
+  stretch.outputBuffer = output;
+  stretch.tempo = rate;
+  stretch.process();
+
+  const available = output.frameCount;
+  const interleaved = new Float32Array(available * 2);
+  output.extract(interleaved, 0, available);
+  const result = new Float32Array(outputFrames);
+  for (let index = 0; index < outputFrames; index += 1) {
+    result[index] = index < available ? (interleaved[index * 2] + interleaved[index * 2 + 1]) * 0.5 : 0;
+  }
+  return result;
+}
+
+export function stretchSpeechPreservingGaps(
+  samples: Float32Array,
+  sampleRate: number,
+  rate: number,
+  timeline: TimelineEntry[],
+): { samples: Float32Array; timeline: TimelineEntry[] } {
+  if (rate === 1 || !samples.length) return { samples, timeline };
+  const gaps = timeline.filter((entry) => entry.kind === 'gap')
+    .map((entry) => ({ start: Math.max(0, Math.floor(entry.startSeconds * sampleRate)), end: Math.min(samples.length, Math.ceil(entry.endSeconds * sampleRate)) }))
+    .sort((left, right) => left.start - right.start);
+  const preservedGapFrames = gaps.reduce((sum, gap) => sum + Math.max(0, gap.end - gap.start), 0);
+  const predictedFrames = Math.ceil((samples.length - preservedGapFrames) / rate) + preservedGapFrames;
+  if (predictedFrames > MAX_RENDER_SECONDS * sampleRate) throw new Error('Speech rate adjustment exceeds the 120-second render limit.');
+  const output: Float32Array[] = [];
+  const segments: Array<{ sourceStart: number; sourceEnd: number; outputStart: number; outputEnd: number; gap: boolean }> = [];
+  let sourceCursor = 0;
+  let outputCursor = 0;
+  const append = (start: number, end: number, gap: boolean) => {
+    if (end <= start) return;
+    const part = gap ? samples.subarray(start, end) : stretchSpeechRate(samples.subarray(start, end), sampleRate, rate);
+    if (!part.length) return;
+    output.push(part);
+    segments.push({ sourceStart: start, sourceEnd: end, outputStart: outputCursor, outputEnd: outputCursor + part.length, gap });
+    outputCursor += part.length;
+  };
+  for (const gap of gaps) {
+    const start = Math.max(sourceCursor, gap.start);
+    const end = Math.max(start, gap.end);
+    append(sourceCursor, start, false);
+    append(start, end, true);
+    sourceCursor = end;
+  }
+  append(sourceCursor, samples.length, false);
+  if (outputCursor > MAX_RENDER_SECONDS * sampleRate) throw new Error('Speech rate adjustment exceeds the 120-second render limit.');
+  const stretched = new Float32Array(outputCursor);
+  let offset = 0;
+  for (const part of output) {
+    stretched.set(part, offset);
+    offset += part.length;
+  }
+  const mapped = timeline.flatMap((entry) => {
+    const start = Math.max(0, Math.floor(entry.startSeconds * sampleRate));
+    const end = Math.min(samples.length, Math.ceil(entry.endSeconds * sampleRate));
+    return segments.flatMap((segment) => {
+      const overlapStart = Math.max(start, segment.sourceStart);
+      const overlapEnd = Math.min(end, segment.sourceEnd);
+      if (overlapEnd <= overlapStart) return [];
+      const sourceLength = segment.sourceEnd - segment.sourceStart;
+      const outputLength = segment.outputEnd - segment.outputStart;
+      const outputStart = segment.outputStart + (overlapStart - segment.sourceStart) * outputLength / sourceLength;
+      const outputEnd = segment.outputStart + (overlapEnd - segment.sourceStart) * outputLength / sourceLength;
+      return outputEnd > outputStart ? [{
+        ...entry,
+        startSeconds: outputStart / sampleRate,
+        endSeconds: outputEnd / sampleRate,
+      }] : [];
+    });
+  }).sort((left, right) => left.startSeconds - right.startSeconds || left.endSeconds - right.endSeconds);
+  return { samples: stretched, timeline: mapped };
+}
 
 export function nextClipStart(
   previousEnd: number,
@@ -13,6 +103,11 @@ export function nextClipStart(
   if (previousKind === undefined) return Math.max(0, sleep);
   const gap = previousKind === 'word' && nextKind === 'word' ? speechGap : 0;
   return Math.max(0, previousEnd + gap + sleep);
+}
+
+export function advancePlaybackCursorAfterRepeat(previousEnd: number, previousStart: number, groupEnd: number): { previousEnd: number; previousStart: number } {
+  const end = Math.max(previousEnd, groupEnd);
+  return { previousEnd: end, previousStart: Math.max(previousStart, end) };
 }
 
 function crossfadeJoin(left: Float32Array, right: Float32Array, sampleRate: number): Float32Array {
@@ -129,17 +224,19 @@ export function clipTimelineToDuration(timeline: TimelineEntry[], duration: numb
 export function mapSourceTimeline(
   spans: SourceTimelineSpan[],
   sourceLength: number,
-  plan: Pick<WordPlan, 'startAt' | 'maxDuration' | 'stutter' | 'pitch'>,
+  plan: Pick<WordPlan, 'startAt' | 'maxDuration' | 'stutter' | 'pitch' | 'rate'>,
   globalPitch: number,
   sampleRate: number,
   outputStartSeconds: number,
   outputLength: number,
+  globalRate = 1,
 ): TimelineEntry[] {
   const cropStart = Math.min(sourceLength, Math.floor((plan.startAt ?? 0) * sampleRate));
   const cropEnd = Math.min(sourceLength, cropStart + (plan.maxDuration === undefined ? sourceLength : Math.floor(plan.maxDuration * sampleRate)));
   const croppedLength = cropEnd - cropStart;
   const pitch = plan.pitch * globalPitch;
-  if (croppedLength <= 0 || !Number.isFinite(pitch) || pitch <= 0 || outputLength <= 0) return [];
+  const rate = (plan.rate ?? 1) * globalRate;
+  if (croppedLength <= 0 || !Number.isFinite(pitch) || pitch <= 0 || !Number.isFinite(rate) || rate <= 0 || outputLength <= 0) return [];
   const stutter = plan.stutter;
   const point = stutter ? Math.min(croppedLength, Math.floor(stutter.position * croppedLength)) : croppedLength;
   const repeatLength = stutter
@@ -165,8 +262,8 @@ export function mapSourceTimeline(
       const start = Math.max(span.startSample, piece.sourceStart);
       const end = Math.min(span.endSample, piece.sourceEnd);
       if (end <= start) continue;
-      const outputStart = outputStartSeconds + (piece.outputStart + start - piece.sourceStart) / (pitch * sampleRate);
-      const outputEnd = outputStartSeconds + (piece.outputStart + end - piece.sourceStart) / (pitch * sampleRate);
+      const outputStart = outputStartSeconds + (piece.outputStart + start - piece.sourceStart) / (pitch * rate * sampleRate);
+      const outputEnd = outputStartSeconds + (piece.outputStart + end - piece.sourceStart) / (pitch * rate * sampleRate);
       const clippedStart = Math.max(outputStartSeconds, outputStart);
       const clippedEnd = Math.min(outputStartSeconds + renderedLength, outputEnd);
       if (clippedEnd > clippedStart) timeline.push({

@@ -187,7 +187,7 @@ export function parseGeneratedPhones(value: string, catalog: PhonemeCatalog): { 
   return { phones, warnings: [] };
 }
 
-export function resolvePhoneUnits(phones: string[], catalog: PhonemeCatalog, bank: Bank): { units: PhonemeUnit[]; warnings: string[] } {
+export function resolvePhoneUnits(phones: string[], catalog: PhonemeCatalog, bank: Bank, mergeContinuous = true): { units: PhonemeUnit[]; warnings: string[] } {
   if (!phones.length || phones.length > MAX_PHONE_UNITS) return { units: [], warnings: ['The phoneme sequence is empty or too long.'] };
   const bankById = new Map(bank.clips.map((clip) => [clip.id, clip]));
   const units: PhonemeUnit[] = [];
@@ -246,7 +246,7 @@ export function resolvePhoneUnits(phones: string[], catalog: PhonemeCatalog, ban
       ...(stretchFactor ? { stretchFactor } : {}),
     };
     const last = units.at(-1);
-    if (last && !last.stretchFactor && !unit.stretchFactor && last.clipId === unit.clipId && Math.abs(last.endSeconds - unit.startSeconds) <= 0.005) {
+    if (mergeContinuous && last && !last.stretchFactor && !unit.stretchFactor && last.clipId === unit.clipId && Math.abs(last.endSeconds - unit.startSeconds) <= 0.005) {
       last.endSeconds = unit.endSeconds;
       last.ipa += ` ${unit.ipa}`;
       last.approximate = last.approximate || unit.approximate || undefined;
@@ -255,7 +255,7 @@ export function resolvePhoneUnits(phones: string[], catalog: PhonemeCatalog, ban
   return { units, warnings };
 }
 
-export async function phonemizeWords(words: string[], signal?: AbortSignal): Promise<Map<string, string>> {
+export async function phonemizeWords(words: string[], signal?: AbortSignal, letterNames: string[] = []): Promise<Map<string, string>> {
   if (signal?.aborted) throw new DOMException('The audio render was cancelled.', 'AbortError');
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./phoneme.worker.ts', import.meta.url), { type: 'module' });
@@ -285,7 +285,7 @@ export async function phonemizeWords(words: string[], signal?: AbortSignal): Pro
       resolve(new Map(Object.entries(data.phones)));
     };
     try {
-      worker.postMessage({ words });
+      worker.postMessage({ words, letterNames });
     } catch (error) {
       fail(error instanceof Error ? error : new Error('Could not start English phonemizer worker.'));
     }

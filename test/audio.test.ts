@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { analyzeText, createWordPlan } from '../src/audio/parser';
 import { getClipUsage } from '../src/audio/catalog';
 import { analyzeAnnouncement, renderAnnouncement } from '../src/audio/engine';
-import { appendTimelineEntry, applyStutter, clipTimelineToDuration, encodeWav, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, splicePhonemeWindows, stretchVowelLoop, transformWord } from '../src/audio/dsp';
+import { advancePlaybackCursorAfterRepeat, appendTimelineEntry, applyStutter, clipTimelineToDuration, encodeWav, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, splicePhonemeWindows, stretchSpeechPreservingGaps, stretchSpeechRate, stretchVowelLoop, transformWord } from '../src/audio/dsp';
 import type { Bank } from '../src/audio/types';
 import type { PhonemeCatalog } from '../src/audio/phonemes';
 import { parseGeneratedPhones, resolvePhoneUnits } from '../src/audio/phonemes';
@@ -42,13 +42,13 @@ function word(id: string, extra: Partial<Parameters<typeof transformWord>[2]> = 
 }
 
 describe('CASSIE announcement parser', () => {
-  it('uses slash clip commands for explicit fragments and single-letter clips', () => {
+  it('uses markup clip tags for explicit fragments and single-letter clips', () => {
     const usage = (id: string) => getClipUsage({ id, file: `/audio/${id}.opus`, duration: 0.2, kind: 'word' });
-    expect(usage('_a')).toMatchObject({ insertText: '/clip:_a' });
-    expect(usage('a')).toMatchObject({ insertText: '/clip:a' });
-    expect(usage('the_vowel')).toMatchObject({ insertText: '/clip:the_vowel' });
+    expect(usage('_a')).toMatchObject({ insertText: '<clip id="_a"/>' });
+    expect(usage('a')).toMatchObject({ insertText: '<clip id="a"/>' });
+    expect(usage('the_vowel')).toMatchObject({ insertText: '<clip id="the_vowel"/>' });
     expect(usage('hello')).toMatchObject({ insertText: 'hello' });
-    expect(usage('a').description).toContain('/clip:a');
+    expect(usage('a').description).toContain('<clip id="a"/>');
   });
 
   it('expands signed decimal numbers into bank words', () => {
@@ -101,23 +101,23 @@ describe('CASSIE announcement parser', () => {
     expect(phrase.sourceWordTimings?.map(({ sourceStart, sourceEnd }) => [sourceStart, sourceEnd])).toEqual([[0, 3], [4, 13], [14, 23]]);
   });
 
-  it('applies persistent pitch/volume, explicit pauses, and one-word stutter modifiers', () => {
-    const result = createWordPlan('/pitch:1.25 /volume:0.4 /pause:0.6 /stutter:0.1:0.1:3 cassie word', bank);
+  it('applies paired scoped pitch, volume, pause, and stutter modifiers', () => {
+    const result = createWordPlan('<pitch value="1.25"><volume value="0.4">cassie</volume></pitch><pause seconds="0.6"/><stutter repeats="3">word</stutter>', bank);
     expect(result.plan[0]).toMatchObject({ pitch: 1.25, volume: 0.4 });
-    expect(result.plan[0]).toMatchObject({ pauseDuration: 0.6 });
-    expect(result.plan[1]).toMatchObject({ pitch: 1.25, volume: 0.4, stutter: { position: 0.1, length: 0.1, repeats: 3 } });
+    expect(result.plan[1]).toMatchObject({ pauseDuration: 0.6 });
+    expect(result.plan[2]).toMatchObject({ stutterScopes: [{ id: expect.any(Number), repeats: 3 }], stutterScopeEnds: [expect.any(Number)] });
     expect(result.warnings).toEqual([]);
   });
 
   it('retains the game timing and clip-selection modifiers', () => {
-    const result = createWordPlan('/offset:0.1 /duration:0.3 cassie /spacing:0.8 word', bank);
+    const result = createWordPlan('<offset seconds="0.1"><duration seconds="0.3">cassie</duration></offset> <spacing seconds="0.8">word</spacing>', bank);
     expect(result.plan[0]).toMatchObject({ startAt: 0.1, maxDuration: 0.3 });
     expect(result.plan[1]).toMatchObject({ spacing: 0.8 });
     expect(result.warnings).toEqual([]);
   });
 
-  it('splices direct IPA, applies ASCII vowel aliases, and carries modifiers onto the segment', () => {
-    const result = createWordPlan('/pitch:1.2 /volume:0.6 / a e: /', phoneBank, undefined, phoneCatalog);
+  it('splices direct IPA, applies ASCII vowel aliases, and carries scoped modifiers onto the segment', () => {
+    const result = createWordPlan('<pitch value="1.2"><volume value="0.6">/ a e: /</volume></pitch>', phoneBank, undefined, phoneCatalog);
     expect(result.plan[0]).toMatchObject({
       pitch: 1.2,
       volume: 0.6,
@@ -304,7 +304,7 @@ describe('CASSIE announcement parser', () => {
         { id: 'end_beep', file: '/audio/end_beep.opus', duration: 0.2, kind: 'effect' as const },
       ],
     };
-    const result = createWordPlan('/start cassie /clip:the_vowel /end', cueBank, { start: 'start_beep', end: 'end_beep' });
+    const result = createWordPlan('<start/> cassie <clip id="the_vowel"/> <end/>', cueBank, { start: 'start_beep', end: 'end_beep' });
     expect(result.plan.map(({ clipId, display }) => [clipId, display])).toEqual([
       ['start_beep', 'start cue'],
       ['cassie', 'cassie'],
@@ -314,8 +314,8 @@ describe('CASSIE announcement parser', () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it('recognizes slash commands next to spaced IPA blocks and resumes after an unclosed block', () => {
-    const direct = createWordPlan('/pause:0.5 / a e: /', phoneBank, undefined, phoneCatalog);
+  it('recognizes br tags next to spaced IPA blocks and resumes after an unclosed block', () => {
+    const direct = createWordPlan('<br/> / a e: /', phoneBank, undefined, phoneCatalog);
     expect(direct.plan.map((item) => item.timelineKind)).toEqual(['gap', 'word']);
     expect(direct.plan[1].phonemeUnits).toHaveLength(2);
     const incomplete = analyzeText('/ a cassie', bank);
@@ -323,11 +323,71 @@ describe('CASSIE announcement parser', () => {
     expect(incomplete.warnings).toContain('Unclosed IPA segment; text after the slash was parsed normally.');
   });
 
-  it('classifies slash markers and spoken source spans, including only actual spaces as gaps', () => {
-    const plan = createWordPlan('cassie /pitch:1.1 word', bank).plan;
-    expect(plan[1]).toMatchObject({ sourceStart: 18, sourceEnd: 22, gapSourceStart: 17, gapSourceEnd: 18 });
-    expect(analyzeText('cassie /pitch:1.1 word', bank).tokens.map(({ kind }) => kind)).toEqual(['recorded', 'marker', 'recorded']);
+  it('classifies markup markers and spoken source spans, including only actual text spaces as gaps', () => {
+    const source = 'cassie <pitch value="1.1">word</pitch>';
+    const plan = createWordPlan(source, bank).plan;
+    expect(plan[1]).toMatchObject({ sourceStart: source.indexOf('word'), sourceEnd: source.length - '</pitch>'.length, gapSourceStart: 6, gapSourceEnd: 7, pitch: 1.1 });
+    expect(analyzeText(source, bank).tokens.map(({ kind }) => kind)).toEqual(['recorded', 'marker', 'recorded', 'marker']);
     expect(createWordPlan('newword', phoneBank, undefined, phoneCatalog, new Map([['newword', 'j']]), true).tokens[0].kind).toBe('synthesized');
+  });
+
+  it('phonemizes an inline-tagged word once and assigns its measured phones to source fragments', () => {
+    const phoneClips = [
+      ['m', 'phone-j', 'c'], ['t', 'phone-th', 'd'], ['ɹ', 'phone-a', 'a'], ['ɪ', 'phone-e', 'b'], ['k', 'phone-j', 'c'], ['s', 'phone-a', 'a'],
+    ] as const;
+    const clips = phoneClips.map(([, id, hash]) => phoneBank.clips.find((clip) => clip.id === id)!);
+    const catalog = {
+      ...phoneCatalog,
+      phones: {
+        ...phoneCatalog.phones,
+        ...Object.fromEntries(phoneClips.map(([phone, clipId, hash]) => [phone, [{
+          clipId, ipa: phone, startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1,
+          sourceSha256: `${hash}`.repeat(64), position: 'single' as const, previousIpa: null, nextIpa: null,
+        }]])),
+        'ɛ': [
+          { ...phoneCatalog.phones['ɛ'][0], position: 'medial' as const, previousIpa: 'm', nextIpa: 't', startSeconds: 0.01, endSeconds: 0.09 },
+          { ...phoneCatalog.phones['ɛ'][0], position: 'final' as const, previousIpa: 'm', nextIpa: 't', startSeconds: 0.02, endSeconds: 0.1 },
+        ],
+        t: [
+          { clipId: 'phone-th', ipa: 't', position: 'medial' as const, previousIpa: 'ɛ', nextIpa: 'ɹ', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1, sourceSha256: 'd'.repeat(64) },
+          { clipId: 'phone-th', ipa: 't', position: 'initial' as const, previousIpa: 'ɛ', nextIpa: 'ɹ', startSeconds: 0.02, endSeconds: 0.1, sourceDurationSeconds: 0.1, sourceSha256: 'd'.repeat(64) },
+        ],
+      },
+    } satisfies PhonemeCatalog;
+    const source = 'me<pitch value="1.2">tri</pitch>cs';
+    const result = createWordPlan(source, { ...phoneBank, clips: [...phoneBank.clips, ...clips] }, undefined, catalog,
+      new Map([['metrics', 'mɛtɹɪks'], ['me', 'mɛ'], ['metri', 'mɛtɹɪ']]), true);
+    expect(result.plan.map((item) => item.phonemeUnits?.map((unit) => unit.ipa))).toEqual([['m', 'ɛ'], ['t', 'ɹ', 'ɪ'], ['k', 's']]);
+    expect(result.plan[0].phonemeUnits?.[1].startSeconds).toBe(0.01);
+    expect(result.plan[1].phonemeUnits?.[0].startSeconds).toBe(0.01);
+    expect(result.plan.map((item) => item.pitch)).toEqual([1, 1.2, 1]);
+    expect(result.plan.slice(1).every((item) => item.joinPrevious)).toBe(true);
+    expect(result.tokens.filter((token) => token.kind !== 'marker').map((token) => token.spellingWord)).toEqual(['metrics', 'metrics', 'metrics']);
+    expect(result.warnings).toContain('Scoped pronunciation boundaries in “metrics” use nearest IPA-phone alignment.');
+  });
+
+  it('uses English letter-name G2P for unrecorded uppercase acronyms while keeping A, I, lowercase a, and explicit clips distinct', () => {
+    const letterPhones = new Map(['N', 'A', 'S'].map((letter) => [`letter:${letter}`, 'j']));
+    const acronym = createWordPlan('NASA', phoneBank, undefined, phoneCatalog, letterPhones, true);
+    expect(acronym.plan.map((item) => item.display)).toEqual(['N', 'A', 'S', 'A']);
+    expect(acronym.plan.map((item) => [item.sourceStart, item.sourceEnd])).toEqual([[0, 1], [1, 2], [2, 3], [3, 4]]);
+    expect(createWordPlan('A', phoneBank, undefined, phoneCatalog, new Map([['letter:A', 'j']]), true).plan[0].display).toBe('A');
+    expect(createWordPlan('a I', phoneBank, undefined, phoneCatalog, new Map([['a', 'j'], ['i', 'j']]), true).plan.map((item) => item.display)).toEqual(['a', 'I']);
+    expect(createWordPlan('B', phoneBank, undefined, phoneCatalog, new Map([['letter:B', 'j']]), true).plan[0].display).toBe('B');
+    expect(createWordPlan('<clip id="a"/>', { ...phoneBank, clips: [...phoneBank.clips, { id: 'a', file: '/audio/a.opus', duration: 0.5, kind: 'word' }] }).plan[0].clipId).toBe('a');
+  });
+
+  it('accepts br and broadcast boundaries as void tags and rejects executable or mismatched markup', () => {
+    const cueBank = { ...bank, clips: [...bank.clips,
+      { id: 'start_beep', file: '/audio/start_beep.opus', duration: 0.2, kind: 'effect' as const },
+      { id: 'end_beep', file: '/audio/end_beep.opus', duration: 0.2, kind: 'effect' as const },
+    ] };
+    const cues = createWordPlan('<start>cassie<br/>word<end/>', cueBank, { start: 'start_beep', end: 'end_beep' });
+    expect(cues.plan.map((item) => item.clipId || item.pauseDuration)).toEqual(['start_beep', 'cassie', 0.5, 'word', 'end_beep']);
+    const invalid = analyzeText('cassie <img src="x"> <pitch value="1.2">word</volume>', bank);
+    expect(invalid.tokens.filter((token) => token.text.startsWith('<') || token.text.startsWith('</')).map((token) => token.kind)).toEqual(['error', 'error', 'error']);
+    expect(invalid.words).toContain('cassie');
+    expect(invalid.warnings.some((warning) => /Invalid markup|Mismatched closing|Unclosed markup/u.test(warning))).toBe(true);
   });
 
   it('keeps NATO letter recordings out of normal English while preserving explicit clip selection', () => {
@@ -338,8 +398,8 @@ describe('CASSIE announcement parser', () => {
         { id: 'i', file: '/audio/i.opus', duration: 0.5, kind: 'word' as const },
       ],
     };
-    expect(createWordPlan('a I', letterBank, undefined, undefined, new Map(), true).unresolvedWords).toEqual(['a', 'i']);
-    expect(createWordPlan('/clip:a', letterBank).plan[0].clipId).toBe('a');
+    expect(createWordPlan('a I', letterBank, undefined, undefined, new Map(), true).unresolvedWords).toEqual(['a', 'I']);
+    expect(createWordPlan('<clip id="a"/>', letterBank).plan[0].clipId).toBe('a');
   });
 
   it('allows direct effect clips and warns for unknown or unavailable cue assets', () => {
@@ -347,7 +407,7 @@ describe('CASSIE announcement parser', () => {
       ...bank,
       clips: [...bank.clips, { id: 'cassie-background-std', file: '/audio/cassie-background-std.opus', duration: 39.43, kind: 'effect' as const }],
     };
-    const result = analyzeText('/start /clip:cassie-background-std /clip:not-in-bank /end cassie', effectBank);
+    const result = analyzeText('<start/><clip id="cassie-background-std"/><clip id="not-in-bank"/><end/> cassie', effectBank);
     expect(result.words).toEqual(['cassie-background-std', 'cassie']);
     expect(result.warnings).toEqual([
       'The START cue is unavailable in this audio bank.',
@@ -363,6 +423,12 @@ describe('CASSIE announcement parser', () => {
     expect(analyzeText('cassie '.repeat(513), bank).words).toEqual([]);
   });
 
+  it('applies bounded scoped speech rate and restores the parent rate after the closing tag', () => {
+    const result = createWordPlan('cassie <rate value="1.4">word</rate> apple', bank);
+    expect(result.plan.map((item) => item.rate)).toEqual([1, 1.4, 1]);
+    expect(analyzeText('<rate value="0.49">cassie</rate>', bank).tokens[0].kind).toBe('error');
+  });
+
   it('rejects announcements without a playable word and bounds token count', () => {
     expect(analyzeText('not-in-bank', bank)).toMatchObject({ words: [] });
     expect(() => createWordPlan('not-in-bank', bank)).toThrow(/No playable words/);
@@ -370,8 +436,11 @@ describe('CASSIE announcement parser', () => {
     expect(() => createWordPlan('cassie '.repeat(513), bank)).toThrow(/512-token limit/);
   });
 
-  it('ignores out-of-range modifiers with a warning', () => {
-    expect(analyzeText('/pitch:99 cassie', bank).warnings).toContain('Invalid /pitch command: /pitch:99');
+  it('marks invalid scoped values red and continues parsing speech', () => {
+    const result = analyzeText('<pitch value="99">cassie</pitch> word', bank);
+    expect(result.warnings.some((warning) => warning.includes('Invalid markup tag'))).toBe(true);
+    expect(result.tokens[0].kind).toBe('error');
+    expect(result.words).toContain('word');
   });
 
   it('rejects legacy dollar modifiers without treating them as spoken words', () => {
@@ -391,6 +460,44 @@ describe('audio DSP', () => {
     expect([...transformWord(samples, 4, word('x', { volume: 0.5 }), 1, 0.5)]).toEqual([0, 0.125, 0.25, 0.125]);
   });
 
+  it('changes speech duration without changing its fundamental frequency', () => {
+    const sampleRate = 48_000;
+    const frequency = 440;
+    const input = Float32Array.from({ length: sampleRate * 2 }, (_, index) => Math.sin(2 * Math.PI * frequency * index / sampleRate));
+    const output = stretchSpeechRate(input, sampleRate, 1.25);
+    expect(output.length).toBe(Math.ceil(input.length / 1.25));
+    let crossings = 0;
+    const start = Math.floor(sampleRate * 0.2);
+    const end = output.length - start;
+    for (let index = start; index < end - 1; index += 1) if (output[index] <= 0 && output[index + 1] > 0) crossings += 1;
+    expect(crossings / ((end - start) / sampleRate)).toBeCloseTo(frequency, -1);
+  });
+
+  it('preserves annotated phrase gaps while stretching each speech span', () => {
+    const sampleRate = 48_000;
+    const input = Float32Array.from({ length: sampleRate }, (_, index) => Math.sin(2 * Math.PI * 220 * index / sampleRate));
+    const result = stretchSpeechPreservingGaps(input, sampleRate, 1.25, [
+      { startSeconds: 0.1, endSeconds: 0.4, sourceStart: 0, sourceEnd: 3, kind: 'word' },
+      { startSeconds: 0.4, endSeconds: 0.6, sourceStart: 3, sourceEnd: 4, kind: 'gap' },
+      { startSeconds: 0.6, endSeconds: 0.9, sourceStart: 5, sourceEnd: 8, kind: 'word' },
+    ]);
+    expect(result.samples.length).toBe(40_320);
+    expect(result.timeline).toEqual([
+      { startSeconds: 0.08, endSeconds: 0.32, sourceStart: 0, sourceEnd: 3, kind: 'word' },
+      { startSeconds: 0.32, endSeconds: 0.52, sourceStart: 3, sourceEnd: 4, kind: 'gap' },
+      { startSeconds: 0.52, endSeconds: 0.76, sourceStart: 5, sourceEnd: 8, kind: 'word' },
+    ]);
+  });
+
+  it.each([0.5, 2])('keeps a short speech fragment audible at rate %s', (rate) => {
+    const sampleRate = 48_000;
+    const input = Float32Array.from({ length: 1_440 }, (_, index) => Math.sin(2 * Math.PI * 440 * index / sampleRate));
+    const output = stretchSpeechRate(input, sampleRate, rate);
+    const rms = Math.sqrt(output.reduce((sum, sample) => sum + sample * sample, 0) / output.length);
+    expect(output.length).toBe(Math.ceil(input.length / rate));
+    expect(rms).toBeGreaterThan(0.2);
+  });
+
   it('inserts bounded stutter segments and mixes overlap with peak clamping', () => {
     expect([...applyStutter(new Float32Array([1, 2, 3, 4]), 4, { position: 0.5, length: 0.25, repeats: 2 })]).toEqual([1, 2, 3, 3, 3, 4]);
     const mixed = mixLayers([{ samples: new Float32Array([0.8, 0.1]), start: 0 }, { samples: new Float32Array([0.8]), start: 0 }]);
@@ -403,6 +510,10 @@ describe('audio DSP', () => {
     expect(nextClipStart(1, 'word', 'effect', 0.24)).toBe(1);
     expect(nextClipStart(1.2, 'effect', 'word', 0.24)).toBe(1.2);
     expect(nextClipStart(0, undefined, 'effect', 0.24, 0.5)).toBe(0.5);
+  });
+
+  it('keeps following audio after the full repeated group when overlapping words shorten the cursor', () => {
+    expect(advancePlaybackCursorAfterRepeat(0.96, 0.01, 17.53)).toEqual({ previousEnd: 17.53, previousStart: 17.53 });
   });
 
   it('maps phrase word and whitespace spans through crop, noninteger stutter points, repeats, and pitch', () => {
@@ -421,6 +532,19 @@ describe('audio DSP', () => {
     expect(repeatedWord).toHaveLength(3);
     expect(repeatedGap).toHaveLength(4);
     expect(timeline.every((entry) => entry.startSeconds >= 2 && entry.endSeconds <= 2.8 && entry.endSeconds > entry.startSeconds)).toBe(true);
+  });
+
+  it('maps speech highlighting through rate changes while leaving source gaps outside the word span', () => {
+    const entries = mapSourceTimeline(
+      [{ startSample: 0, endSample: 48_000, sourceStart: 0, sourceEnd: 4, kind: 'word' }],
+      48_000,
+      { pitch: 1, rate: 2 },
+      1,
+      48_000,
+      2,
+      24_000,
+    );
+    expect(entries).toEqual([{ startSeconds: 2, endSeconds: 2.5, sourceStart: 0, sourceEnd: 4, kind: 'word' }]);
   });
 
   it('omits zero-length pause and fully cropped audio spans from the timeline', () => {
@@ -476,7 +600,7 @@ describe('audio worker handoff', () => {
       ipa: [],
     });
     await expect(analyzeAnnouncement('   ', bank)).resolves.toEqual({ words: [], warnings: [], ipa: [], tokens: [] });
-    await expect(renderAnnouncement('unrecordedword', bank, { pitch: 1, volume: 1, gap: 0.24, background: false }))
+    await expect(renderAnnouncement('unrecordedword', bank, { pitch: 1, volume: 1, gap: 0.24 }))
       .rejects.toThrow(/No audio clip|phoneme catalog is unavailable/i);
   });
 
@@ -501,9 +625,40 @@ describe('audio worker handoff', () => {
     }
     vi.stubGlobal('Worker', MockWorker);
     try {
-      const result = await renderAnnouncement('cassie', reactive(bank), { pitch: 1, volume: 1, gap: 0.24, background: false });
+      const result = await renderAnnouncement('cassie', reactive(bank), { pitch: 1, volume: 1, gap: 0.24, phonemes: false });
       expect(result.words).toEqual(['cassie']);
       expect(result.timeline).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('ignores queued progress and preview events after cancellation', async () => {
+    let captured: MockWorker | undefined;
+    class MockWorker {
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      onmessageerror: (() => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      postMessage() {}
+      terminate() {}
+      constructor() { captured = this; }
+    }
+    vi.stubGlobal('Worker', MockWorker);
+    const controller = new AbortController();
+    const onProgress = vi.fn();
+    const onPreview = vi.fn();
+    try {
+      const rendering = renderAnnouncement('cassie', bank, { pitch: 1, volume: 1, gap: 0.24, phonemes: false }, onProgress, controller.signal, onPreview);
+      await vi.waitFor(() => expect(captured).toBeDefined());
+      controller.abort();
+      await expect(rendering).rejects.toMatchObject({ name: 'AbortError' });
+      captured?.onmessage?.({ data: { type: 'progress', value: 0.8 } } as MessageEvent);
+      captured?.onmessage?.({ data: {
+        type: 'preview', samples: new Float32Array([0.25]), sampleRate: 48_000, duration: 1 / 48_000,
+        words: ['cassie'], warnings: [], timeline: [],
+      } } as MessageEvent);
+      expect(onProgress).not.toHaveBeenCalled();
+      expect(onPreview).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
     }

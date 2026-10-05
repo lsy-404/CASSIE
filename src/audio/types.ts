@@ -19,7 +19,7 @@ export interface RenderOptions {
   pitch: number;
   volume: number;
   gap: number;
-  background: boolean;
+  rate?: number;
   phonemes?: boolean;
 }
 
@@ -45,6 +45,7 @@ export interface AnalysisToken {
   sourceEnd: number;
   kind: 'recorded' | 'synthesized' | 'error' | 'marker';
   text: string;
+  spellingWord?: string;
 }
 
 export interface WordPlan {
@@ -54,6 +55,7 @@ export interface WordPlan {
   display: string;
   pitch: number;
   volume: number;
+  rate?: number;
   startAt?: number;
   maxDuration?: number;
   sleep?: number;
@@ -67,6 +69,9 @@ export interface WordPlan {
   gapSourceEnd?: number;
   timelineKind?: 'word' | 'gap' | 'cue';
   sourceWordTimings?: Array<{ text: string; startSeconds: number; endSeconds: number; sourceStart: number; sourceEnd: number }>;
+  joinPrevious?: boolean;
+  stutterScopes?: Array<{ id: number; repeats: number }>;
+  stutterScopeEnds?: number[];
 }
 
 export interface PhonemeUnit {
