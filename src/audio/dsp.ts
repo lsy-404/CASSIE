@@ -112,6 +112,12 @@ export interface SourceTimelineSpan {
   kind: TimelineEntry['kind'];
 }
 
+export function appendTimelineEntry(timeline: TimelineEntry[], entry: TimelineEntry): boolean {
+  if (!Number.isFinite(entry.startSeconds) || !Number.isFinite(entry.endSeconds) || entry.endSeconds <= entry.startSeconds) return false;
+  timeline.push(entry);
+  return true;
+}
+
 export function mapSourceTimeline(
   spans: SourceTimelineSpan[],
   sourceLength: number,
