@@ -1,5 +1,6 @@
 import { createWordPlan } from './parser';
 import type { AnalysisToken, Bank, BankClip, RenderOptions, RenderResult } from './types';
+import { estimateFitWarnings } from './fit';
 import { hasDirectPhonemeInput, loadPhonemeCatalog, phonemizeWords } from './phonemes';
 
 const BANK_URL = '/bank.json';
@@ -80,12 +81,13 @@ export async function analyzeAnnouncement(
   bank: Bank,
   phonemesEnabled = true,
   signal?: AbortSignal,
+  options?: Partial<Pick<RenderOptions, 'gap' | 'pitch' | 'rate'>>,
 ): Promise<{ words: string[]; warnings: string[]; ipa: string[]; tokens: AnalysisToken[] }> {
   try {
     const { plan, warnings, tokens } = await preparePlan(text, bank, phonemesEnabled, signal);
     return {
       words: plan.map((word) => word.display),
-      warnings,
+      warnings: [...warnings, ...estimateFitWarnings(plan, bank, options?.gap, options?.pitch, options?.rate)],
       ipa: plan.map((word) => word.phonemeUnits?.map((unit) => unit.ipa).join(' ') ?? '').filter(Boolean),
       tokens,
     };

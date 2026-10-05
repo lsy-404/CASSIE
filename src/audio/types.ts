@@ -65,6 +65,7 @@ export interface WordPlan {
   pitch: number;
   volume: number;
   rate?: number;
+  fit?: { id: number; seconds: number };
   voice?: Partial<VoiceOptions>;
   startAt?: number;
   maxDuration?: number;

@@ -85,11 +85,11 @@ interface ScanResult {
   inlineFragment: boolean[];
   inlineGroups: Map<number, number[]>;
   inlineGroupId: Array<number | undefined>;
-  scopeAtToken: Array<{ pitch: number; volume: number; rate: number; voice?: Partial<VoiceOptions>; startAt?: number; maxDuration?: number; spacing?: number; stutters: Array<{ id: number; repeats: number }> }>;
+  scopeAtToken: Array<{ pitch: number; volume: number; rate: number; voice?: Partial<VoiceOptions>; startAt?: number; maxDuration?: number; spacing?: number; fit?: { id: number; seconds: number }; stutters: Array<{ id: number; repeats: number }> }>;
   stutterEnds: Map<number, number>;
 }
 
-const SCOPED_TAGS = new Set(['pitch', 'volume', 'rate', 'voice', 'stutter', 'offset', 'duration', 'spacing']);
+const SCOPED_TAGS = new Set(['pitch', 'volume', 'rate', 'voice', 'stutter', 'offset', 'duration', 'spacing', 'fit']);
 const MARKER_TAGS = new Set(['start', 'end', 'pause', 'clip', 'br']);
 
 function parseMarkupTag(raw: string): MarkupTag | undefined {
@@ -210,7 +210,7 @@ function tokenizeInput(text: string): ScanResult {
       return raw.trim() !== '' && Number.isFinite(Number(raw)) && Number(raw) >= bounds[0] && Number(raw) <= bounds[1];
     });
     const validValue = tag.closing || tag.name === 'voice' ? tag.closing || validVoice : !SCOPED_TAGS.has(tag.name) && tag.name !== 'pause' ||
-      rawScopedValue?.trim() !== '' && Number.isFinite(scopedValue) && scopedValue >= (tag.name === 'pitch' ? 0.01 : tag.name === 'volume' || tag.name === 'offset' || tag.name === 'pause' ? 0 : tag.name === 'rate' ? 0.5 : Number.EPSILON) &&
+      rawScopedValue?.trim() !== '' && Number.isFinite(scopedValue) && scopedValue >= (tag.name === 'pitch' ? 0.01 : tag.name === 'volume' || tag.name === 'offset' || tag.name === 'pause' ? 0 : tag.name === 'rate' ? 0.5 : tag.name === 'fit' ? 0.05 : Number.EPSILON) &&
       scopedValue <= (tag.name === 'pitch' ? 15 : tag.name === 'volume' ? 1 : tag.name === 'rate' ? 2 : tag.name === 'stutter' ? MAX_REPEAT : 120) &&
       (tag.name !== 'stutter' || Number.isInteger(scopedValue));
     if (!validShape || !validValue) {
@@ -285,10 +285,11 @@ function tokenizeInput(text: string): ScanResult {
   const defaultScope = { pitch: 1, volume: 1, rate: 1, stutters: [] as Array<{ id: number; repeats: number }> };
   const scopeAtToken: ScanResult['scopeAtToken'] = Array.from({ length: tokens.length }, () => defaultScope);
   const stutterEnds = new Map<number, number>();
-  type Scope = typeof defaultScope & { voice?: Partial<VoiceOptions>; startAt?: number; maxDuration?: number; spacing?: number };
+  type Scope = typeof defaultScope & { voice?: Partial<VoiceOptions>; startAt?: number; maxDuration?: number; spacing?: number; fit?: { id: number; seconds: number } };
   const activeStack: Array<{ before: Scope; name: string; stutterId?: number }> = [];
   let activeScope: Scope = defaultScope;
   let nextScopeStutterId = 1;
+  let nextScopeFitId = 1;
   for (let index = 0; index < tokens.length; index += 1) {
     const tag = tags.get(index);
     if (tag?.valid) {
@@ -322,6 +323,7 @@ function tokenizeInput(text: string): ScanResult {
         else if (tag.name === 'offset') next.startAt = value;
         else if (tag.name === 'duration') next.maxDuration = value;
         else if (tag.name === 'spacing') next.spacing = value;
+        else if (tag.name === 'fit') next.fit = { id: nextScopeFitId++, seconds: value };
         else {
           stutterId = nextScopeStutterId++;
           next.stutters = [...activeScope.stutters, { id: stutterId, repeats: value }];
@@ -416,6 +418,7 @@ function compileWordPlan(
       sourceStart: sourceRange?.start ?? scanned.spans[firstToken]?.start ?? 0,
       sourceEnd: sourceRange?.end ?? scanned.spans[lastToken]?.end ?? 0,
       timelineKind: kind,
+      ...(scope.fit ? { fit: { ...scope.fit } } : {}),
       ...(scope.stutters.length ? { stutterScopes: scope.stutters.map((active) => ({ ...active })) } : {}),
     };
     plan.push(planned);

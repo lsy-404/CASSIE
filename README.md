@@ -32,6 +32,7 @@ Type complete English words directly. Numbers expand into speech units where ava
 | --- | --- |
 | `<pitch value="1.2">text</pitch>` | Set speed and pitch for enclosed speech |
 | `<rate value="1.2">text</rate>` | Set speech rate without changing pitch, gaps or cues |
+| `<fit seconds="2">text</fit>` | Time-stretch enclosed speech to finish in 0.05–120 seconds, overriding the speech rate |
 | `<voice pitch="3" loudness="-2.5" tension="0.25" breathiness="0.3" formant="-2">text</voice>` | Adjust pitch, loudness, tension, breathiness and resonance for enclosed speech |
 | `<volume value="0.7">text</volume>` | Set volume for enclosed speech |
 | `<stutter repeats="3">text</stutter>` | Play enclosed speech, then repeat it three more times |
@@ -49,7 +50,7 @@ Effects end at their closing tag. Tags can nest; closing an inner tag restores t
 
 The effects simplify the [documented modern CASSIE behavior](https://en.scpslgame.com/index.php?title=Updates/14.2.3). Slash pairs are reserved for direct phonemes. Invalid, unknown, mismatched, or unclosed tags produce red error marks and a warning. The renderer has bounded duration and token counts and does not reproduce the game's announcement queue. Ambient facility mixing has been removed.
 
-Speech rate defaults to 1×. The global control and scoped rate each accept 0.5–2× and multiply when combined. Speech uses pitch-preserving time stretching; word gaps, measured gaps inside phrase recordings, explicit pauses, and effect clips including announcement boundary cues keep their duration.
+Inside `<fit>`, the rate is derived so the enclosed words and the gaps between them take the requested time; gaps, pauses and cues keep their length and count toward it. The derived rate is limited to 0.25–4× and a warning states the closest achievable duration when the limit applies. Content outside the tag is unaffected, and a stutter inside a fit group is not counted. Speech rate defaults to 1×. The global control and scoped rate each accept 0.5–2× and multiply when combined. Speech uses pitch-preserving time stretching; word gaps, measured gaps inside phrase recordings, explicit pauses, and effect clips including announcement boundary cues keep their duration.
 
 Voice post-processing uses [WORLD](https://github.com/mmorise/World) compiled to WebAssembly in the audio worker. Pitch accepts −12 to +12 semitones; loudness accepts −24 to +12 dB; tension accepts −1 to +1; breathiness accepts 0–1; formant accepts −6 to +6 semitones. The Fluent sliders and numeric fields allow fine adjustments. Scoped attributes override the corresponding global or enclosing voice setting, and closing the tag restores it. Omitted attributes inherit. `<pitch>` remains the game's combined speed/pitch effect; `<voice pitch="3">` raises pitch while keeping speech duration fixed.
 
