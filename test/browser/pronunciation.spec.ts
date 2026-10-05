@@ -88,9 +88,10 @@ test('uppercase recorded words stay case-insensitive while standalone I and unkn
   await expect(page.getByText('公告已就绪', { exact: true })).toBeVisible({ timeout: 90_000 });
   await expect(page.locator('.annotated-editor .token-recorded').filter({ hasText: /^CASSIE$/ })).toBeVisible();
   await expect(page.locator('.annotated-editor .token-synthesized').filter({ hasText: /^I$/ })).toBeVisible();
-  const acronym = page.locator('.annotated-editor .token-synthesized').filter({ hasText: /^XYZ$/ });
-  await expect(acronym).toBeVisible();
-  await expect(acronym).not.toHaveClass(/spell-missing/);
+  const acronymLetters = page.locator('.annotated-editor .token-synthesized').filter({ hasText: /^[XYZ]$/ });
+  await expect(acronymLetters).toHaveCount(3);
+  expect((await acronymLetters.allTextContents()).join('')).toBe('XYZ');
+  for (const letter of await acronymLetters.all()) await expect(letter).not.toHaveClass(/spell-missing/);
   const download = page.waitForEvent('download');
   await page.getByRole('link', { name: '下载 WAV', exact: true }).click();
   const item = await download;

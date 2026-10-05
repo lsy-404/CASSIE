@@ -13,14 +13,25 @@ type RenderedAnnouncement = Omit<Awaited<ReturnType<typeof renderAnnouncement>>,
 const bank = ref<Bank | null>(null);
 const loading = ref(true);
 const loadError = ref("");
-const text = ref("Attention all personnel. The facility is now under lockdown.");
+const text = ref([
+  "<start>",
+  "CASSIE: Attention all personnel.",
+  '<pitch value="1.2">Security</pitch> <volume value="0.7">alert</volume>.',
+  'me<pitch value="1.1">tri</pitch>cs need review.',
+  "ROC AUC I a A",
+  '<stutter repeats="1">Attention</stutter><pause seconds="0.5"/>',
+  "<br>",
+  '<offset seconds="0.1">Lockdown</offset> <duration seconds="0.3">ends</duration> <spacing seconds="0.2">now</spacing>.',
+  '<clip id="cassie"/>',
+  "/ a e: / <end>",
+].join("\n"));
 const pitch = ref(1);
 const volume = ref(1);
 const gap = ref(0.24);
 const liveRender = ref(true);
 const primaryInsertions = [
-  { label: "开始", kind: "marker", value: "<start/>" },
-  { label: "结束", kind: "marker", value: "<end/>" },
+  { label: "开始", kind: "marker", value: "<start>" },
+  { label: "结束", kind: "marker", value: "<end>" },
   { label: "停顿", kind: "marker", value: '<pause seconds="0.5"/>' },
   { label: "卡顿", kind: "scope", open: '<stutter repeats="3">', close: "</stutter>" },
 ] as const;
@@ -282,7 +293,7 @@ onBeforeUnmount(() => {
         <a href="https://github.com/lsy-404/CASSIE" target="_blank" rel="noreferrer">项目源码 ↗</a>
       </header>
       <main id="main" class="workspace">
-        <section class="page-heading"><div><p>本地音频工作室</p><h1>公告编辑器</h1><p>输入游戏修饰符，生成并试听公告音频。</p></div></section>
+        <section class="page-heading"><div><p>本地音频工作室</p><h1>公告编辑器</h1><p>直接输入英文单词，也可手敲语音标签或 / 音素 /。</p></div></section>
         <FluentNotice v-if="loading">正在准备本地语音素材库…</FluentNotice>
         <FluentNotice v-else-if="loadError" tone="danger">{{ loadError }} <FluentButton tone="secondary" @click="reloadApp">重试</FluentButton></FluentNotice>
         <div class="studio-grid">
@@ -297,11 +308,11 @@ onBeforeUnmount(() => {
                 <details class="advanced-tools"><summary>音效标签与用法</summary>
                   <div class="tool-group"><FluentButton v-for="command in scopedInsertions" :key="command.label" tone="subtle" :disabled="!bank || encodingOpus" @click="insertScope(command.open, command.close)">{{ command.label }}</FluentButton><FluentButton tone="subtle" :disabled="!bank || encodingOpus" @click="insertClip">素材片段</FluentButton><FluentButton tone="subtle" :disabled="!bank || encodingOpus" @click="replaceEditorRange('/ a e: /')">插入音素</FluentButton></div>
                   <div class="help-examples">
-                    <p>整词效果：<code>&lt;pitch value="1.2"&gt;attention&lt;/pitch&gt;</code></p>
+                    <p>整词效果：<code>&lt;pitch value="1.2"&gt;attention&lt;/pitch&gt;</code>。卡顿的 <code>repeats</code> 表示原始片段之后额外重复的次数。</p>
                     <p>可把插入点放在词中；标签不会自动添加空格。选择文字后点效果按钮会包住选区；没有选区时会插入并选中英文单词 <code>word</code>，可直接替换。闭合标签也可手动输入。</p>
-                    <p>停顿：<code>&lt;pause seconds="0.5"/&gt;</code>；换行：<code>&lt;br&gt;</code> 或 <code>&lt;br/&gt;</code>（均停顿 0.5 秒）。</p>
-                    <p>素材片段：<code>&lt;clip id="a"/&gt;</code>；将 <code>a</code> 改为素材 ID。</p>
-                    <p>直接音素：<code>/ a e: /</code>。已收录英文按大小写不敏感匹配；未收录的全大写词按英文字母名朗读，单独的 <code>I</code> 仍读作代词。</p>
+                    <p>独立标记可自闭或省略尾斜线：<code>&lt;start&gt;</code>/<code>&lt;start/&gt;</code> 与 <code>&lt;end&gt;</code>/<code>&lt;end/&gt;</code> 等效。<code>&lt;br&gt;</code> 或 <code>&lt;br/&gt;</code> 会停顿 0.5 秒。</p>
+                    <p>停顿：<code>&lt;pause seconds="0.5"&gt;</code> 或 <code>&lt;pause seconds="0.5"/&gt;</code>；素材：<code>&lt;clip id="cassie"&gt;</code> 或 <code>&lt;clip id="cassie"/&gt;</code>，将 ID 换成素材 ID。</p>
+                    <p>直接音素：<code>/ a e: /</code>。已收录英文按大小写不敏感匹配；未收录的全大写词按英文字母名朗读。示例里的大写 <code>A</code> 是字母名，小写 <code>a</code> 是冠词，单独的 <code>I</code> 是代词。</p>
                   </div>
                 </details>
               </div>
