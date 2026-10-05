@@ -9,3 +9,5 @@ __pycache__/
 .dev.vars*
 test/results/
 public/ffmpeg/
+
+/agents/
