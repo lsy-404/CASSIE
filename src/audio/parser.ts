@@ -544,6 +544,14 @@ function compileWordPlan(
         tokenIndex = inlineIndexes.at(-1)!;
         continue;
       }
+      const completeResolution = resolvePhoneUnits(complete.phones, phonemeCatalog, bank, false);
+      if (!completeResolution.units.length) {
+        warnings.push(...completeResolution.warnings.map((warning) => `“${fullWord}”: ${warning}`));
+        for (const index of inlineIndexes) classifications.set(index, 'error');
+        tokenIndex = inlineIndexes.at(-1)!;
+        continue;
+      }
+      warnings.push(...completeResolution.warnings.map((warning) => `“${fullWord}”: ${warning}`));
       const boundaries = [0];
       for (let fragment = 0; fragment < inlineIndexes.length - 1; fragment += 1) {
         const prefix = inlineIndexes.slice(0, fragment + 1).map((part) => tokens[part]).join('').toLocaleLowerCase('en-US');
@@ -566,27 +574,20 @@ function compileWordPlan(
       warnings.push(`Scoped pronunciation boundaries in “${fullWord}” use nearest IPA-phone alignment.`);
       for (let fragment = 0; fragment < inlineIndexes.length; fragment += 1) {
         const sourceToken = inlineIndexes[fragment];
-        const phones = complete.phones.slice(boundaries[fragment], boundaries[fragment + 1]);
-        if (!phones.length) {
+        const units = completeResolution.units.slice(boundaries[fragment], boundaries[fragment + 1]);
+        if (!units.length) {
           warnings.push(`The scoped text fragment “${tokens[sourceToken]}” maps to no IPA phones.`);
           classifications.set(sourceToken, 'error');
           continue;
         }
-        const resolved = resolvePhoneUnits(phones, phonemeCatalog, bank);
-        if (!resolved.units.length) {
-          warnings.push(...resolved.warnings.map((warning) => `“${fullWord}”: ${warning}`));
-          classifications.set(sourceToken, 'error');
-          continue;
-        }
         const fragmentScope = scanned.scopeAtToken[sourceToken];
-        warnings.push(...resolved.warnings.map((warning) => `“${fullWord}”: ${warning}`));
         const classification = 'error';
         pushPlan({
-          clipId: resolved.units[0].clipId,
+          clipId: units[0].clipId,
           display: fullWord,
           pitch: fragmentScope.pitch,
           volume: fragmentScope.volume,
-          phonemeUnits: resolved.units,
+          phonemeUnits: units,
           ...(fragmentScope.startAt !== undefined ? { startAt: fragmentScope.startAt } : {}),
           ...(fragmentScope.maxDuration !== undefined ? { maxDuration: fragmentScope.maxDuration } : {}),
           ...(fragmentScope.spacing !== undefined ? { spacing: fragmentScope.spacing } : {}),

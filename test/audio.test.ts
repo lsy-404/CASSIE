@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { analyzeText, createWordPlan } from '../src/audio/parser';
 import { getClipUsage } from '../src/audio/catalog';
 import { analyzeAnnouncement, renderAnnouncement } from '../src/audio/engine';
-import { appendTimelineEntry, applyStutter, clipTimelineToDuration, encodeWav, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, splicePhonemeWindows, stretchVowelLoop, transformWord } from '../src/audio/dsp';
+import { advancePlaybackCursorAfterRepeat, appendTimelineEntry, applyStutter, clipTimelineToDuration, encodeWav, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, splicePhonemeWindows, stretchVowelLoop, transformWord } from '../src/audio/dsp';
 import type { Bank } from '../src/audio/types';
 import type { PhonemeCatalog } from '../src/audio/phonemes';
 import { parseGeneratedPhones, resolvePhoneUnits } from '../src/audio/phonemes';
@@ -42,13 +42,13 @@ function word(id: string, extra: Partial<Parameters<typeof transformWord>[2]> = 
 }
 
 describe('CASSIE announcement parser', () => {
-  it('uses slash clip commands for explicit fragments and single-letter clips', () => {
+  it('uses markup clip tags for explicit fragments and single-letter clips', () => {
     const usage = (id: string) => getClipUsage({ id, file: `/audio/${id}.opus`, duration: 0.2, kind: 'word' });
-    expect(usage('_a')).toMatchObject({ insertText: '/clip:_a' });
-    expect(usage('a')).toMatchObject({ insertText: '/clip:a' });
-    expect(usage('the_vowel')).toMatchObject({ insertText: '/clip:the_vowel' });
+    expect(usage('_a')).toMatchObject({ insertText: '<clip id="_a"/>' });
+    expect(usage('a')).toMatchObject({ insertText: '<clip id="a"/>' });
+    expect(usage('the_vowel')).toMatchObject({ insertText: '<clip id="the_vowel"/>' });
     expect(usage('hello')).toMatchObject({ insertText: 'hello' });
-    expect(usage('a').description).toContain('/clip:a');
+    expect(usage('a').description).toContain('<clip id="a"/>');
   });
 
   it('expands signed decimal numbers into bank words', () => {
@@ -344,12 +344,22 @@ describe('CASSIE announcement parser', () => {
           clipId, ipa: phone, startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1,
           sourceSha256: `${hash}`.repeat(64), position: 'single' as const, previousIpa: null, nextIpa: null,
         }]])),
+        'ɛ': [
+          { ...phoneCatalog.phones['ɛ'][0], position: 'medial' as const, previousIpa: 'm', nextIpa: 't', startSeconds: 0.01, endSeconds: 0.09 },
+          { ...phoneCatalog.phones['ɛ'][0], position: 'final' as const, previousIpa: 'm', nextIpa: 't', startSeconds: 0.02, endSeconds: 0.1 },
+        ],
+        t: [
+          { clipId: 'phone-th', ipa: 't', position: 'medial' as const, previousIpa: 'ɛ', nextIpa: 'ɹ', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1, sourceSha256: 'd'.repeat(64) },
+          { clipId: 'phone-th', ipa: 't', position: 'initial' as const, previousIpa: 'ɛ', nextIpa: 'ɹ', startSeconds: 0.02, endSeconds: 0.1, sourceDurationSeconds: 0.1, sourceSha256: 'd'.repeat(64) },
+        ],
       },
     } satisfies PhonemeCatalog;
     const source = 'me<pitch value="1.2">tri</pitch>cs';
     const result = createWordPlan(source, { ...phoneBank, clips: [...phoneBank.clips, ...clips] }, undefined, catalog,
       new Map([['metrics', 'mɛtɹɪks'], ['me', 'mɛ'], ['metri', 'mɛtɹɪ']]), true);
     expect(result.plan.map((item) => item.phonemeUnits?.map((unit) => unit.ipa))).toEqual([['m', 'ɛ'], ['t', 'ɹ', 'ɪ'], ['k', 's']]);
+    expect(result.plan[0].phonemeUnits?.[1].startSeconds).toBe(0.01);
+    expect(result.plan[1].phonemeUnits?.[0].startSeconds).toBe(0.01);
     expect(result.plan.map((item) => item.pitch)).toEqual([1, 1.2, 1]);
     expect(result.plan.slice(1).every((item) => item.joinPrevious)).toBe(true);
     expect(result.tokens.filter((token) => token.kind !== 'marker').map((token) => token.spellingWord)).toEqual(['metrics', 'metrics', 'metrics']);
@@ -456,6 +466,10 @@ describe('audio DSP', () => {
     expect(nextClipStart(1, 'word', 'effect', 0.24)).toBe(1);
     expect(nextClipStart(1.2, 'effect', 'word', 0.24)).toBe(1.2);
     expect(nextClipStart(0, undefined, 'effect', 0.24, 0.5)).toBe(0.5);
+  });
+
+  it('keeps following audio after the full repeated group when overlapping words shorten the cursor', () => {
+    expect(advancePlaybackCursorAfterRepeat(0.96, 0.01, 17.53)).toEqual({ previousEnd: 17.53, previousStart: 17.53 });
   });
 
   it('maps phrase word and whitespace spans through crop, noninteger stutter points, repeats, and pitch', () => {
