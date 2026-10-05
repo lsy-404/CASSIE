@@ -22,27 +22,30 @@ Install the browser once with `npx playwright install chromium` before browser t
 
 ## Announcement syntax
 
-Use words from the supplied bank, separated by spaces. Numbers are expanded into speech units where available. The Fluent toolbar inserts slash commands that simplify the game's modifier behavior. Rendering updates as you edit; turn off the live-render checkbox to render manually. The audio bar supports seeking, with current words and spaces highlighted in the announcement.
+Type complete English words directly. Numbers expand into speech units where available. You can type the tags yourself or insert them from the Fluent toolbar. Rendering updates as you edit; turn off the live-render checkbox to render manually. The audio bar supports seeking, with current words and spaces highlighted in the announcement.
 
 | Modifier | Meaning |
 | --- | --- |
-| `/pitch:1.2` | Set subsequent playback speed and pitch |
-| `/volume:0.7` | Set subsequent voice volume |
-| `/offset:0.1` | Skip the beginning of the next clip |
-| `/duration:0.3` | Limit the next clip's duration |
-| `/pause:0.5` | Insert half a second of silence |
-| `/spacing:0.2` | Start the next clip this many seconds after the previous start; overlap is possible |
-| `/stutter:0.3:0.1:3` | Repeat a section of the next clip |
-| `/clip:id` | Insert a supplied recording by its clip ID |
-| `/start`, `/end` | Insert the announcement boundary cues |
+| `<pitch value="1.2">text</pitch>` | Set speed and pitch for enclosed speech |
+| `<volume value="0.7">text</volume>` | Set volume for enclosed speech |
+| `<stutter repeats="3">text</stutter>` | Repeat enclosed speech |
+| `<offset seconds="0.1">text</offset>` | Skip the start of enclosed speech |
+| `<duration seconds="0.3">text</duration>` | Limit the duration of enclosed speech |
+| `<spacing seconds="0.2">text</spacing>` | Set the enclosed speech's start spacing |
+| `<pause seconds="0.5"/>` | Insert half a second of silence |
+| `<br>` or `<br/>` | Insert half a second of silence |
+| `<clip id="id"/>` | Insert a supplied recording by its clip ID |
+| `<start/>`, `<end/>` | Insert the announcement boundary cues |
 
-The parser implements a simplified command syntax based on the [documented modern CASSIE behavior](https://en.scpslgame.com/index.php?title=Updates/14.2.3). Commands use a leading slash; phonemes use a pair of slashes. The renderer has bounded duration and token counts. It does not reproduce the game's announcement queue.
+Effects end at their closing tag. Tags can nest; closing an inner tag restores the enclosing parameters. For example, `<pitch value="1.2">attention</pitch> personnel` changes only `attention`. You can put tags inside a word, such as `me<pitch value="1.2">tri</pitch>cs`; its speech fragments join without a word gap. Such fragments use phoneme composition and can sound rough. Opening and closing tags remain visible in the editor and are never rendered as HTML.
+
+The effects simplify the [documented modern CASSIE behavior](https://en.scpslgame.com/index.php?title=Updates/14.2.3). Slash pairs are reserved for direct phonemes. Invalid, unknown, mismatched, or unclosed tags produce red error marks and a warning. The renderer has bounded duration and token counts and does not reproduce the game's announcement queue. Ambient facility mixing has been removed.
 
 Exact phrase recordings take priority. Article variants use the following written initial, so pronunciation exceptions may differ from the game.
 
-`/clip:id` explicitly inserts any supplied clip, including effects and internal fragments. Clip IDs and provenance are listed in `public/bank.json`.
+`<clip id="id"/>` explicitly inserts a supplied clip, including effects and internal fragments. Clip IDs and provenance are listed in `public/bank.json`.
 
-Single-letter text is pronounced as English text: `a` is the article and `I` is the pronoun. The game's NATO alphabet recordings remain available explicitly, for example `/clip:a` for Alpha and `/clip:i` for India.
+Recorded words match regardless of capitalization, including `CASSIE` and `Attention`. Unrecorded all-uppercase acronyms, such as `ROC` and `AUC`, use English letter names. A standalone `I` remains the pronoun, lowercase `a` is the article, and uppercase `A` is the letter name. The game's NATO alphabet recordings remain available explicitly, for example `<clip id="a"/>` for Alpha and `<clip id="i"/>` for India.
 
 ## Phoneme composition
 
@@ -52,7 +55,7 @@ The shortcuts `a` and `e` select `ɑː` and `ɛ`. A trailing `:` requests a long
 
 Unrecorded English words automatically use eSpeak's US English pronunciation through `phonemizer`. Existing word and phrase recordings take priority. Pronunciation conversion and composition run locally; missing phones cause the whole unrecorded word to be skipped with a warning.
 
-Underlines distinguish original recordings (green), composed words or phones (yellow), approximate or unavailable audio (red), and recognized slash commands (blue). Missing long vowels can be stretched from verified short-vowel windows; supported allophone substitutions keep the word playable with a red advisory underline. Words absent from both local US and British English Hunspell dictionaries use a red wavy underline and still synthesize. Dictionary hints can flag proper names or specialized vocabulary. Playback highlights the current word or intervening space using the rendered audio timeline.
+Underlines distinguish original recordings (green), composed words or phones (yellow), approximate or unavailable audio (red), and recognized tags (blue). Missing long vowels can be stretched from verified short-vowel windows; supported allophone substitutions keep the word playable with a red advisory underline. Words absent from both local US and British English Hunspell dictionaries use a red wavy underline and still synthesize. Dictionary hints can flag proper names or specialized vocabulary. Playback highlights the current word or intervening space using the rendered audio timeline.
 
 Echogarden's synthesis-reference MFCC/DTW alignment estimates phoneme boundaries from the actual audio, including the beginnings and endings of source words. Selection first favors the target word position, then neighboring phones and continuous source windows, with duration used to break ties. The renderer joins measured windows with short crossfades. These automatically aligned fragments can sound rough; pronunciation and transitions remain experimental.
 
