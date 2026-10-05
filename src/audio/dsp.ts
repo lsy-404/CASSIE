@@ -15,6 +15,60 @@ export function nextClipStart(
   return Math.max(0, previousEnd + gap + sleep);
 }
 
+function crossfadeJoin(left: Float32Array, right: Float32Array, sampleRate: number): Float32Array {
+  if (!left.length) return right;
+  if (!right.length) return left;
+  const overlap = Math.min(Math.round(sampleRate * 0.005), Math.floor(left.length / 4), Math.floor(right.length / 4));
+  if (!overlap) {
+    const output = new Float32Array(left.length + right.length);
+    output.set(left);
+    output.set(right, left.length);
+    return output;
+  }
+  const output = new Float32Array(left.length + right.length - overlap);
+  output.set(left.subarray(0, left.length - overlap));
+  for (let index = 0; index < overlap; index += 1) {
+    const amount = (index + 1) / (overlap + 1);
+    output[left.length - overlap + index] = left[left.length - overlap + index] * (1 - amount) + right[index] * amount;
+  }
+  output.set(right.subarray(overlap), left.length);
+  return output;
+}
+
+export function stretchVowelLoop(samples: Float32Array, sampleRate: number, factor: number): Float32Array {
+  if (!samples.length || !Number.isFinite(factor) || factor <= 1) return samples;
+  const targetLength = Math.ceil(samples.length * Math.min(2, factor));
+  const coreStart = Math.floor(samples.length * 0.2);
+  const coreEnd = Math.max(coreStart + 1, Math.ceil(samples.length * 0.8));
+  const head = samples.subarray(0, coreEnd);
+  const loop = samples.subarray(coreStart, coreEnd);
+  const tail = samples.subarray(coreEnd);
+  const fade = Math.min(Math.round(sampleRate * 0.005), Math.floor(head.length / 4), Math.floor(loop.length / 4), Math.floor(tail.length / 4));
+  if (!fade || loop.length <= fade * 2 || !tail.length) return samples;
+  let output: Float32Array<ArrayBufferLike> = head.slice();
+  const targetBeforeTail = targetLength - (tail.length - fade);
+  while (output.length < targetBeforeTail) {
+    const needed = targetBeforeTail - output.length;
+    const pieceLength = Math.min(loop.length, needed + fade);
+    output = crossfadeJoin(output, loop.subarray(0, pieceLength), sampleRate);
+  }
+  return crossfadeJoin(output, tail, sampleRate);
+}
+
+export function splicePhonemeWindows(segments: Float32Array[], sampleRate: number): Float32Array {
+  if (!segments.length) return new Float32Array(0);
+  let output: Float32Array<ArrayBufferLike> = segments[0];
+  for (let index = 1; index < segments.length; index += 1) output = crossfadeJoin(output, segments[index], sampleRate);
+  const faded = output.slice();
+  const fadeLength = Math.min(Math.round(sampleRate * 0.005), Math.floor(faded.length / 2));
+  for (let index = 0; index < fadeLength; index += 1) {
+    const gain = (index + 1) / fadeLength;
+    faded[index] *= gain;
+    faded[faded.length - 1 - index] *= gain;
+  }
+  return faded;
+}
+
 export function monoFromChannels(channels: Float32Array[]): Float32Array {
   if (!channels.length || channels.some((channel) => channel.length !== channels[0].length)) {
     throw new Error('Decoded audio has an invalid channel layout.');

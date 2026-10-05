@@ -1,15 +1,38 @@
 import { reactive } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import { analyzeText, createWordPlan } from '../src/audio/parser';
-import { renderAnnouncement } from '../src/audio/engine';
-import { applyStutter, encodeWav, mixLayers, monoFromChannels, nextClipStart, transformWord } from '../src/audio/dsp';
+import { analyzeAnnouncement, renderAnnouncement } from '../src/audio/engine';
+import { applyStutter, encodeWav, mixLayers, monoFromChannels, nextClipStart, splicePhonemeWindows, stretchVowelLoop, transformWord } from '../src/audio/dsp';
 import type { Bank } from '../src/audio/types';
+import type { PhonemeCatalog } from '../src/audio/phonemes';
 
 const bank: Bank = {
   version: '1',
   source: 'test fixture',
   clips: ['negative', 'zero', 'one', 'two', 'three', 'point', 'five', 'hundred', 'thousand', 'run', 'city', 'box', 'walk', 'good', 'cassie', 'word', 'apple', 'facility', 'the_vowel', 'the_consonant', 'all-remaining-personnel', 'green', 'human', 'personnel', 'safe']
     .map((id) => ({ id, file: `/audio/${id}.opus`, duration: 0.5, kind: 'word' as const })),
+};
+
+const phoneBank: Bank = {
+  ...bank,
+  clips: [...bank.clips,
+    { id: 'phone-a', file: '/audio/phone-a.opus', duration: 0.1, kind: 'word', sha256: 'a'.repeat(64) },
+    { id: 'phone-e', file: '/audio/phone-e.opus', duration: 0.1, kind: 'word', sha256: 'b'.repeat(64) },
+    { id: 'phone-j', file: '/audio/phone-j.opus', duration: 0.1, kind: 'word', sha256: 'c'.repeat(64) },
+    { id: 'phone-th', file: '/audio/phone-th.opus', duration: 0.1, kind: 'word', sha256: 'd'.repeat(64) },
+  ],
+};
+
+const phoneCatalog: PhonemeCatalog = {
+  schemaVersion: 1,
+  sourceBank: { version: bank.version, sha256: 'e'.repeat(64) },
+  phones: {
+    'ɑː': [{ clipId: 'phone-a', ipa: 'ˈɑː', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1, sourceSha256: 'a'.repeat(64) }],
+    'ɛ': [{ clipId: 'phone-e', ipa: 'ˈɛ', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1, sourceSha256: 'b'.repeat(64) }],
+    'j': [{ clipId: 'phone-j', ipa: 'j', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1, sourceSha256: 'c'.repeat(64) }],
+    'θ': [{ clipId: 'phone-th', ipa: 'θ', startSeconds: 0.01, endSeconds: 0.101, sourceDurationSeconds: 0.1, sourceSha256: 'd'.repeat(64) }],
+    'dʒ': [],
+  },
 };
 
 function word(id: string, extra: Partial<Parameters<typeof transformWord>[2]> = {}) {
@@ -64,6 +87,33 @@ describe('CASSIE announcement parser', () => {
     expect(result.plan[0]).toMatchObject({ startAt: 0.1, maxDuration: 0.3 });
     expect(result.plan[1]).toMatchObject({ spacing: 0.8 });
     expect(result.warnings).toEqual([]);
+  });
+
+  it('splices direct IPA, applies ASCII vowel aliases, and carries modifiers onto the segment', () => {
+    const result = createWordPlan('$PITCH_1.2 $VOL_0.6 $SLEEP_0.3 / a e: /', phoneBank, undefined, phoneCatalog);
+    expect(result.plan[0]).toMatchObject({
+      pitch: 1.2,
+      volume: 0.6,
+      sleep: 0.3,
+      phonemeUnits: [
+        { clipId: 'phone-a', ipa: 'ɑː' },
+        { clipId: 'phone-e', ipa: 'ɛ', stretchFactor: 1.7 },
+      ],
+    });
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('skips a direct IPA segment when any phone lacks a verified source window', () => {
+    const result = createWordPlan('cassie / θ /', phoneBank, undefined, phoneCatalog);
+    expect(result.plan.map((item) => item.clipId)).toEqual(['cassie']);
+    expect(result.warnings).toEqual(['No verified audio window for /θ/; the complete segment was skipped.']);
+  });
+
+  it('keeps generated IPA /j/ distinct from the direct ASCII affricate alias /jh/', () => {
+    const glide = createWordPlan('unknown', phoneBank, undefined, phoneCatalog, new Map([['unknown', 'j']]), true);
+    const affricate = createWordPlan('/ jh /', phoneBank, undefined, phoneCatalog, new Map(), true);
+    expect(glide.plan[0].phonemeUnits?.[0]).toMatchObject({ clipId: 'phone-j', ipa: 'j' });
+    expect(affricate.warnings).toEqual(['No verified audio window for /dʒ/; the complete segment was skipped.']);
   });
 
   it('inserts verified start/end cues at their text positions and direct bank clips', () => {
@@ -191,6 +241,18 @@ describe('audio DSP', () => {
     expect(nextClipStart(0, undefined, 'effect', 0.24, 0.5)).toBe(0.5);
   });
 
+  it('lengthens vowel centers without changing pitch and fades phone sequence boundaries', () => {
+    const sampleRate = 48_000;
+    const vowel = Float32Array.from({ length: 4_800 }, (_, index) => Math.sin((index * Math.PI * 2 * 220) / sampleRate));
+    const stretched = stretchVowelLoop(vowel, sampleRate, 1.7);
+    const spliced = splicePhonemeWindows([vowel, vowel], sampleRate);
+    expect(stretched.length).toBeGreaterThan(vowel.length * 1.65);
+    expect(stretched.length).toBeLessThan(vowel.length * 1.75);
+    expect(spliced.length).toBeLessThan(vowel.length * 2);
+    expect(spliced[0]).toBeCloseTo(0, 2);
+    expect(spliced.at(-1)).toBeCloseTo(0, 2);
+  });
+
   it('writes a valid mono 16-bit PCM WAV header and samples', async () => {
     const wav = encodeWav(new Float32Array([-1, 1]), 48_000);
     const bytes = new DataView(await wav.arrayBuffer());
@@ -203,6 +265,17 @@ describe('audio DSP', () => {
 });
 
 describe('audio worker handoff', () => {
+  it('keeps unknown-only analysis tolerant and avoids launching an empty audio render', async () => {
+    await expect(analyzeAnnouncement('unrecordedword', bank)).resolves.toMatchObject({
+      words: [],
+      warnings: ['No audio clip for “unrecordedword”.'],
+      ipa: [],
+    });
+    await expect(analyzeAnnouncement('   ', bank)).resolves.toEqual({ words: [], warnings: [], ipa: [] });
+    await expect(renderAnnouncement('unrecordedword', bank, { pitch: 1, volume: 1, gap: 0.24, background: false }))
+      .rejects.toThrow('No audio clip for “unrecordedword”.');
+  });
+
   it('copies Vue reactive bank data into a structured-cloneable worker request', async () => {
     class MockWorker {
       onerror: ((event: ErrorEvent) => void) | null = null;
