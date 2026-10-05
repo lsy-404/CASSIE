@@ -27,6 +27,7 @@
     "nspell": "2.1.5",
     "ogg-opus-decoder": "1.7.5",
     "phonemizer": "1.2.1",
+    "vue-i18n": "11.4.13",
     "vue": "3.5.43"
   },
   "devDependencies": {
