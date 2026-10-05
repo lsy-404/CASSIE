@@ -2,7 +2,7 @@ import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, reacti
 import { locale, setLocale, t } from "./i18n";
 import { analyzeAnnouncement, encodeWav, loadBank, renderAnnouncement, type AnalysisToken as EngineAnalysisToken, type TimelineEntry } from "./audio/engine";
 import { checkEnglishSpelling } from "./spelling";
-import { DEFAULT_ANNOUNCEMENT } from "./defaultAnnouncement";
+import { defaultAnnouncement } from "./defaultAnnouncement";
 import { boundedNumber, phonemeInsertion } from "./editor";
 import { FIT_RANGE, MARKERS, SCOPES, fitScope, type MarkerName, type ScopeName, type SettingId } from "./markup";
 import type { ActionId } from "./ribbon";
@@ -27,7 +27,7 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
   const bank = shallowRef<Bank | null>(null);
   const loading = ref(true);
   const loadError = ref("");
-  const text = ref(props.initialState?.text ?? DEFAULT_ANNOUNCEMENT);
+  const text = ref(props.initialState?.text ?? defaultAnnouncement);
   const pitch = ref(initialOptions?.pitch ?? 1);
   const volume = ref(initialOptions?.volume ?? 1);
   const gap = ref(initialOptions?.gap ?? 0.24);
