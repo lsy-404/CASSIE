@@ -84,7 +84,7 @@ export async function analyzeAnnouncement(
     return {
       words: plan.map((word) => word.display),
       warnings,
-      ipa: plan.map((word) => word.phonemeUnits?.map((unit) => unit.ipa).join(' ') ?? ''),
+      ipa: plan.map((word) => word.phonemeUnits?.map((unit) => unit.ipa).join(' ') ?? '').filter(Boolean),
     };
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;

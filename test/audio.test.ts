@@ -279,6 +279,7 @@ describe('audio DSP', () => {
 
 describe('audio worker handoff', () => {
   it('keeps unknown-only analysis tolerant and avoids launching an empty audio render', async () => {
+    await expect(analyzeAnnouncement('cassie', bank)).resolves.toMatchObject({ words: ['cassie'], ipa: [] });
     await expect(analyzeAnnouncement('unrecordedword', bank)).resolves.toMatchObject({
       words: [],
       warnings: ['No audio clip for “unrecordedword”.'],
