@@ -214,7 +214,7 @@ test('direct phonemes and unknown English words synthesize locally by default', 
   await expect(page.locator('.analysis-details summary')).toBeVisible();
   await waitForReady(page, 90000);
   await expect(page.locator('.annotated-editor .token-error')).toHaveText('/ a e: /');
-  await expect(page.getByText(/was stretched from/).last()).toBeVisible();
+  await expect(page.locator('.warning-item').filter({ hasText: /was stretched from/ })).toBeVisible();
   const phonemePath = info.outputPath('phonemes.wav');
   const bytes = await saveWav(page, phonemePath);
   expect(bytes.toString('ascii', 0, 4)).toBe('RIFF');
