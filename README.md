@@ -8,17 +8,17 @@ Vue and [platform-kit Fluent](https://github.com/lsy-404/platform-kit) provide t
 
 ## Development
 
-Use Node.js 22.12+ and npm:
+Use Node.js 22.12+ and pnpm 10.32.1:
 
 ```sh
-npm ci
-npm run dev
-npm test
-npm run build
-npm run test:browser
+pnpm install --frozen-lockfile
+pnpm dev
+pnpm test
+pnpm build
+pnpm test:browser
 ```
 
-Install the browser once with `npx playwright install chromium` before browser tests. Tests live in `test/`.
+Install the browser once with `pnpm exec playwright install chromium` before browser tests. Tests live in `test/`.
 
 ## Announcement syntax
 
@@ -66,8 +66,8 @@ Generation code, timestamp selection and composition code are AGPL-3.0-only. The
 ## Cloudflare deployment
 
 ```sh
-npm run deploy:check
-npm run deploy
+pnpm deploy:check
+pnpm deploy
 ```
 
 `wrangler.jsonc` deploys **Workers Static Assets** to the configured account and custom domain. There is no server script, database, runtime API, or server-side audio processing. For your own deployment, change the account ID and domain first. Missing assets return 404.
@@ -82,7 +82,7 @@ The Release includes `overture.json`, `overture.tar.gz` and `SHA256SUMS`, follow
 
 Open your Overture deployment with `?src=lsy-404/CASSIE`, select a release and your Cloudflare account, then choose a Worker name and optional custom domain. The package declares no storage resources or app secrets. Its small deployment entry only forwards to the static assets binding. Ordinary Wrangler deployment uses assets alone.
 
-Build the package with `npm run package:overture`. The packager checks the supported Overture version's 64 MiB asset budget, 24 MiB archive budget and 20,000-entry archive budget. FFmpeg remains compressed inside the package and is decompressed only in the visitor's browser.
+Build the package with `pnpm package:overture`. The packager checks the supported Overture version's 64 MiB asset budget, 24 MiB archive budget and 20,000-entry archive budget. FFmpeg remains compressed inside the package and is decompressed only in the visitor's browser.
 
 ## Licensing and sources
 
