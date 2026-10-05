@@ -82,7 +82,7 @@ export async function checkStartupCapabilities(signal?: AbortSignal): Promise<Ca
       }, checks.signal, [samples.buffer]),
       requestWorker(phonemeWorker, { words: ['hello'] }, (reply) => {
         const phones = (reply as WorkerReply & { phones?: Record<string, unknown> }).phones;
-        return typeof phones?.hello === 'string' && phones.hello.trim().length > 0;
+        return typeof phones?.hello === 'string' && /^h(?:ə|ɛ|e)l(?:oʊ|əʊ|oː)$/u.test(phones.hello.replace(/[ˈˌ\s]/gu, ''));
       }, checks.signal),
     ]);
     if (signal?.aborted) throw new DOMException('Startup check cancelled.', 'AbortError');

@@ -85,8 +85,7 @@ onBeforeUnmount(() => controller?.abort());
       </section>
       <section v-else class="terminal-entry__card" aria-label="CASSIE Terminal">
         <div class="terminal-entry__wordmark">
-          <h1>C.A.S.S.I.E.</h1>
-          <span>TERMINAL</span>
+          <h1>CASSIE <span>TERMINAL</span></h1>
         </div>
         <p class="terminal-entry__subtitle">{{ copy().subtitle }}</p>
         <p v-if="checking || unlocking" class="terminal-entry__status" role="status">{{ checking ? copy().checking : (props.locale === 'zh' ? '正在开启音频…' : 'Unlocking audio…') }}</p>

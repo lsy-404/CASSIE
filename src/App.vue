@@ -3,13 +3,17 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { locale, setLocale, t } from "./i18n";
 import {
   FluentButton, FluentCheckbox, FluentField, FluentNotice, FluentProgressBar,
-  FluentSlider, FluentTheme,
+  FluentTheme,
 } from "@platform-kit/fluent/vue";
 import { analyzeAnnouncement, encodeWav, loadBank, renderAnnouncement, type AnalysisToken as EngineAnalysisToken, type TimelineEntry } from "./audio/engine";
 import { checkEnglishSpelling } from "./spelling";
 import AnnouncementPlayer from "./components/AnnouncementPlayer.vue";
 import FineControl from "./components/FineControl.vue";
 import { phonemeInsertion } from "./editor";
+import type { DecodedUrlState } from "./url-state";
+
+const props = defineProps<{ initialState?: DecodedUrlState | null; urlError?: boolean }>();
+const initialOptions = props.initialState?.options;
 
 type Bank = Awaited<ReturnType<typeof loadBank>>;
 type AnalysisToken = EngineAnalysisToken & { spellingMissing?: boolean };
@@ -17,7 +21,7 @@ type RenderedAnnouncement = Omit<Awaited<ReturnType<typeof renderAnnouncement>>,
 const bank = ref<Bank | null>(null);
 const loading = ref(true);
 const loadError = ref("");
-const text = ref([
+const text = ref(props.initialState?.text ?? [
   "<start>",
   "CASSIE: Attention, future Foundation personnel!",
   "Join the Foundation. Protect humanity from anomalies. Enjoy paid lunch breaks and a generous one-exit-per-shift policy.",
@@ -28,16 +32,17 @@ const text = ref([
   'Our anom<pitch value="1.1">a</pitch>ly hotline answers in / a e: /: <clip id="cassie"/><br>',
   "<end>",
 ].join("\n"));
-const pitch = ref(1);
-const volume = ref(1);
-const gap = ref(0.24);
-const rate = ref(1);
-const voicePitchSemitones = ref(0);
-const breathiness = ref(0);
-const formantSemitones = ref(0);
-const loudnessDb = ref(0);
-const tension = ref(0);
+const pitch = ref(initialOptions?.pitch ?? 1);
+const volume = ref(initialOptions?.volume ?? 1);
+const gap = ref(initialOptions?.gap ?? 0.24);
+const rate = ref(initialOptions?.rate ?? 1);
+const voicePitchSemitones = ref(initialOptions?.voice.pitchSemitones ?? 0);
+const breathiness = ref(initialOptions?.voice.breathiness ?? 0);
+const formantSemitones = ref(initialOptions?.voice.formantSemitones ?? 0);
+const loudnessDb = ref(initialOptions?.voice.loudnessDb ?? 0);
+const tension = ref(initialOptions?.voice.tension ?? 0);
 const liveRender = ref(true);
+let initialExportPending = Boolean(props.initialState?.export);
 const primaryInsertions = [
   { label: "start", kind: "marker", value: "<start>" },
   { label: "end", kind: "marker", value: "<end>" },
@@ -276,6 +281,29 @@ async function exportOpus() {
   }
 }
 function onPlayerTime(seconds: number) { audioTime.value = seconds; }
+function inputSignature() {
+  return JSON.stringify([text.value, pitch.value, volume.value, gap.value, rate.value, voicePitchSemitones.value, loudnessDb.value, tension.value, breathiness.value, formantSemitones.value]);
+}
+async function exportInitialAnnouncement() {
+  const format = props.initialState?.export;
+  if (!format || !bank.value) { initialExportPending = false; return; }
+  const signature = inputSignature();
+  try {
+    await compose();
+    if (!rendered.value || signature !== inputSignature()) return;
+    if (format === "opus") await exportOpus();
+    if (!rendered.value || signature !== inputSignature()) return;
+    const url = format === "opus" ? opusUrl.value : downloadUrl.value;
+    if (!url) return;
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `cassie-announcement.${format}`;
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
+  } finally { initialExportPending = false; }
+}
 function onEditorScroll(event: Event) {
   const textarea = event.target as HTMLTextAreaElement;
   const style = getComputedStyle(textarea);
@@ -308,7 +336,7 @@ function invalidateRendered() {
 watch([text, pitch, volume, gap, rate, voicePitchSemitones, breathiness, formantSemitones, loudnessDb, tension, bank], () => {
   invalidateRendered();
   if (renderController) cancelRender();
-  if (!liveRender.value || !bank.value || !text.value.trim()) return;
+  if (initialExportPending || !liveRender.value || !bank.value || !text.value.trim()) return;
   if (liveRenderTimer) clearTimeout(liveRenderTimer);
   liveRenderTimer = setTimeout(() => { if (!rendering.value && !encodingOpus.value) void compose(); }, 500);
 });
@@ -327,6 +355,11 @@ onMounted(async () => {
   try { bank.value = await loadBank(); }
   catch (error) { loadError.value = error instanceof Error ? error.message : t("bankLoadError"); }
   finally { loading.value = false; }
+  if (initialExportPending) {
+    await nextTick();
+    if (liveRenderTimer) clearTimeout(liveRenderTimer);
+    await exportInitialAnnouncement();
+  }
 });
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onGlobalKeydown);
@@ -351,6 +384,7 @@ onBeforeUnmount(() => {
       </header>
       <main id="main" class="workspace">
         <section class="page-heading"><div><p class="system-ready"><span aria-hidden="true">●</span>{{ t('ready') }}</p><h1>{{ t('heading') }}</h1><p class="procedure-line">{{ t('procedure') }} <code>P-B-3</code> <span>·</span> {{ t('pageIntro') }}</p></div></section>
+        <FluentNotice v-if="urlError" tone="danger" data-testid="url-state-error">{{ t('urlStateInvalid') }}</FluentNotice>
         <FluentNotice v-if="loading">{{ t('loadingBank') }}</FluentNotice>
         <FluentNotice v-else-if="loadError" tone="danger">{{ loadError }} <FluentButton tone="secondary" @click="reloadApp">{{ t('retry') }}</FluentButton></FluentNotice>
         <div class="studio-grid">

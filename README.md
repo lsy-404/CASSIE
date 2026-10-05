@@ -6,7 +6,9 @@ A CASSIE announcement studio for [SCP: Secret Laboratory](https://scpslgame.com/
 
 Vue and [platform-kit Fluent](https://github.com/lsy-404/platform-kit) provide the interface. A dedicated Web Worker decodes the supplied Opus clips through `ogg-opus-decoder` WebAssembly and mixes the announcement. FFmpeg WASM loads only for Opus export. Text and rendered audio stay on your device.
 
-The interface supports Chinese and English, initially follows the browser language, and remembers the selected language. Custom playback controls can play already-rendered audio while later clips load; rendering progress disappears on completion. The export panel provides WAV and Opus downloads.
+The interface supports Chinese and English, initially follows the browser language, and remembers the selected language. The terminal entry checks real module workers and the audio WebAssembly engines before **Tap to unlock** enables the studio. A failed capability check displays a centered device error. Use a standard Chromium browser with full support for the required browser APIs.
+
+The terminal layout references the game's [official CASSIE monitor](https://en.scpslgame.com/index.php?title=File:LCZ_Screen_CASSIE_Scan_Complete.png). Its editable default is an original SCP recruitment broadcast with markup examples. One long playback bar also shows rendering progress, supports already-rendered audio and updates the current time from the media clock. The export panel provides WAV and Opus downloads.
 
 ## Development
 
@@ -30,7 +32,7 @@ Type complete English words directly. Numbers expand into speech units where ava
 | --- | --- |
 | `<pitch value="1.2">text</pitch>` | Set speed and pitch for enclosed speech |
 | `<rate value="1.2">text</rate>` | Set speech rate without changing pitch, gaps or cues |
-| `<voice pitch="3" breathiness="0.3" formant="-2">text</voice>` | Adjust independent pitch, breathiness and resonance for enclosed speech |
+| `<voice pitch="3" loudness="-2.5" tension="0.25" breathiness="0.3" formant="-2">text</voice>` | Adjust pitch, loudness, tension, breathiness and resonance for enclosed speech |
 | `<volume value="0.7">text</volume>` | Set volume for enclosed speech |
 | `<stutter repeats="3">text</stutter>` | Play enclosed speech, then repeat it three more times |
 | `<offset seconds="0.1">text</offset>` | Skip the start of enclosed speech |
@@ -49,9 +51,9 @@ The effects simplify the [documented modern CASSIE behavior](https://en.scpslgam
 
 Speech rate defaults to 1×. The global control and scoped rate each accept 0.5–2× and multiply when combined. Speech uses pitch-preserving time stretching; word gaps, measured gaps inside phrase recordings, explicit pauses, and effect clips including announcement boundary cues keep their duration.
 
-Voice post-processing uses [WORLD](https://github.com/mmorise/World) compiled to WebAssembly in the audio worker. Pitch is a semitone offset from −12 to +12; breathiness accepts 0–1; formant is a resonance offset from −6 to +6 semitones. Scoped attributes override the corresponding global or enclosing voice setting, and closing the tag restores it. Omitted attributes inherit. `<pitch>` remains the game's combined speed/pitch effect; `<voice pitch="3">` raises pitch while keeping speech duration fixed.
+Voice post-processing uses [WORLD](https://github.com/mmorise/World) compiled to WebAssembly in the audio worker. Pitch accepts −12 to +12 semitones; loudness accepts −24 to +12 dB; tension accepts −1 to +1; breathiness accepts 0–1; formant accepts −6 to +6 semitones. The Fluent sliders and numeric fields allow fine adjustments. Scoped attributes override the corresponding global or enclosing voice setting, and closing the tag restores it. Omitted attributes inherit. `<pitch>` remains the game's combined speed/pitch effect; `<voice pitch="3">` raises pitch while keeping speech duration fixed.
 
-All three voice settings default to zero and bypass analysis/resynthesis, preserving the original audio. Active settings resynthesize speech from its fundamental frequency, spectral envelope and aperiodicity. Breathiness increases nonperiodic energy in voiced frames; it is a vocoder effect, not a trained DiffSinger model. Gaps, pauses and special clips retain their original samples. Each processed speech block is limited to 20 seconds before speech-rate stretching. Extreme settings and very short phoneme fragments can sound less natural.
+All five voice settings default to zero, preserving the original audio. Loudness alone scales PCM without vocoder resynthesis. Positive gain is limited by the speech segment's peak headroom; overlapping layers retain the mixer's sample clamp. Other active settings resynthesize speech from its fundamental frequency, spectral envelope and aperiodicity. Tension applies a voiced spectral tilt of up to ±3 dB per octave around 1 kHz: lower is softer, higher is brighter. Breathiness increases nonperiodic energy in voiced frames. These are vocoder timbre controls, not a trained DiffSinger or physiological voice model. Gaps, pauses and special clips retain their original samples. Each vocoder-processed speech block is limited to 20 seconds before speech-rate stretching. Extreme settings and very short phoneme fragments can sound less natural.
 
 Exact phrase recordings take priority. Article variants use the following written initial, so pronunciation exceptions may differ from the game.
 
@@ -61,7 +63,7 @@ Recorded words match regardless of capitalization, including `CASSIE` and `Atten
 
 ## Phoneme composition
 
-Type space-separated phones between slashes, for example `/ a e: /`, or enter IPA such as `/ h ə l oʊ /`. Direct phoneme blocks work without enabling English word expansion. The interface lists the available measured phones and reports missing units.
+Type space-separated phones between slashes, for example `/ a e: /`, or enter IPA such as `/ h ə l oʊ /`. Direct phoneme blocks work without enabling English word expansion. The interface lists the available measured phones and reports missing units. Clicking a phone inside an existing block inserts only that phone; outside a block it inserts a new slash pair.
 
 The shortcuts `a` and `e` select `ɑː` and `ɛ`. A trailing `:` requests a long vowel: a matching recorded long vowel is used when available; otherwise the vowel's middle portion is repeated with crossfades while preserving its pitch. IPA `j` remains the palatal glide; use `jh` for `dʒ`. Long-vowel repetition can sound rough.
 
@@ -72,6 +74,27 @@ Underlines distinguish original recordings (green), composed words or phones (ye
 Echogarden's synthesis-reference MFCC/DTW alignment estimates phoneme boundaries from the actual audio, including the beginnings and endings of source words. Selection first favors the target word position, then neighboring phones and continuous source windows, with duration used to break ties. The renderer joins measured windows with short crossfades. These automatically aligned fragments can sound rough; pronunciation and transitions remain experimental.
 
 Generation code, timestamp selection and composition code are AGPL-3.0-only. The original and excerpted game audio retain CC BY-SA 3.0. Reproduce the timestamp index using `scripts/build-phonemes.mjs`; the source and output hashes are in `data/phonemes-manifest.json`.
+
+## URL loading and direct export
+
+`?data=<base64url>` preloads a UTF-8 JSON object containing `text`, optional `options`, and optional `locale` (`zh` or `en`). `&export=wav` or `&export=opus` renders and downloads the supplied announcement once after terminal unlock. An export requires valid `data`; invalid input produces an input error and never exports the default example. Importing does not play audio automatically.
+
+```js
+const payload = {
+  text: '<start>Attention all personnel<end>',
+  locale: 'en',
+  options: {
+    rate: 1.13,
+    voice: { loudnessDb: -2.5, tension: 0.25, breathiness: 0.1 },
+  },
+};
+const data = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+const url = `https://cassie.leisiyu.dev/?data=${data}&export=wav`;
+```
+
+This example uses Node.js. In browser code, encode the JSON with `TextEncoder` before base64 conversion. Standard padded base64 is also accepted when URL-encoded. Text is limited to 16 KiB and decoded JSON to 64 KiB. Unknown fields, duplicate parameters and out-of-range values are rejected. Omitted options use normal studio defaults. Base64 is an encoding, so the announcement remains readable by anyone who receives the URL.
+
+Supported option keys are `pitch` (0.65–1.35), `volume` (0–1), `gap` (0–0.8 seconds), `rate` (0.5–2), and `voice`. Voice keys are `pitchSemitones`, `loudnessDb`, `tension`, `breathiness`, and `formantSemitones`, with the ranges given above. The `<voice>` tag uses `pitch`, `loudness`, and `formant` for the corresponding scoped fields.
 
 ## Cloudflare deployment
 
