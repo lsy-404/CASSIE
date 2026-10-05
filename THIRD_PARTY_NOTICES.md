@@ -4,6 +4,7 @@
 | --- | --- | --- |
 | platform-kit Fluent 0.2.6 | Apache-2.0 | https://github.com/lsy-404/platform-kit/tree/fluent-v0.2.6 |
 | Vue 3.5.43 | MIT | https://github.com/vuejs/core/tree/v3.5.43 |
+| htmlparser2 12.0.0, dom-serializer, domelementtype, domhandler, domutils and entities | MIT AND BSD-2-Clause | https://github.com/fb55/htmlparser2 |
 | ogg-opus-decoder 1.7.5 and Opus decoder/common modules | MIT | https://github.com/eshaz/wasm-audio-decoders |
 | codec-parser | LGPL-3.0 | https://github.com/eshaz/codec-parser |
 | libopus | BSD-3-Clause | https://opus-codec.org/license/ |
