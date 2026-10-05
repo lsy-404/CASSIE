@@ -19,6 +19,7 @@
 | dictionary-en 4.0.0 Hunspell data | MIT AND BSD | https://github.com/wooorm/dictionaries/tree/main/dictionaries/en |
 | dictionary-en-gb 3.0.0 Hunspell data | MIT AND BSD | https://github.com/wooorm/dictionaries/tree/main/dictionaries/en-GB |
 | WORLD vocoder at `d625e7608ca23a870018f01e7c562ac683d9847f` | modified BSD | https://github.com/mmorise/World/tree/d625e7608ca23a870018f01e7c562ac683d9847f |
+| Emscripten 6.0.10 generated runtime, libc++/libc++abi and musl | MIT OR NCSA; Apache-2.0 WITH LLVM-exception; MIT/BSD | https://github.com/emscripten-core/emscripten/tree/6.0.10 |
 
 The FFmpeg core is used unmodified from the pinned npm package. Its source, library build recipes and build configuration are maintained in the linked upstream repository. The core's constituent libraries retain their respective licenses; upstream licensing and source details: https://ffmpegwasm.netlify.app/docs/overview/ .
 
