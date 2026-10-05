@@ -287,7 +287,7 @@ onBeforeUnmount(() => {
                 <div class="filter-tabs" role="group" aria-label="Filter voice clips"><button v-for="filter in kindFilters" :key="filter.value" type="button" :class="{ active: kindFilter === filter.value }" @click="kindFilter = filter.value">{{ filter.label }}</button></div>
               </div>
               <div v-if="visibleClips.length" class="clip-list" role="list" aria-label="Available voice clips">
-                <button v-for="clip in visibleClips" :key="clip.id" class="clip-row" type="button" role="listitem" :title="'Insert ' + clip.id" @click="insertClip(clip.id)"><span class="clip-play" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="m5.5 3.8 6.2 4.2-6.2 4.2z"/></svg></span><span class="clip-name">{{ clip.id }}</span><span class="clip-kind">{{ clip.kind === "effect" ? "EFFECT" : "VOICE" }}</span><span class="clip-duration">{{ clip.duration.toFixed(1) }}s</span><span class="clip-insert" aria-hidden="true">＋</span></button>
+                <button v-for="clip in visibleClips" :key="clip.id" class="clip-row" :class="{ 'clip-row--effect': clip.kind === 'effect' }" type="button" role="listitem" :disabled="clip.kind === 'effect'" :title="clip.kind === 'effect' ? 'Effect clips cannot be inserted into announcement text' : 'Insert ' + clip.id" @click="insertClip(clip.id)"><span class="clip-play" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="m5.5 3.8 6.2 4.2-6.2 4.2z"/></svg></span><span class="clip-name">{{ clip.id }}</span><span class="clip-kind">{{ clip.kind === "effect" ? "EFFECT" : "VOICE" }}</span><span class="clip-duration">{{ clip.duration.toFixed(1) }}s</span><span class="clip-insert" aria-hidden="true">{{ clip.kind === "effect" ? "—" : "＋" }}</span></button>
               </div>
               <div v-else class="empty-library"><span>⌕</span><strong>No clips found</strong><small>Try a different search or filter.</small></div>
               <button v-if="visibleClips.length < matchingClips.length" class="show-more" type="button" @click="visibleLimit += 16">SHOW MORE <span>{{ matchingClips.length - visibleClips.length }} REMAINING</span><b aria-hidden="true">↓</b></button>
@@ -309,7 +309,7 @@ onBeforeUnmount(() => {
 
             <article class="panel output-panel">
               <div class="panel-heading compact-heading output-heading"><div class="panel-title-wrap"><span class="step-number">04</span><div><h2>Render output</h2><p>Process locally in your browser.</p></div></div></div>
-              <div class="output-format"><span class="format-icon">WAV</span><div><strong>WAVE AUDIO</strong><small>16-bit · Mono · {{ rendered?.sampleRate ?? 44100 }} Hz</small></div><span class="format-local"><span></span>LOCAL</span></div>
+              <div class="output-format"><span class="format-icon">WAV</span><div><strong>WAVE AUDIO</strong><small>16-bit · Mono · {{ rendered?.sampleRate ?? 48000 }} Hz</small></div><span class="format-local"><span></span>LOCAL</span></div>
               <div v-if="rendering || encodingOpus || rendered" class="render-progress-block" aria-live="polite"><div class="progress-label-row"><span>{{ encodingOpus ? "ENCODING OPUS" : rendering ? "RENDERING ANNOUNCEMENT" : opusUrl ? "OPUS READY" : "RENDER COMPLETE" }}</span><span>{{ rendering || encodingOpus ? Math.round(progress) + "%" : rendered ? rendered.duration.toFixed(1) + "s" : "" }}</span></div><FluentProgressBar :value="progress" :max="100" :indeterminate="(rendering || encodingOpus) && progress === 0" :show-indicator="false" /><span class="progress-status">{{ encodingOpus ? opusMessage : rendering ? "Synthesizing voice clips in WebAssembly…" : opusUrl ? opusMessage : renderMessage }}</span></div>
               <div v-else class="ready-hint"><span class="hint-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span>Your announcement is ready to compose</span></div>
               <p v-if="renderMessage && !rendering && !rendered" class="render-error" role="status">{{ renderMessage }}</p><p v-if="audioError" class="render-error" role="alert">{{ audioError }}</p>
@@ -321,7 +321,7 @@ onBeforeUnmount(() => {
               </div>
               <div class="local-note"><span>◇</span> YOUR SCRIPT AND AUDIO STAY ON THIS DEVICE</div>
             </article>
-            <div class="syntax-note"><span class="syntax-icon">⌘</span><p><strong>Modifier syntax</strong><br />Use <code>$PITCH_1.1</code>, <code>$VOL_0.8</code> or <code>$SLEEP_0.5</code> inline.</p><a href="https://github.com/lsy-404/CASSIE#modifiers" target="_blank" rel="noreferrer" aria-label="Read modifier syntax documentation">↗</a></div>
+            <div class="syntax-note"><span class="syntax-icon">⌘</span><p><strong>Modifier syntax</strong><br />Use <code>$PITCH_1.1</code>, <code>$VOL_0.8</code> or <code>$SLEEP_0.5</code> inline.</p><a href="https://github.com/lsy-404/CASSIE#announcement-syntax" target="_blank" rel="noreferrer" aria-label="Read modifier syntax documentation">↗</a></div>
           </aside>
         </div>
       </main>

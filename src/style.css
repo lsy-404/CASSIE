@@ -185,6 +185,8 @@ h1 em { color: var(--acid); font-family: Georgia, serif; font-weight: 400; lette
 .clip-row { width: 100%; min-height: 40px; padding: 0 17px; display: grid; grid-template-columns: 23px minmax(0, 1fr) 59px 37px 15px; align-items: center; gap: 8px; border: 0; border-bottom: 1px solid var(--stroke); color: var(--text); background: transparent; text-align: left; cursor: pointer; transition: background .14s; }
 .clip-row:last-child { border-bottom: 0; }
 .clip-row:hover, .clip-row:focus-visible { background: var(--panel-raised); }
+.clip-row--effect, .clip-row--effect:hover { color: var(--faint); background: transparent; cursor: not-allowed; }
+.clip-row--effect .clip-name { color: var(--muted); }
 .clip-play { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid var(--stroke); color: var(--acid); }
 .clip-play svg { width: 12px; height: 12px; fill: currentColor; }
 .clip-name { overflow: hidden; color: var(--text); font: 10px "Consolas", monospace; text-overflow: ellipsis; white-space: nowrap; }
