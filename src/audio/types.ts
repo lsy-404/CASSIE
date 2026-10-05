@@ -19,6 +19,7 @@ export interface RenderOptions {
   pitch: number;
   volume: number;
   gap: number;
+  rate?: number;
   phonemes?: boolean;
 }
 
@@ -54,6 +55,7 @@ export interface WordPlan {
   display: string;
   pitch: number;
   volume: number;
+  rate?: number;
   startAt?: number;
   maxDuration?: number;
   sleep?: number;
