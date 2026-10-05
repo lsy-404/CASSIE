@@ -32,7 +32,7 @@ async function saveWav(page: import('@playwright/test').Page, path: string) {
   return readFile(path);
 }
 
-test('live render creates local WAV, native player tracks words and gaps, and Opus export remains valid', async ({ page }, info) => {
+test('live render creates local WAV, custom player tracks words and gaps, and Opus export remains valid', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   const remoteRequests: string[] = [];
@@ -119,18 +119,18 @@ test('manual rendering can be cancelled and restarted', async ({ page }) => {
   await page.goto('/');
   await page.locator('.live-controls .fluent-checkbox__box').click();
   await expect(page.getByRole('checkbox', { name: '实时渲染' })).not.toBeChecked();
-  await expect(page.getByRole('button', { name: '生成公告音频' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '生成音频' })).toBeVisible();
   await page.locator('textarea').fill('zzyyxxunrecorded');
   await page.route('**/audio/**', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     await route.continue();
   });
-  await page.getByRole('button', { name: '生成公告音频' }).click();
-  await page.getByRole('button', { name: '取消任务' }).click();
+  await page.getByRole('button', { name: '生成音频' }).click();
+  await page.getByRole('button', { name: '取消渲染' }).click();
   await expect(page.getByText('渲染已取消')).toBeVisible();
   await page.unroute('**/audio/**');
   await page.locator('textarea').fill('attention all personnel');
-  await page.getByRole('button', { name: '生成公告音频' }).click();
+  await page.getByRole('button', { name: '生成音频' }).click();
   await waitForReady(page);
   expect(errors).toEqual([]);
 });

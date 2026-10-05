@@ -3,8 +3,8 @@ import { readFile } from 'node:fs/promises';
 
 async function renderWav(page: import('@playwright/test').Page, text: string, output: string) {
   await page.locator('textarea').fill(text);
-  await page.getByRole('button', { name: '生成公告音频', exact: true }).click();
-  await expect(page.getByText('公告已就绪', { exact: true })).toBeVisible({ timeout: 60_000 });
+  await page.getByRole('button', { name: '生成音频', exact: true }).click();
+  await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('src', /^blob:/, { timeout: 60_000 });
   const download = page.waitForEvent('download');
   await page.getByRole('link', { name: '下载 WAV', exact: true }).click();
   await (await download).saveAs(output);
@@ -116,4 +116,36 @@ test('speech rate changes only speech while gaps, pauses and boundary cue PCM st
   }, (start.length + fastWord.length) / 48_000 + 0.12);
   await expect(page.locator('.annotated-editor .active')).toHaveText(' ');
   expect(errors).toEqual([]);
+});
+
+test('custom controls play an early fragment while later audio is still loading', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/');
+  await expect(page.locator('textarea')).toBeEnabled();
+  await page.locator('.live-controls label').click();
+  let release: () => void = () => undefined;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  await page.route('**/audio/cassie.opus', async (route) => {
+    await pending;
+    await route.continue();
+  });
+  try {
+    await page.locator('textarea').fill('attention cassie personnel');
+    await page.getByRole('button', { name: '生成音频', exact: true }).click();
+    const audio = page.locator('audio');
+    await expect(audio).toHaveAttribute('src', /^blob:/, { timeout: 30_000 });
+    await expect(audio).toHaveAttribute('data-complete', 'false');
+    await expect(audio).not.toHaveAttribute('controls');
+    await expect(page.locator('.player-progress')).toBeVisible();
+    await page.getByRole('button', { name: '播放', exact: true }).click();
+    await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => element.paused)).toBe(false);
+    release();
+    await expect(audio).toHaveAttribute('data-complete', 'true', { timeout: 30_000 });
+    await expect(page.locator('.player-progress')).toHaveCount(0);
+    await expect(page.getByText('公告已就绪', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: '导出', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '渲染与导出', exact: true })).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally { release(); }
 });

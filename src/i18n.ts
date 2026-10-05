@@ -15,7 +15,7 @@ const messages = {
     pitchLabel: "Pitch {value}×", volumeLabel: "Volume {value}%", gapLabelSetting: "Word gap {value}s", rateLabel: "Speech rate {value}×", rateHelp: "Changes spoken clip speed, not word gaps, pauses, or cues.", missingWords: "Unrecorded word synthesis", missingHelp: "Prefer recordings; try phoneme synthesis when unavailable", enabled: "On", inventory: "Available phonemes ({count})", insertPhone: "Insert phoneme {phone}", phoneTitle: "Insert / {phone} /",
     output: "Export", localAudio: "Audio is generated on this device; text is not uploaded.", encodingProgress: "Encoding Opus", encoding: "Encoding", cancel: "Cancel task", wav: "Download WAV", exportOpus: "Export Opus", downloadOpus: "Download Opus", renderNotice: "Render notice",
     renderCancelled: "Render cancelled", renderFailed: "Audio render failed", loadingOpus: "Loading Opus encoder…", opusReady: "Opus file ready", opusCancelled: "Encoding cancelled", opusFailed: "Opus encoding failed", sourceFooter: "Source code", licenses: "AGPL-3.0 and third-party licenses", studio: "Local audio studio", pageIntro: "Type English words directly, or enter voice tags and / phonemes /.", settingsRegion: "Render settings", editorRegion: "Announcement editor", lang: "Language", english: "English", chinese: "中文",
-    player: { play: "Play", pause: "Pause", seek: "Playback position", currentTime: "Current time", duration: "Duration", generate: "Generate announcement audio", cancel: "Cancel task", rendering: "Rendering announcement audio", audioPlayer: "Announcement audio player" },
+    player: { play: "Play", pause: "Pause", seek: "Playback position", currentTime: "Current time", duration: "Duration", generate: "Generate audio", cancel: "Cancel render", rendering: "Rendering audio", audioPlayer: "Announcement audio player" },
   },
   zh: {
     appTitle: "公告编辑器", source: "项目源码 ↗", heading: "公告编辑器", intro: "直接输入英文单词，也可手敲语音标签或 / 音素 /。", loadingBank: "正在准备本地语音素材库…",
@@ -29,7 +29,7 @@ const messages = {
     pitchLabel: "音高 {value}×", volumeLabel: "音量 {value}%", gapLabelSetting: "词间间隔 {value}s", rateLabel: "语速 {value}×", rateHelp: "只改变语音片段语速，不影响词间隔、停顿或提示音。", missingWords: "未收录词合成", missingHelp: "优先使用录音，缺少时尝试音素拼合", enabled: "已开启", inventory: "可用音素（{count}）", insertPhone: "插入音素 {phone}", phoneTitle: "插入 / {phone} /",
     output: "导出", localAudio: "音频在本机生成，不会上传文本。", encodingProgress: "正在编码 Opus", encoding: "正在编码", cancel: "取消任务", wav: "下载 WAV", exportOpus: "导出 Opus", downloadOpus: "下载 Opus", renderNotice: "渲染提示",
     renderCancelled: "渲染已取消", renderFailed: "音频渲染失败", loadingOpus: "正在加载 Opus 编码器…", opusReady: "Opus 文件已就绪", opusCancelled: "编码已取消", opusFailed: "Opus 编码失败", sourceFooter: "源代码", licenses: "AGPL-3.0 与第三方许可", studio: "本地音频工作室", pageIntro: "直接输入英文单词，也可手敲语音标签或 / 音素 /。", settingsRegion: "渲染设置", editorRegion: "公告编辑", lang: "语言", english: "English", chinese: "中文",
-    player: { play: "播放", pause: "暂停", seek: "播放位置", currentTime: "当前时间", duration: "总时长", generate: "生成公告音频", cancel: "取消任务", rendering: "正在渲染公告音频", audioPlayer: "公告音频播放器" },
+    player: { play: "播放", pause: "暂停", seek: "播放位置", currentTime: "当前时间", duration: "总时长", generate: "生成音频", cancel: "取消渲染", rendering: "正在渲染音频", audioPlayer: "公告音频播放器" },
   },
 } as const;
 

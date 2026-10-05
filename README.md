@@ -6,6 +6,8 @@ A CASSIE announcement studio for [SCP: Secret Laboratory](https://scpslgame.com/
 
 Vue and [platform-kit Fluent](https://github.com/lsy-404/platform-kit) provide the interface. A dedicated Web Worker decodes the supplied Opus clips through `ogg-opus-decoder` WebAssembly and mixes the announcement. FFmpeg WASM loads only for Opus export. Text and rendered audio stay on your device.
 
+The interface supports Chinese and English, initially follows the browser language, and remembers the selected language. Custom playback controls can play already-rendered audio while later clips load; rendering progress disappears on completion. The export panel provides WAV and Opus downloads.
+
 ## Development
 
 Use Node.js 22.12+ and pnpm 10.32.1:
@@ -27,6 +29,7 @@ Type complete English words directly. Numbers expand into speech units where ava
 | Modifier | Meaning |
 | --- | --- |
 | `<pitch value="1.2">text</pitch>` | Set speed and pitch for enclosed speech |
+| `<rate value="1.2">text</rate>` | Set speech rate without changing pitch, gaps or cues |
 | `<volume value="0.7">text</volume>` | Set volume for enclosed speech |
 | `<stutter repeats="3">text</stutter>` | Play enclosed speech, then repeat it three more times |
 | `<offset seconds="0.1">text</offset>` | Skip the start of enclosed speech |
@@ -42,6 +45,8 @@ The standalone markers `start`, `end`, `pause`, `clip`, and `br` also accept a t
 Effects end at their closing tag. Tags can nest; closing an inner tag restores the enclosing parameters. For example, `<pitch value="1.2">attention</pitch> personnel` changes only `attention`. You can put tags inside a word, such as `me<pitch value="1.2">tri</pitch>cs`. The complete word is pronounced first, and phonemized spelling prefixes locate the nearest phone boundaries for its effects; the measured phone fragments join without a word gap. Such boundaries are approximate and receive a red advisory. Opening and closing tags remain visible in the editor and are never rendered as HTML.
 
 The effects simplify the [documented modern CASSIE behavior](https://en.scpslgame.com/index.php?title=Updates/14.2.3). Slash pairs are reserved for direct phonemes. Invalid, unknown, mismatched, or unclosed tags produce red error marks and a warning. The renderer has bounded duration and token counts and does not reproduce the game's announcement queue. Ambient facility mixing has been removed.
+
+Speech rate defaults to 1×. The global control and scoped rate each accept 0.5–2× and multiply when combined. Speech uses pitch-preserving time stretching; word gaps, measured gaps inside phrase recordings, explicit pauses, and effect clips including announcement boundary cues keep their duration.
 
 Exact phrase recordings take priority. Article variants use the following written initial, so pronunciation exceptions may differ from the game.
 
@@ -67,7 +72,7 @@ Generation code, timestamp selection and composition code are AGPL-3.0-only. The
 
 ```sh
 pnpm deploy:check
-pnpm deploy
+pnpm run deploy
 ```
 
 `wrangler.jsonc` deploys **Workers Static Assets** to the configured account and custom domain. There is no server script, database, runtime API, or server-side audio processing. For your own deployment, change the account ID and domain first. Missing assets return 404.

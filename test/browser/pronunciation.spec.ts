@@ -13,7 +13,7 @@ test('ordinary English and best-effort phonemes produce audible audio throughout
   await expect(page.locator('textarea')).toBeEnabled();
   for (const word of ['a', 'I', 'unsupport', 'worksheet', 'metrics', 'beyond', 'accuracy']) {
     await page.locator('textarea').fill(word);
-    await page.getByRole('button', { name: '生成公告音频', exact: true }).click();
+    await page.getByRole('button', { name: '生成音频', exact: true }).click();
     await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 30_000 });
     const download = page.waitForEvent('download');
     await page.getByRole('link', { name: '下载 WAV', exact: true }).click();
@@ -31,7 +31,7 @@ test('ordinary English and best-effort phonemes produce audible audio throughout
     expect(rms).toBeGreaterThan(0.005);
   }
   await page.locator('textarea').fill(paragraph);
-  await page.getByRole('button', { name: '生成公告音频', exact: true }).click();
+  await page.getByRole('button', { name: '生成音频', exact: true }).click();
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 60_000 });
   await expect(page.getByText(/Could not segment generated pronunciation|No audio clip|complete segment was skipped/)).toHaveCount(0);
   await expect(page.locator('.annotated-editor .token-synthesized').filter({ hasText: /^metrics$/ })).toHaveCount(2);
