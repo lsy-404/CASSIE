@@ -145,6 +145,7 @@ export async function renderAnnouncement(
     worker.onerror = (event) => finishError(new Error(event.message || 'Audio worker failed.'));
     worker.onmessageerror = () => finishError(new Error('Audio worker returned an unreadable response.'));
     worker.onmessage = ({ data }) => {
+      if (finished) return;
       if (data.type === 'progress') {
         onProgress?.(Math.min(1, Math.max(0, data.value)));
       } else if (data.type === 'preview') {

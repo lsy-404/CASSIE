@@ -600,7 +600,7 @@ describe('audio worker handoff', () => {
       ipa: [],
     });
     await expect(analyzeAnnouncement('   ', bank)).resolves.toEqual({ words: [], warnings: [], ipa: [], tokens: [] });
-    await expect(renderAnnouncement('unrecordedword', bank, { pitch: 1, volume: 1, gap: 0.24, background: false }))
+    await expect(renderAnnouncement('unrecordedword', bank, { pitch: 1, volume: 1, gap: 0.24 }))
       .rejects.toThrow(/No audio clip|phoneme catalog is unavailable/i);
   });
 
@@ -625,9 +625,40 @@ describe('audio worker handoff', () => {
     }
     vi.stubGlobal('Worker', MockWorker);
     try {
-      const result = await renderAnnouncement('cassie', reactive(bank), { pitch: 1, volume: 1, gap: 0.24, background: false });
+      const result = await renderAnnouncement('cassie', reactive(bank), { pitch: 1, volume: 1, gap: 0.24, phonemes: false });
       expect(result.words).toEqual(['cassie']);
       expect(result.timeline).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('ignores queued progress and preview events after cancellation', async () => {
+    let captured: MockWorker | undefined;
+    class MockWorker {
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      onmessageerror: (() => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      postMessage() {}
+      terminate() {}
+      constructor() { captured = this; }
+    }
+    vi.stubGlobal('Worker', MockWorker);
+    const controller = new AbortController();
+    const onProgress = vi.fn();
+    const onPreview = vi.fn();
+    try {
+      const rendering = renderAnnouncement('cassie', bank, { pitch: 1, volume: 1, gap: 0.24, phonemes: false }, onProgress, controller.signal, onPreview);
+      await vi.waitFor(() => expect(captured).toBeDefined());
+      controller.abort();
+      await expect(rendering).rejects.toMatchObject({ name: 'AbortError' });
+      captured?.onmessage?.({ data: { type: 'progress', value: 0.8 } } as MessageEvent);
+      captured?.onmessage?.({ data: {
+        type: 'preview', samples: new Float32Array([0.25]), sampleRate: 48_000, duration: 1 / 48_000,
+        words: ['cassie'], warnings: [], timeline: [],
+      } } as MessageEvent);
+      expect(onProgress).not.toHaveBeenCalled();
+      expect(onPreview).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
     }
