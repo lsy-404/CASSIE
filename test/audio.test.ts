@@ -7,6 +7,7 @@ import { advancePlaybackCursorAfterRepeat, appendTimelineEntry, applyStutter, cl
 import type { Bank } from '../src/audio/types';
 import type { PhonemeCatalog } from '../src/audio/phonemes';
 import { parseGeneratedPhones, resolvePhoneUnits } from '../src/audio/phonemes';
+import { blendVoiceEdges, editWorldFeatures, isNeutralVoice, processVoicePreservingGaps } from '../src/audio/voice-dsp';
 
 const bank: Bank = {
   version: '1',
@@ -107,6 +108,22 @@ describe('CASSIE announcement parser', () => {
     expect(result.plan[1]).toMatchObject({ pauseDuration: 0.6 });
     expect(result.plan[2]).toMatchObject({ stutterScopes: [{ id: expect.any(Number), repeats: 3 }], stutterScopeEnds: [expect.any(Number)] });
     expect(result.warnings).toEqual([]);
+  });
+
+  it('applies nested voice scopes, inherits omitted fields, and restores parent values', () => {
+    const result = createWordPlan(
+      '<voice pitch="3" breathiness="0.3" formant="-2">cassie <voice pitch="-1">word</voice> apple</voice> cassie',
+      bank,
+    );
+    expect(result.plan.map((item) => item.voice)).toEqual([
+      { pitchSemitones: 3, breathiness: 0.3, formantSemitones: -2 },
+      { pitchSemitones: -1, breathiness: 0.3, formantSemitones: -2 },
+      { pitchSemitones: 3, breathiness: 0.3, formantSemitones: -2 },
+      undefined,
+    ]);
+    const invalid = analyzeText('<voice pitch="13">cassie</voice> <voice gain="0.5">word</voice>', bank);
+    expect(invalid.tokens.filter((token) => token.text.startsWith('<')).every((token) => token.kind === 'error')).toBe(true);
+    expect(invalid.warnings.filter((warning) => warning.includes('Invalid markup tag'))).toHaveLength(2);
   });
 
   it('retains the game timing and clip-selection modifiers', () => {
@@ -452,6 +469,63 @@ describe('CASSIE announcement parser', () => {
 });
 
 describe('audio DSP', () => {
+  it('edits WORLD pitch, voiced aperiodicity, and spectral formants without changing frame counts', () => {
+    const features = {
+      frameCount: 2,
+      fftSize: 4,
+      binCount: 3,
+      framePeriodMs: 5,
+      sampleCount: 240,
+      f0: new Float64Array([100, 0]),
+      spectral: new Float64Array([1, 2, 4, 2, 4, 8]),
+      aperiodicity: new Float64Array([0.2, 0.2, 0.2, 0.2, 0.2, 0.2]),
+    };
+    const edited = editWorldFeatures(features, { pitchSemitones: 12, breathiness: 1, formantSemitones: 6 });
+    expect(edited.f0).toEqual(new Float64Array([200, 0]));
+    expect(edited.aperiodicity[0]).toBeCloseTo(Math.sqrt(0.2 ** 2 + 0.75 * (1 - 0.2 ** 2)));
+    expect(edited.aperiodicity[3]).toBe(0.2);
+    expect(edited.spectral[0]).toBe(1);
+    expect(edited.spectral[1]).toBeCloseTo(1.7071);
+    expect(edited.spectral[2]).toBeCloseTo(2.8284);
+    expect(edited.spectral[3]).toBe(2);
+    expect(edited.spectral[4]).toBeCloseTo(3.4142);
+    expect(edited.spectral[5]).toBeCloseTo(5.6569);
+    expect(edited.spectral).toHaveLength(features.spectral.length);
+    expect(isNeutralVoice({ pitchSemitones: 0, breathiness: 0, formantSemitones: 0 })).toBe(true);
+  });
+
+  it('blends the WORLD result back at clip edges while preserving short-fragment duration', () => {
+    const sampleRate = 48_000;
+    const input = Float32Array.from({ length: 1_440 }, (_, index) => Math.sin(2 * Math.PI * 220 * index / sampleRate) * 0.2);
+    const processed = Float32Array.from(input, (sample) => sample * 0.5);
+    const output = blendVoiceEdges(input, processed, sampleRate);
+    expect(output).toHaveLength(input.length);
+    expect(output[0]).toBeCloseTo(input[0] * 0.5);
+    expect(output[300]).toBeCloseTo(input[300] * 0.5);
+    expect(output.every(Number.isFinite)).toBe(true);
+    expect(Math.sqrt(output.reduce((sum, value) => sum + value * value, 0) / output.length)).toBeGreaterThan(0.05);
+  });
+
+  it('keeps measured phrase gap samples unchanged when processing speech spans', async () => {
+    const input = Float32Array.from({ length: 12 }, (_, index) => index / 12);
+    const output = await processVoicePreservingGaps(input, 10, [{ startSeconds: 0.4, endSeconds: 0.7 }], async (speech) => {
+      return Float32Array.from(speech, (sample) => -sample);
+    });
+    expect(output).toHaveLength(input.length);
+    expect([...output.slice(4, 7)]).toEqual([...input.slice(4, 7)]);
+    expect([...output.slice(0, 4)]).toEqual([...input.slice(0, 4)].map((sample) => -sample));
+    expect([...output.slice(7)]).toEqual([...input.slice(7)].map((sample) => -sample));
+  });
+
+  it.each([1, 1.5])('keeps voice processing in the rendered speech at rate %s', async (rate) => {
+    const sampleRate = 48_000;
+    const input = Float32Array.from({ length: sampleRate / 10 }, (_, index) => Math.sin(2 * Math.PI * 220 * index / sampleRate) * 0.2);
+    const voiced = await processVoicePreservingGaps(input, sampleRate, [], async (speech) => Float32Array.from(speech, (sample) => sample * 0.5));
+    const output = stretchSpeechRate(voiced, sampleRate, rate);
+    expect(output.length).toBe(Math.ceil(input.length / rate));
+    expect(output).not.toEqual(input);
+  });
+
   it('converts stereo PCM to mono and changes clip length with pitch', () => {
     expect([...monoFromChannels([new Float32Array([1, -1]), new Float32Array([-1, 1])])]).toEqual([0, 0]);
     const samples = new Float32Array([0, 0.5, 1, 0.5]);
@@ -609,8 +683,9 @@ describe('audio worker handoff', () => {
       onerror: ((event: ErrorEvent) => void) | null = null;
       onmessageerror: (() => void) | null = null;
       onmessage: ((event: MessageEvent) => void) | null = null;
-      postMessage(message: unknown) {
+      postMessage(message: { options?: { voice?: { pitchSemitones: number; breathiness: number; formantSemitones: number } } }) {
         expect(() => structuredClone(message)).not.toThrow();
+        expect(message.options?.voice).toEqual({ pitchSemitones: 12, breathiness: 0, formantSemitones: -6 });
         queueMicrotask(() => this.onmessage?.({ data: {
           type: 'done',
           samples: new Float32Array([0.25]),
@@ -625,7 +700,13 @@ describe('audio worker handoff', () => {
     }
     vi.stubGlobal('Worker', MockWorker);
     try {
-      const result = await renderAnnouncement('cassie', reactive(bank), { pitch: 1, volume: 1, gap: 0.24, phonemes: false });
+      const result = await renderAnnouncement('cassie', reactive(bank), {
+        pitch: 1,
+        volume: 1,
+        gap: 0.24,
+        phonemes: false,
+        voice: { pitchSemitones: 20, breathiness: -0.5, formantSemitones: -12 },
+      });
       expect(result.words).toEqual(['cassie']);
       expect(result.timeline).toHaveLength(1);
     } finally {
