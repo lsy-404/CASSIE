@@ -85,7 +85,7 @@ interface ScanResult {
   inlineFragment: boolean[];
   inlineGroups: Map<number, number[]>;
   inlineGroupId: Array<number | undefined>;
-  scopeAtToken: Array<{ pitch: number; volume: number; rate: number; voice?: Partial<VoiceOptions>; startAt?: number; maxDuration?: number; spacing?: number; fit?: { id: number; seconds: number }; stutters: Array<{ id: number; repeats: number }> }>;
+  scopeAtToken: Array<{ pitch: number; volume: number; rate: number; voice?: Partial<VoiceOptions>; startAt?: number; maxDuration?: number; spacing?: number; fits?: Array<{ id: number; seconds: number }>; stutters: Array<{ id: number; repeats: number }> }>;
   stutterEnds: Map<number, number>;
 }
 
@@ -285,7 +285,7 @@ function tokenizeInput(text: string): ScanResult {
   const defaultScope = { pitch: 1, volume: 1, rate: 1, stutters: [] as Array<{ id: number; repeats: number }> };
   const scopeAtToken: ScanResult['scopeAtToken'] = Array.from({ length: tokens.length }, () => defaultScope);
   const stutterEnds = new Map<number, number>();
-  type Scope = typeof defaultScope & { voice?: Partial<VoiceOptions>; startAt?: number; maxDuration?: number; spacing?: number; fit?: { id: number; seconds: number } };
+  type Scope = typeof defaultScope & { voice?: Partial<VoiceOptions>; startAt?: number; maxDuration?: number; spacing?: number; fits?: Array<{ id: number; seconds: number }> };
   const activeStack: Array<{ before: Scope; name: string; stutterId?: number }> = [];
   let activeScope: Scope = defaultScope;
   let nextScopeStutterId = 1;
@@ -323,7 +323,7 @@ function tokenizeInput(text: string): ScanResult {
         else if (tag.name === 'offset') next.startAt = value;
         else if (tag.name === 'duration') next.maxDuration = value;
         else if (tag.name === 'spacing') next.spacing = value;
-        else if (tag.name === 'fit') next.fit = { id: nextScopeFitId++, seconds: value };
+        else if (tag.name === 'fit') next.fits = [...(activeScope.fits ?? []), { id: nextScopeFitId++, seconds: value }];
         else {
           stutterId = nextScopeStutterId++;
           next.stutters = [...activeScope.stutters, { id: stutterId, repeats: value }];
@@ -418,7 +418,7 @@ function compileWordPlan(
       sourceStart: sourceRange?.start ?? scanned.spans[firstToken]?.start ?? 0,
       sourceEnd: sourceRange?.end ?? scanned.spans[lastToken]?.end ?? 0,
       timelineKind: kind,
-      ...(scope.fit ? { fit: { ...scope.fit } } : {}),
+      ...(scope.fits ? { fits: scope.fits.map((group) => ({ ...group })) } : {}),
       ...(scope.stutters.length ? { stutterScopes: scope.stutters.map((active) => ({ ...active })) } : {}),
     };
     plan.push(planned);

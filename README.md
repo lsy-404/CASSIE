@@ -14,10 +14,10 @@ The terminal layout references the game's [official CASSIE monitor](https://en.s
 
 The studio is laid out like an editor: a title bar, a Word-style ribbon, an activity bar with a collapsible side bar, the announcement editor with a line-number gutter and token highlighting, a bottom panel (Player, Problems, Analysis, Export) and a status bar. The theme is the Fluent dark scheme with a white accent and neutral greys; all overrides live in `src/theme.css`.
 
-- The ribbon is data driven: `src/ribbon.ts` lists tabs, groups and commands (label, icon, enabled predicate, action id) and one generic `Ribbon.vue` renders them. Double-click the active ribbon tab to collapse or expand it. Adding a command or group is one entry in that table plus its action in `src/studio.ts`.
+- The ribbon is data driven: `src/ribbon.ts` lists tabs, groups and commands (label, icon, enabled predicate, action id) and one generic `Ribbon.vue` renders them. Double-click the active ribbon tab, use the chevron at the right end of the ribbon, or press `Ctrl+F1` to collapse or expand it; with the ribbon collapsed, clicking or pressing Enter on a tab expands it again. Adding a command is one entry in that table, one handler in `src/studio.ts` (the action table is checked against the `ActionId` union at compile time) and label and tip keys in both locales in `src/i18n.ts`; a new tag also needs an entry in `src/markup.ts`.
 - `src/studio.ts` holds the shared state and actions (text, options, render and export lifecycle, analysis, editor insertion) and is provided to the components under `src/components`.
 - The side bar shows the tag outline, the phoneme inventory, the sound settings or the help and markup reference. Shortcuts: `/` focuses the editor, `Ctrl/Cmd+Enter` renders, `Ctrl/Cmd+B` toggles the side bar.
-- Below 820 px the side bar becomes an overlay and the ribbon scrolls horizontally.
+- Below 820 px the side bar becomes an overlay (`Esc` closes it) and the ribbon scrolls horizontally with edge buttons.
 
 ## Development
 
@@ -53,7 +53,7 @@ Type complete English words directly. Numbers expand into speech units where ava
 | `<clip id="id"/>` | Insert a supplied recording by its clip ID |
 | `<start>`, `<end>` | Insert the announcement boundary cues |
 
-The standalone markers `start`, `end`, `pause`, `clip`, and `br` also accept a trailing slash, such as `<start/>`. They do not need closing tags. The initial editable announcement demonstrates every supported tag, uppercase text, inline effects, and direct phones.
+The standalone markers `start`, `end`, `pause`, `clip`, and `br` also accept a trailing slash, such as `<start/>`. They do not need closing tags. The initial editable announcement demonstrates the common effect tags, including `<fit>`.
 
 Effects end at their closing tag. Tags can nest; closing an inner tag restores the enclosing parameters. For example, `<pitch value="1.2">attention</pitch> personnel` changes only `attention`. You can put tags inside a word, such as `me<pitch value="1.2">tri</pitch>cs`. The complete word is pronounced first, and phonemized spelling prefixes locate the nearest phone boundaries for its effects; the measured phone fragments join without a word gap. Such boundaries are approximate and receive a red advisory. Opening and closing tags remain visible in the editor and are never rendered as HTML.
 

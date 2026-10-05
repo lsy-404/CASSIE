@@ -4,14 +4,16 @@ import { analyzeAnnouncement, encodeWav, loadBank, renderAnnouncement, type Anal
 import { checkEnglishSpelling } from "./spelling";
 import { defaultAnnouncement } from "./defaultAnnouncement";
 import { boundedNumber, phonemeInsertion } from "./editor";
-import { FIT_RANGE, MARKERS, SCOPES, fitScope, type MarkerName, type ScopeName, type SettingId } from "./markup";
-import type { ActionId } from "./ribbon";
+import { FIT_RANGE, MARKERS, SCOPES, MARKER_NAMES, SCOPE_NAMES, SETTING_IDS, fitScope, type SettingId } from "./markup";
+import { DEFAULT_GAP } from "./audio/fit";
+import type { ActionId, RibbonTabId } from "./ribbon";
 import type { DecodedUrlState } from "./url-state";
 
 export const SIDE_VIEWS = ["outline", "phonemes", "settings", "help"] as const;
 export const PANEL_TABS = ["player", "problems", "analysis", "export"] as const;
 export type SideView = (typeof SIDE_VIEWS)[number];
 export type PanelTab = (typeof PANEL_TABS)[number];
+export const SIDE_VIEW_LABELS: Record<SideView, string> = { outline: "outline", phonemes: "phonemeList", settings: "settings", help: "help" };
 
 type Bank = Awaited<ReturnType<typeof loadBank>>;
 export type AnalysisToken = EngineAnalysisToken & { spellingMissing?: boolean };
@@ -19,6 +21,10 @@ type RenderedAnnouncement = Omit<Awaited<ReturnType<typeof renderAnnouncement>>,
 
 const statusMessageKeys = new Set(["renderCancelled", "opusCancelled", "opusReady", "loadingOpus", "renderFailed", "opusFailed"]);
 const COMPACT_QUERY = "(max-width: 819px)";
+
+function actionFamily<P extends string, K extends string>(prefix: P, keys: readonly K[], run: (key: K) => void) {
+  return Object.fromEntries(keys.map((key) => [`${prefix}.${key}`, () => run(key)])) as Record<`${P}.${K}`, () => void>;
+}
 
 export function createStudio(props: { initialState?: DecodedUrlState | null; urlError?: boolean }) {
   const initialOptions = props.initialState?.options;
@@ -30,7 +36,7 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
   const text = ref(props.initialState?.text ?? defaultAnnouncement);
   const pitch = ref(initialOptions?.pitch ?? 1);
   const volume = ref(initialOptions?.volume ?? 1);
-  const gap = ref(initialOptions?.gap ?? 0.24);
+  const gap = ref(initialOptions?.gap ?? DEFAULT_GAP);
   const rate = ref(initialOptions?.rate ?? 1);
   const voicePitch = ref(initialOptions?.voice.pitchSemitones ?? 0);
   const breathiness = ref(initialOptions?.voice.breathiness ?? 0);
@@ -45,7 +51,7 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
   const sideView = ref<SideView>("outline");
   const panelOpen = ref(true);
   const panelTab = ref<PanelTab>("player");
-  const ribbonTab = ref("home");
+  const ribbonTab = ref<RibbonTabId>("home");
   const ribbonCollapsed = ref(false);
 
   const progress = ref(0);
@@ -97,7 +103,8 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
     field.focus();
     field.setSelectionRange(offset, offset);
     const lineHeight = parseFloat(getComputedStyle(field).lineHeight) || 20;
-    const top = (text.value.slice(0, offset).split("\n").length - 1) * lineHeight;
+    const line = text.value.slice(0, offset).split("\n").length - 1;
+    const top = document.querySelectorAll<HTMLElement>(".gutter-line")[line]?.offsetTop ?? line * lineHeight;
     if (top < field.scrollTop || top > field.scrollTop + field.clientHeight - lineHeight * 2) field.scrollTop = Math.max(0, top - field.clientHeight / 3);
     syncCursor();
     if (compact.value) sideBarOpen.value = false;
@@ -146,7 +153,7 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
       const controller = new AbortController();
       analysisController = controller;
       try {
-        const result = await analyzeAnnouncement(text.value, currentBank, true, controller.signal);
+        const result = await analyzeAnnouncement(text.value, currentBank, true, controller.signal, { gap: gap.value, pitch: pitch.value, rate: rate.value });
         let tokens: AnalysisToken[] = result.tokens;
         const spellingWords = [...new Set(tokens
           .filter((token) => (token.kind === "synthesized" || token.kind === "error") && token.spellingWord)
@@ -304,9 +311,13 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
     sideBarOpen.value = true;
     void nextTick(() => document.querySelector<HTMLElement>(`[data-setting="${id}"] input`)?.focus());
   }
+  function toggleRibbon() {
+    ribbonCollapsed.value = !ribbonCollapsed.value;
+    void nextTick(() => document.getElementById(`ribbon-tab-${ribbonTab.value}`)?.focus());
+  }
   function focusEditor() { editorEl.value?.focus(); }
 
-  const actions: Record<ActionId, () => void> = {
+  const actions = {
     render: () => void compose(),
     cancel: cancelRender,
     toggleLive: () => { liveRender.value = !liveRender.value; },
@@ -314,7 +325,7 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
     exportOpus: () => { showPanel("export"); if (opusUrl.value) saveUrl(opusUrl.value, "opus"); else void exportOpus(); },
     toggleSideBar: () => { sideBarOpen.value = !sideBarOpen.value; },
     togglePanel: () => { panelOpen.value = !panelOpen.value; },
-    toggleRibbon: () => { ribbonCollapsed.value = !ribbonCollapsed.value; },
+    toggleRibbon,
     insertPhonemes: () => insertPhoneme("a e:"),
     "scope.fit": () => {
       const seconds = boundedNumber(fitSeconds.value, FIT_RANGE.min, FIT_RANGE.max) ?? FIT_RANGE.default;
@@ -322,11 +333,11 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
       const scope = fitScope(seconds);
       insertScope(scope.open, scope.close);
     },
-    ...Object.fromEntries((Object.keys(MARKERS) as MarkerName[]).map((name) => [`marker.${name}`, () => insertMarker(MARKERS[name])])),
-    ...Object.fromEntries((Object.keys(SCOPES) as ScopeName[]).map((name) => [`scope.${name}`, () => insertScope(SCOPES[name].open, SCOPES[name].close)])),
-    ...Object.fromEntries(SIDE_VIEWS.map((view) => [`view.${view}`, () => { sideView.value = view; sideBarOpen.value = true; }])),
-    ...Object.fromEntries((["pitch", "volume", "gap", "rate", "voicePitch", "loudness", "tension", "breathiness", "formant"] as SettingId[]).map((id) => [`setting.${id}`, () => focusSetting(id)])),
-  } as Record<ActionId, () => void>;
+    ...actionFamily("marker", MARKER_NAMES, (name) => insertMarker(MARKERS[name])),
+    ...actionFamily("scope", SCOPE_NAMES, (name) => insertScope(SCOPES[name].open, SCOPES[name].close)),
+    ...actionFamily("view", SIDE_VIEWS, (view) => { sideView.value = view; sideBarOpen.value = true; }),
+    ...actionFamily("setting", SETTING_IDS, focusSetting),
+  } satisfies Record<ActionId, () => void>;
   function run(action: ActionId) { actions[action](); }
 
   function onGlobalKeydown(event: KeyboardEvent) {
@@ -338,6 +349,12 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
     } else if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key === "Enter") {
       event.preventDefault();
       void compose();
+    } else if (event.key === "F1" && event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
+      event.preventDefault();
+      toggleRibbon();
+    } else if (event.key === "Escape" && compact.value && sideBarOpen.value) {
+      sideBarOpen.value = false;
+      document.querySelector<HTMLElement>(`.activitybar [data-view="${sideView.value}"]`)?.focus();
     } else if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "b") {
       event.preventDefault();
       sideBarOpen.value = !sideBarOpen.value;
@@ -348,7 +365,7 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
     sideBarOpen.value = !event.matches;
   }
 
-  watch([text, bank], scheduleAnalysis, { immediate: true });
+  watch([text, bank, gap, pitch, rate], scheduleAnalysis, { immediate: true });
   watch([text, pitch, volume, gap, rate, voicePitch, breathiness, formant, loudness, tension, bank], () => {
     invalidateRendered();
     if (renderController) cancelRender();
@@ -401,7 +418,7 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
     phoneKeys, phoneIndexError, analysis, audioTime, cursor, editorEl, player,
     allWarnings, playbackResult, playbackUrl, playbackDuration, hasText, busy, activeTimelineItem,
     statusText, toggleLocale, syncCursor, goToOffset, insertPhoneme, compose, cancelRender, exportOpus,
-    showPanel, showSideView, run,
+    showPanel, showSideView, toggleRibbon, run,
   });
 }
 

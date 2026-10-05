@@ -20,7 +20,7 @@ const word = (speech = 0.5, extra: Partial<FitItem> = {}): FitItem => ({ kind: '
 describe('fit tag parsing', () => {
   it('assigns one group to the enclosed words and restores the parent scope', () => {
     const { plan } = createWordPlan('cassie <fit seconds="2">word apple</fit> cassie', bank);
-    expect(plan.map((item) => item.fit?.seconds)).toEqual([undefined, 2, 2, undefined]);
+    expect(plan.map((item) => item.fits?.at(-1)?.seconds)).toEqual([undefined, 2, 2, undefined]);
     expect(plan[1].fit?.id).toBe(plan[2].fit?.id);
   });
 
@@ -31,7 +31,7 @@ describe('fit tag parsing', () => {
   });
 
   it.each(['0.05', '120'])('accepts the boundary seconds="%s"', (value) => {
-    expect(createWordPlan(`<fit seconds="${value}">cassie</fit>`, bank).plan[0].fit?.seconds).toBe(Number(value));
+    expect(createWordPlan(`<fit seconds="${value}">cassie</fit>`, bank).plan[0].fits?.at(-1)?.seconds).toBe(Number(value));
   });
 
   it('rejects unknown attributes and unclosed tags', () => {
@@ -41,9 +41,9 @@ describe('fit tag parsing', () => {
 
   it('lets an inner group replace the outer one and keeps the rate tag independent', () => {
     const { plan } = createWordPlan('<fit seconds="3">cassie <fit seconds="1">word</fit> apple</fit>', bank);
-    expect(plan.map((item) => item.fit?.seconds)).toEqual([3, 1, 3]);
-    expect(new Set(plan.map((item) => item.fit?.id)).size).toBe(2);
-    expect(createWordPlan('<fit seconds="1"><rate value="2">cassie</rate></fit>', bank).plan[0]).toMatchObject({ rate: 2, fit: { seconds: 1 } });
+    expect(plan.map((item) => item.fits?.at(-1)?.seconds)).toEqual([3, 1, 3]);
+    expect(new Set(plan.map((item) => item.fits?.at(-1)?.id)).size).toBe(2);
+    expect(createWordPlan('<fit seconds="1"><rate value="2">cassie</rate></fit>', bank).plan[0]).toMatchObject({ rate: 2, fits: [{ seconds: 1 }] });
   });
 
   it('leaves plans without the tag unchanged', () => {
@@ -56,7 +56,7 @@ describe('fit rate solver', () => {
   const gap = 0.24;
 
   it('keeps gaps and finds the rate that lands on the requested span', () => {
-    const items = [word(0.5, { fit: 1 }), word(0.5, { fit: 1 }), word(0.5, { fit: 1 })];
+    const items = [word(0.5, { fits: [1] }), word(0.5, { fits: [1] }), word(0.5, { fits: [1] })];
     const [result] = solveFitRates(items, new Map([[1, 1]]), gap);
     expect(result.rate).toBeCloseTo(1.5 / (1 - 2 * gap), 6);
     expect(result.clamped).toBe(false);
@@ -66,10 +66,10 @@ describe('fit rate solver', () => {
   it('excludes content outside the group and counts cues and pauses inside it', () => {
     const items: FitItem[] = [
       word(0.5),
-      word(0.5, { fit: 1 }),
-      { kind: 'pause', speech: 0, fixed: 0.2, rate: 1, fit: 1 },
-      { kind: 'effect', speech: 0, fixed: 0.3, rate: 1, fit: 1 },
-      word(0.5, { fit: 1 }),
+      word(0.5, { fits: [1] }),
+      { kind: 'pause', speech: 0, fixed: 0.2, rate: 1, fits: [1] },
+      { kind: 'effect', speech: 0, fixed: 0.3, rate: 1, fits: [1] },
+      word(0.5, { fits: [1] }),
       word(0.5),
     ];
     const [result] = solveFitRates(items, new Map([[1, 1.5]]), gap);
@@ -79,13 +79,13 @@ describe('fit rate solver', () => {
   });
 
   it('uses spacing relative to the previous start', () => {
-    const items = [word(0.5, { fit: 1 }), word(0.5, { fit: 1, spacing: 0.3 })];
+    const items = [word(0.5, { fits: [1] }), word(0.5, { fits: [1], spacing: 0.3 })];
     const [result] = solveFitRates(items, new Map([[1, 0.6]]), gap);
     expect(result.rate).toBeCloseTo(0.5 / 0.3, 6);
   });
 
   it('clamps to the supported range and reports the achievable span', () => {
-    const items = [word(1, { fit: 1 })];
+    const items = [word(1, { fits: [1] })];
     const [fast] = solveFitRates(items, new Map([[1, 0.05]]), gap);
     expect(fast).toMatchObject({ rate: 4, clamped: true });
     expect(fast.achievable).toBeCloseTo(0.25, 6);
@@ -95,16 +95,64 @@ describe('fit rate solver', () => {
   });
 
   it('flags groups with nothing to stretch', () => {
-    const [result] = solveFitRates([{ kind: 'effect', speech: 0, fixed: 0.3, rate: 1, fit: 1 }], new Map([[1, 1]]), gap);
+    const [result] = solveFitRates([{ kind: 'effect', speech: 0, fixed: 0.3, rate: 1, fits: [1] }], new Map([[1, 1]]), gap);
     expect(result).toMatchObject({ rate: 1, clamped: true });
     expect(result.achievable).toBeCloseTo(0.3, 6);
   });
 
   it('solves inner groups first so outer groups account for their stretched length', () => {
-    const items = [word(0.5, { fit: 1 }), word(0.5, { fit: 2 }), word(0.5, { fit: 1 })];
+    const items = [word(0.5, { fits: [1] }), word(0.5, { fits: [1, 2] }), word(0.5, { fits: [1] })];
     const results = solveFitRates(items, new Map([[1, 3], [2, 0.25]]), 0);
     expect(results.find((result) => result.id === 2)?.rate).toBeCloseTo(2, 6);
     expect(results.find((result) => result.id === 1)?.rate).toBeCloseTo(1 / 2.75, 6 - 3);
+  });
+});
+
+describe('nested fit groups', () => {
+  const gap = 0.24;
+  const total = (items: FitItem[], results: ReturnType<typeof solveFitRates>) => {
+    const rateOf = new Map(results.map((result) => [result.id, result.rate]));
+    return items.reduce((sum, item, index) => sum + item.speech / (rateOf.get(item.fits?.at(-1) ?? 0) ?? item.rate) + item.fixed + (index ? gap : 0), 0);
+  };
+
+  it('records every enclosing group on each word', () => {
+    const { plan } = createWordPlan('<fit seconds="3">cassie <fit seconds="1">word</fit></fit>', bank);
+    expect(plan.map((item) => item.fits?.map((group) => group.seconds))).toEqual([[3], [3, 1]]);
+  });
+
+  it.each([
+    ['at the end', [word(0.5, { fits: [1] }), word(0.5, { fits: [1, 2] })]],
+    ['at the start', [word(0.5, { fits: [1, 2] }), word(0.5, { fits: [1] })]],
+  ])('keeps the outer group on target with the inner group %s', (_, items) => {
+    const results = solveFitRates(items, new Map([[1, 3], [2, 1]]), gap);
+    expect(results.every((result) => !result.clamped || result.id === 2)).toBe(true);
+    expect(total(items, results)).toBeCloseTo(3, 6);
+  });
+
+  it('solves an outer group that holds only inner groups without dropping it', () => {
+    const items = [word(0.5, { fits: [1, 2] }), word(0.5, { fits: [1, 3] })];
+    const results = solveFitRates(items, new Map([[1, 5], [2, 1], [3, 1]]), gap);
+    expect(results.map((result) => result.id)).toEqual([1, 2, 3]);
+    expect(results[0].clamped).toBe(true);
+    expect(results[0].achievable).toBeCloseTo(2 + gap, 6);
+  });
+
+  it('solves a nested group covering the whole outer group inner first', () => {
+    const items = [word(0.5, { fits: [1, 2] }), word(0.5, { fits: [1, 2] })];
+    const results = solveFitRates(items, new Map([[1, 2], [2, 1]]), gap);
+    expect(results.find((result) => result.id === 2)?.clamped).toBe(false);
+    expect(results.find((result) => result.id === 1)?.clamped).toBe(true);
+  });
+});
+
+describe('fit with spacing', () => {
+  it('measures the span by the latest end, not the last word', () => {
+    const items = [word(1, { fits: [1], spacing: 0.3 }), word(0.2, { fits: [1], spacing: 0.3 })];
+    const [result] = solveFitRates(items, new Map([[1, 1]]), 0.24);
+    // the first word sets the span: starts at 0, so 1 / rate = 1
+    expect(result.rate).toBeCloseTo(1, 4);
+    expect(result.clamped).toBe(false);
+    expect(result.achievable).toBeCloseTo(1, 4);
   });
 });
 
@@ -112,7 +160,7 @@ describe('fit output length', () => {
   const tone = (seconds: number) => Float32Array.from({ length: Math.round(seconds * OUTPUT_SAMPLE_RATE) }, (_, index) => 0.4 * Math.sin(index * 0.12));
 
   it.each([0.9, 1.2, 2.5])('renders three words in %s s within 50 ms', (target) => {
-    const items = [word(0.5, { fit: 1 }), word(0.5, { fit: 1 }), word(0.5, { fit: 1 })];
+    const items = [word(0.5, { fits: [1] }), word(0.5, { fits: [1] }), word(0.5, { fits: [1] })];
     const [result] = solveFitRates(items, new Map([[1, target]]), 0.24);
     expect(result.clamped).toBe(false);
     const lengths = items.map(() => stretchSpeechRate(tone(0.5), OUTPUT_SAMPLE_RATE, result.rate).length / OUTPUT_SAMPLE_RATE);
@@ -122,6 +170,14 @@ describe('fit output length', () => {
 });
 
 describe('fit warnings in analysis', () => {
+  it('uses the supplied gap and pitch instead of the defaults', async () => {
+    const text = '<fit seconds="0.3">cassie word</fit>';
+    expect((await analyzeAnnouncement(text, bank, false)).warnings).toHaveLength(1);
+    expect((await analyzeAnnouncement(text, bank, false, undefined, { gap: 0 })).warnings).toEqual([]);
+    const pitched = await analyzeAnnouncement('<fit seconds="0.1">cassie word</fit>', bank, false, undefined, { pitch: 2 });
+    expect(pitched.warnings[0]).toContain('0.36 s');
+  });
+
   it('reports the requested and achievable duration when the rate is clamped', async () => {
     const result = await analyzeAnnouncement('<fit seconds="0.1">cassie word</fit>', bank, false, undefined, { gap: 0.24 });
     expect(result.warnings).toHaveLength(1);

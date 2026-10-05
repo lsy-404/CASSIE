@@ -26,6 +26,7 @@ function onKeydown(event: KeyboardEvent) {
 
 <template>
   <section class="bottom-panel" :class="{ closed: !studio.panelOpen }" :aria-label="t('panelAria')">
+    <div class="panel-header">
     <div ref="tabList" class="panel-tabs" role="tablist" :aria-label="t('panelAria')" @keydown="onKeydown">
       <button
         v-for="tab in PANEL_TABS"
@@ -38,7 +39,8 @@ function onKeydown(event: KeyboardEvent) {
         :tabindex="studio.panelTab === tab ? 0 : -1"
         @click="studio.showPanel(tab)"
       >{{ t(LABELS[tab]) }}<span v-if="tab === 'problems' && studio.allWarnings.length" class="badge">{{ studio.allWarnings.length }}</span></button>
-      <button class="close" type="button" :aria-label="t('panelClose')" :title="t('panelClose')" @click="studio.panelOpen = false"><AppIcon name="panel" /></button>
+    </div>
+    <button class="close" type="button" :aria-label="t('panelClose')" :title="t('panelClose')" @click="studio.panelOpen = false"><AppIcon name="panel" /></button>
     </div>
     <div v-show="studio.panelOpen" class="panel-content">
       <div v-show="studio.panelTab === 'player'" id="panel-player" class="pane" role="tabpanel" aria-labelledby="panel-tab-player">
@@ -93,12 +95,13 @@ function onKeydown(event: KeyboardEvent) {
 <style scoped>
 .bottom-panel { flex: none; display: flex; flex-direction: column; height: clamp(190px, 32vh, 300px); background: var(--ide-panel); border-top: 1px solid var(--ide-border-strong); }
 .bottom-panel.closed { height: auto; }
-.panel-tabs { flex: none; display: flex; align-items: stretch; height: 32px; padding: 0 8px; overflow-x: auto; scrollbar-width: none; }
-.panel-tabs button { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 0; border-bottom: 1px solid transparent; background: transparent; color: #a0a0a0; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; }
-.panel-tabs button:hover { color: #fff; }
-.panel-tabs button[aria-selected="true"] { color: #fff; border-bottom-color: #fff; }
-.panel-tabs button:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
-.panel-tabs .close { margin-left: auto; padding: 0 8px; }
+.panel-header { flex: none; display: flex; align-items: stretch; height: 32px; padding: 0 8px; }
+.panel-tabs { flex: 1; min-width: 0; display: flex; align-items: stretch; overflow-x: auto; scrollbar-width: none; }
+.panel-header button { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 0; border-bottom: 1px solid transparent; background: transparent; color: #a0a0a0; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; }
+.panel-header button:hover { color: #fff; }
+.panel-header button[aria-selected="true"] { color: #fff; border-bottom-color: #fff; }
+.panel-header button:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+.panel-header .close { padding: 0 8px; }
 .badge { min-width: 16px; padding: 0 4px; border-radius: 8px; background: #fff; color: #1e1e1e; font-size: 10px; line-height: 16px; text-align: center; letter-spacing: 0; }
 .panel-content { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px 12px; }
 .pane { display: grid; gap: 10px; align-content: start; }
@@ -116,5 +119,5 @@ function onKeydown(event: KeyboardEvent) {
 .download-link:hover { background: var(--fluent-control-hover); }
 .download-link:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .announcement-player { margin-top: 0; }
-@media (max-width: 819px) { .bottom-panel { height: clamp(180px, 38vh, 320px); } .bottom-panel.closed { height: auto; } }
+@media (max-width: 819px) { .bottom-panel { height: clamp(180px, 38vh, 320px); } }
 </style>

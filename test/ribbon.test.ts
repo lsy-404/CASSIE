@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ICONS } from "../src/icons";
 import { FIT_RANGE, fitScope } from "../src/markup";
-import { RIBBON_TABS } from "../src/ribbon";
+import { RIBBON_TABS, RIBBON_TAB_IDS } from "../src/ribbon";
 
 describe("ribbon configuration", () => {
   it("has unique tab and group ids and only known icons", () => {
@@ -21,5 +21,19 @@ describe("ribbon configuration", () => {
     expect(reading?.commands.map((command) => command.id)).toEqual(["fitSeconds", "fit"]);
     expect(FIT_RANGE).toMatchObject({ min: 0.05, max: 120, default: 2 });
     expect(fitScope(2)).toEqual({ open: '<fit seconds="2">', close: "</fit>" });
+  });
+
+  it("lists tab ids once and in the declared order", () => {
+    expect(RIBBON_TABS.map((tab) => tab.id)).toEqual([...RIBBON_TAB_IDS]);
+  });
+
+  it("has a label and tip in every locale", async () => {
+    vi.stubGlobal("document", { documentElement: {}, title: "", createElement: () => ({}) });
+    const { i18n } = await import("../src/i18n");
+    const keys = RIBBON_TABS.flatMap((tab) => [tab.label, ...tab.groups.flatMap((group) => [group.label, ...group.commands.flatMap((command) => [command.label, ...(command.tip ? [command.tip] : [])])])]);
+    for (const locale of ["en", "zh"] as const) {
+      const missing = keys.filter((key) => !i18n.global.te(key, locale));
+      expect(missing, locale).toEqual([]);
+    }
   });
 });

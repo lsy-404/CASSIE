@@ -1,7 +1,7 @@
 import { OggOpusDecoder } from 'ogg-opus-decoder';
 import { advancePlaybackCursorAfterRepeat, appendTimelineEntry, clipTimelineToDuration, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchSpeechPreservingGaps, stretchSpeechRate, stretchVowelLoop, transformWord } from './dsp';
 import { applyVoiceLoudness, blendVoiceEdges, editWorldFeatures, hasWorldVoiceEffects, isNeutralVoice, processVoicePreservingGaps } from './voice-dsp';
-import { fitGroupsOf, fitWarning, solveFitRates } from './fit';
+import { fitGroupsOf, fitItemOf, fitWarning, solveFitRates } from './fit';
 import type { FitItem } from './fit';
 import { createWorldVocoder } from './world';
 import { checkAudioCapability } from '../startup/check-audio';
@@ -275,26 +275,15 @@ scope.onmessage = async ({ data }) => {
       const items: FitItem[] = [];
       for (let index = 0; index < plan.length; index += 1) {
         const word = plan[index];
-        const base = {
-          rate: (word.rate ?? 1) * (data.options.rate ?? 1),
-          ...(word.fit ? { fit: word.fit.id } : {}),
-          ...(word.sleep !== undefined ? { sleep: word.sleep } : {}),
-          ...(word.spacing !== undefined ? { spacing: word.spacing } : {}),
-          ...(word.joinPrevious ? { joinPrevious: true } : {}),
-        };
+        const globalRate = data.options.rate ?? 1;
         if (word.pauseDuration !== undefined) {
-          items.push({ ...base, kind: 'pause', speech: 0, fixed: Number.isFinite(word.pauseDuration) ? word.pauseDuration : 0 });
+          items.push(fitItemOf(word, globalRate, { pause: word.pauseDuration }));
           continue;
         }
         const item = await prepareWord(word);
         prepared.set(index, item);
-        const total = item.pitched.length / OUTPUT_SAMPLE_RATE;
-        if (item.sourceClip.kind !== 'word') {
-          items.push({ ...base, kind: 'effect', speech: 0, fixed: total });
-          continue;
-        }
         const gaps = (item.phraseTimeline ?? []).filter((entry) => entry.kind === 'gap').reduce((sum, entry) => sum + entry.endSeconds - entry.startSeconds, 0);
-        items.push({ ...base, kind: 'word', speech: Math.max(0, total - gaps), fixed: Math.min(total, gaps) });
+        items.push(fitItemOf(word, globalRate, { kind: item.sourceClip.kind, total: item.pitched.length / OUTPUT_SAMPLE_RATE, gaps }));
       }
       for (const result of solveFitRates(items, fitGroups, data.options.gap)) {
         fitRates.set(result.id, result.rate);
@@ -341,7 +330,7 @@ scope.onmessage = async ({ data }) => {
       const { sourceClip, decoded, source, pitched, phraseTimeline: preparedTimeline } = prepared.get(index) ?? await prepareWord(word);
       prepared.delete(index);
       let phraseTimeline = preparedTimeline;
-      const rate = fitRates.get(word.fit?.id ?? 0) ?? (word.rate ?? 1) * (data.options.rate ?? 1);
+      const rate = fitRates.get(word.fits?.at(-1)?.id ?? 0) ?? (word.rate ?? 1) * (data.options.rate ?? 1);
       const voice: VoiceOptions = {
         pitchSemitones: word.voice?.pitchSemitones ?? data.options.voice?.pitchSemitones ?? 0,
         breathiness: word.voice?.breathiness ?? data.options.voice?.breathiness ?? 0,

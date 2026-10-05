@@ -2,6 +2,9 @@ import type { IconName } from "./icons";
 import { FIT_RANGE, type MarkerName, type ScopeName, type SettingId } from "./markup";
 import type { SideView, Studio } from "./studio";
 
+export const RIBBON_TAB_IDS = ["home", "insert", "voice", "timing", "export", "view"] as const;
+export type RibbonTabId = (typeof RIBBON_TAB_IDS)[number];
+
 export type ActionId =
   | "render" | "cancel" | "toggleLive" | "exportWav" | "exportOpus"
   | "toggleSideBar" | "togglePanel" | "toggleRibbon" | "insertPhonemes" | "scope.fit"
@@ -37,7 +40,7 @@ export interface NumberCommand extends CommandBase {
 
 export type RibbonCommand = ButtonCommand | NumberCommand;
 export interface RibbonGroup { id: string; label: string; commands: RibbonCommand[] }
-export interface RibbonTab { id: string; label: string; groups: RibbonGroup[] }
+export interface RibbonTab { id: RibbonTabId; label: string; groups: RibbonGroup[] }
 
 const canEdit: Predicate = (s) => Boolean(s.bank) && !s.encodingOpus;
 const canRender: Predicate = (s) => s.hasText && !s.busy;

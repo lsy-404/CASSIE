@@ -2,14 +2,13 @@
 import { nextTick, ref } from "vue";
 import { t } from "../i18n";
 import type { IconName } from "../icons";
-import { SIDE_VIEWS, useStudio, type SideView } from "../studio";
+import { SIDE_VIEW_LABELS, SIDE_VIEWS, useStudio, type SideView } from "../studio";
 import AppIcon from "./AppIcon.vue";
 
 const studio = useStudio();
 const list = ref<HTMLElement | null>(null);
 
 const ICON_BY_VIEW: Record<SideView, IconName> = { outline: "outline", phonemes: "phoneme", settings: "sliders", help: "help" };
-const LABEL_BY_VIEW: Record<SideView, string> = { outline: "outline", phonemes: "phonemeList", settings: "settings", help: "help" };
 
 function selected(view: SideView) { return studio.sideBarOpen && studio.sideView === view; }
 function onKeydown(event: KeyboardEvent) {
@@ -36,8 +35,8 @@ function onKeydown(event: KeyboardEvent) {
         :aria-selected="selected(view)"
         :aria-controls="`sidebar-${view}`"
         :tabindex="studio.sideView === view ? 0 : -1"
-        :title="t(LABEL_BY_VIEW[view])"
-        :aria-label="t(LABEL_BY_VIEW[view])"
+        :title="t(SIDE_VIEW_LABELS[view])"
+        :aria-label="t(SIDE_VIEW_LABELS[view])"
         @click="studio.showSideView(view)"
       ><AppIcon :name="ICON_BY_VIEW[view]" :size="22" /></button>
     </div>

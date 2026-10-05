@@ -28,12 +28,13 @@ export const ICONS = {
   external: ["M14 4h6v6", "M20 4l-9 9", "M18 14v5H5V6h5"],
   file: ["M6 3h8l4 4v14H6z", "M14 3v4h4"],
   warning: ["M12 4l9 16H3z", "M12 10v4", "M12 17v.01"],
-  chart: ["M4 20V10", "M10 20V4", "M16 20v-8", "M22 20H2"],
   tension: ["M3 12c3-8 6 8 9 0s6 8 9 0"],
   breath: ["M4 8h10a3 3 0 1 0-3-3", "M4 12h14a3 3 0 1 1-3 3", "M4 16h6"],
   formant: ["M3 18c3 0 3-12 6-12s3 12 6 12 3-8 6-8"],
+  chevronUp: ["M6 15l6-6 6 6"],
+  chevronLeft: ["M15 6l-6 6 6 6"],
+  chevronRight: ["M9 6l6 6-6 6"],
   tag: ["M4 4h8l8 8-8 8-8-8z", "M8.5 8.5v.01"],
-  list: ["M8 6h12", "M8 12h12", "M8 18h12", "M4 6v.01", "M4 12v.01", "M4 18v.01"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type IconName = keyof typeof ICONS;

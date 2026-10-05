@@ -33,7 +33,7 @@ const studio = useStudio();
 .source:hover, .globe:hover { background: var(--ide-hover); color: #fff; }
 .source:focus-visible, .globe:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
 @media (max-width: 1100px) { .brand-full { display: none; } }
-@media (max-width: 820px) {
+@media (max-width: 819px) {
   .titlebar { grid-template-columns: auto minmax(0, 1fr) auto; }
   .doc-title { justify-content: center; min-width: 0; overflow: hidden; }
   .app-title { display: none; }

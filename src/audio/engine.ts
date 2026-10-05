@@ -1,6 +1,6 @@
 import { createWordPlan } from './parser';
 import type { AnalysisToken, Bank, BankClip, RenderOptions, RenderResult } from './types';
-import { estimateFitWarnings } from './fit';
+import { DEFAULT_GAP, estimateFitWarnings } from './fit';
 import { hasDirectPhonemeInput, loadPhonemeCatalog, phonemizeWords } from './phonemes';
 
 const BANK_URL = '/bank.json';
@@ -87,7 +87,7 @@ export async function analyzeAnnouncement(
     const { plan, warnings, tokens } = await preparePlan(text, bank, phonemesEnabled, signal);
     return {
       words: plan.map((word) => word.display),
-      warnings: [...warnings, ...estimateFitWarnings(plan, bank, options?.gap, options?.pitch, options?.rate)],
+      warnings: [...warnings, ...estimateFitWarnings(plan, bank, { gap: options?.gap ?? DEFAULT_GAP, pitch: options?.pitch ?? 1, rate: options?.rate ?? 1 })],
       ipa: plan.map((word) => word.phonemeUnits?.map((unit) => unit.ipa).join(' ') ?? '').filter(Boolean),
       tokens,
     };
@@ -109,7 +109,7 @@ export async function renderAnnouncement(
   const safeOptions: RenderOptions = {
     pitch: Number.isFinite(options.pitch) ? Math.min(1.35, Math.max(0.65, options.pitch)) : 1,
     volume: Number.isFinite(options.volume) ? Math.min(1, Math.max(0, options.volume)) : 1,
-    gap: Number.isFinite(options.gap) ? Math.min(0.8, Math.max(0, options.gap)) : 0.24,
+    gap: Number.isFinite(options.gap) ? Math.min(0.8, Math.max(0, options.gap)) : DEFAULT_GAP,
     rate: Number.isFinite(options.rate) ? Math.min(2, Math.max(0.5, options.rate!)) : 1,
     phonemes: options.phonemes !== false,
     voice: {

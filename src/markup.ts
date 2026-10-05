@@ -24,6 +24,8 @@ export function fitScope(seconds: number) {
 
 export type MarkerName = keyof typeof MARKERS;
 export type ScopeName = keyof typeof SCOPES;
+export const MARKER_NAMES = Object.keys(MARKERS) as MarkerName[];
+export const SCOPE_NAMES = Object.keys(SCOPES) as ScopeName[];
 
 export const SETTING_IDS = ["pitch", "volume", "gap", "rate", "voicePitch", "loudness", "tension", "breathiness", "formant"] as const;
 export type SettingId = (typeof SETTING_IDS)[number];

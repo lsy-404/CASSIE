@@ -1,19 +1,18 @@
 <script setup lang="ts">
 import { t } from "../i18n";
-import { useStudio } from "../studio";
+import { SIDE_VIEW_LABELS, useStudio } from "../studio";
 import HelpView from "./HelpView.vue";
 import OutlineView from "./OutlineView.vue";
 import PhonemesView from "./PhonemesView.vue";
 import SettingsView from "./SettingsView.vue";
 
 const studio = useStudio();
-const TITLES = { outline: "outline", phonemes: "phonemeList", settings: "settings", help: "help" } as const;
 </script>
 
 <template>
   <div v-show="studio.sideBarOpen" class="sidebar-wrap">
-    <aside class="sidebar" :aria-label="t(TITLES[studio.sideView])">
-      <h2 class="sidebar-title">{{ t(TITLES[studio.sideView]) }}</h2>
+    <aside class="sidebar" :aria-label="t(SIDE_VIEW_LABELS[studio.sideView])">
+      <h2 class="sidebar-title">{{ t(SIDE_VIEW_LABELS[studio.sideView]) }}</h2>
       <div class="sidebar-scroll">
         <OutlineView v-show="studio.sideView === 'outline'" id="sidebar-outline" />
         <PhonemesView v-show="studio.sideView === 'phonemes'" id="sidebar-phonemes" />

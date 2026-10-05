@@ -29,6 +29,10 @@ test('fit stretches only the enclosed speech to the requested duration', async (
   }
   const scoped = await renderSeconds(page, 'cassie <fit seconds="1">cassie cassie</fit>', info.outputPath('scoped.wav'));
   expect(Math.abs(scoped - (single + gap + 1))).toBeLessThan(0.05);
+  const nestedEnd = await renderSeconds(page, '<fit seconds="2">cassie <fit seconds="1">cassie</fit></fit>', info.outputPath('nested-end.wav'));
+  expect(Math.abs(nestedEnd - 2)).toBeLessThan(0.05);
+  const nestedStart = await renderSeconds(page, '<fit seconds="2"><fit seconds="1">cassie</fit> cassie</fit>', info.outputPath('nested-start.wav'));
+  expect(Math.abs(nestedStart - 2)).toBeLessThan(0.05);
   const overridden = await renderSeconds(page, '<rate value="2"><fit seconds="1">cassie cassie</fit></rate>', info.outputPath('override.wav'));
   expect(Math.abs(overridden - 1)).toBeLessThan(0.05);
   const clamped = await renderSeconds(page, '<fit seconds="0.05">cassie cassie</fit>', info.outputPath('clamped.wav'));
