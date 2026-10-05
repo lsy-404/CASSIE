@@ -8,6 +8,8 @@ import {
 import { analyzeAnnouncement, encodeWav, loadBank, renderAnnouncement, type AnalysisToken as EngineAnalysisToken, type TimelineEntry } from "./audio/engine";
 import { checkEnglishSpelling } from "./spelling";
 import AnnouncementPlayer from "./components/AnnouncementPlayer.vue";
+import FineControl from "./components/FineControl.vue";
+import { phonemeInsertion } from "./editor";
 
 type Bank = Awaited<ReturnType<typeof loadBank>>;
 type AnalysisToken = EngineAnalysisToken & { spellingMissing?: boolean };
@@ -17,16 +19,14 @@ const loading = ref(true);
 const loadError = ref("");
 const text = ref([
   "<start>",
-  "CASSIE: Attention all personnel.",
-  '<pitch value="1.2">Security</pitch> <rate value="1.1"><volume value="0.7">alert</volume></rate>.',
-  'me<pitch value="1.1">tri</pitch>cs need review.',
-  "ROC AUC I a A",
-  '<stutter repeats="1">Attention</stutter><pause seconds="0.5"/>',
-  "<br>",
-  '<offset seconds="0.1">Lockdown</offset> <duration seconds="0.3">ends</duration> <spacing seconds="0.2">now</spacing>.',
-  '<clip id="cassie"/>',
-  "/ a e: / <end>",
-  '<voice pitch="3" breathiness="0.3" formant="-2">Attention</voice>',
+  "CASSIE: Attention, future Foundation personnel!",
+  "Join the Foundation. Protect humanity from anomalies. Enjoy paid lunch breaks and a generous one-exit-per-shift policy.",
+  '<stutter repeats="1">Apply now</stutter>: <volume value="0.7">benefits await</volume>. <pause seconds="0.5"/>',
+  '<pitch value="1.2">Stay alert</pitch>; <rate value="1.1">stay employed</rate>.',
+  '<offset seconds="0.1"><duration seconds="0.3"><spacing seconds="0.2">routine forms</spacing></duration></offset>.',
+  '<voice pitch="1.5" loudness="2" tension="0.2" breathiness="0.3" formant="-1">Safety first.</voice>',
+  'Our anom<pitch value="1.1">a</pitch>ly hotline answers in / a e: /: <clip id="cassie"/><br>',
+  "<end>",
 ].join("\n"));
 const pitch = ref(1);
 const volume = ref(1);
@@ -35,6 +35,8 @@ const rate = ref(1);
 const voicePitchSemitones = ref(0);
 const breathiness = ref(0);
 const formantSemitones = ref(0);
+const loudnessDb = ref(0);
+const tension = ref(0);
 const liveRender = ref(true);
 const primaryInsertions = [
   { label: "start", kind: "marker", value: "<start>" },
@@ -49,7 +51,7 @@ const scopedInsertions = [
   { label: "duration", open: '<duration seconds="0.3">', close: "</duration>" },
   { label: "spacing", open: '<spacing seconds="0.2">', close: "</spacing>" },
   { label: "rate", open: '<rate value="1.2">', close: "</rate>" },
-  { label: "voice", open: '<voice pitch="3" breathiness="0.3" formant="-2">', close: "</voice>" },
+  { label: "voice", open: '<voice pitch="3" loudness="2" tension="0.2" breathiness="0.3" formant="-2">', close: "</voice>" },
 ] as const;
 const progress = ref(0);
 const rendering = ref(false);
@@ -133,6 +135,11 @@ function insertMarker(value: string) {
   });
 }
 function insertClip() { insertMarker('<clip id="a"/>'); }
+function insertPhoneme(phone: string) {
+  const field = shellElement.value?.querySelector("textarea") ?? null;
+  const range = phonemeInsertion(text.value, field?.selectionStart ?? text.value.length, field?.selectionEnd ?? text.value.length, phone);
+  replaceEditorRange(range.value, { start: range.selectionStart, end: range.selectionEnd });
+}
 function insertScope(open: string, close: string, placeholder = "word") {
   const field = shellElement.value?.querySelector("textarea") ?? null;
   const start = field?.selectionStart ?? text.value.length;
@@ -209,9 +216,16 @@ async function compose() {
   const controller = new AbortController();
   renderController = controller;
   try {
+    const voiceOptions = {
+      pitchSemitones: voicePitchSemitones.value,
+      breathiness: breathiness.value,
+      formantSemitones: formantSemitones.value,
+      loudnessDb: loudnessDb.value,
+      tension: tension.value,
+    };
     const result = await renderAnnouncement(text.value, bank.value,
       { pitch: pitch.value, volume: volume.value, gap: gap.value, rate: rate.value, phonemes: true,
-        voice: { pitchSemitones: voicePitchSemitones.value, breathiness: breathiness.value, formantSemitones: formantSemitones.value } },
+        voice: voiceOptions },
       (value) => { progress.value = Math.max(0, Math.min(100, value * 100)); }, controller.signal,
       (snapshot) => {
         if (controller.signal.aborted) return;
@@ -291,7 +305,7 @@ function invalidateRendered() {
   previewUrl.value = "";
   previewResult.value = null;
 }
-watch([text, pitch, volume, gap, rate, voicePitchSemitones, breathiness, formantSemitones, bank], () => {
+watch([text, pitch, volume, gap, rate, voicePitchSemitones, breathiness, formantSemitones, loudnessDb, tension, bank], () => {
   invalidateRendered();
   if (renderController) cancelRender();
   if (!liveRender.value || !bank.value || !text.value.trim()) return;
@@ -329,14 +343,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <FluentTheme mode="system">
+  <FluentTheme mode="dark">
     <div ref="shellElement" class="studio-shell">
       <header class="topbar">
-        <a class="brand" href="#main"><strong>CASSIE</strong><span>{{ t('appTitle') }}</span></a>
+        <a class="brand" href="#main"><strong>C.A.S.S.I.E.</strong><span>{{ t('machineAcronym') }}</span></a>
         <div class="topbar-actions"><FluentButton tone="subtle" :aria-label="t('lang')" @click="toggleLocale">{{ locale === 'zh' ? t('english') : t('chinese') }}</FluentButton><a href="https://github.com/lsy-404/CASSIE" target="_blank" rel="noreferrer">{{ t('source') }}</a></div>
       </header>
       <main id="main" class="workspace">
-        <section class="page-heading"><div><p>{{ t('studio') }}</p><h1>{{ t('heading') }}</h1><p>{{ t('pageIntro') }}</p></div></section>
+        <section class="page-heading"><div><p class="system-ready"><span aria-hidden="true">●</span>{{ t('ready') }}</p><h1>{{ t('heading') }}</h1><p class="procedure-line">{{ t('procedure') }} <code>P-B-3</code> <span>·</span> {{ t('pageIntro') }}</p></div></section>
         <FluentNotice v-if="loading">{{ t('loadingBank') }}</FluentNotice>
         <FluentNotice v-else-if="loadError" tone="danger">{{ loadError }} <FluentButton tone="secondary" @click="reloadApp">{{ t('retry') }}</FluentButton></FluentNotice>
         <div class="studio-grid">
@@ -348,16 +362,18 @@ onBeforeUnmount(() => {
                   <FluentButton v-for="command in primaryInsertions" :key="command.label" tone="secondary" :disabled="!bank || encodingOpus" @click="command.kind === 'scope' ? insertScope(command.open, command.close) : insertMarker(command.value)">{{ t(command.label) }}</FluentButton>
                 </div>
                 <p class="markup-inline-note">{{ t('inlineExample') }} <code>me&lt;pitch value="1.2"&gt;tri&lt;/pitch&gt;cs</code></p>
-                <details class="advanced-tools"><summary>{{ t('advanced') }}</summary>
-                  <div class="tool-group"><FluentButton v-for="command in scopedInsertions" :key="command.label" tone="subtle" :disabled="!bank || encodingOpus" @click="insertScope(command.open, command.close)">{{ t(command.label) }}</FluentButton><FluentButton tone="subtle" :disabled="!bank || encodingOpus" @click="insertClip">{{ t('clip') }}</FluentButton><FluentButton tone="subtle" :disabled="!bank || encodingOpus" @click="replaceEditorRange('/ a e: /')">{{ t('insertPhonemes') }}</FluentButton></div>
+                <details class="advanced-tools" open><summary>{{ t('advanced') }}</summary>
+                  <div class="tool-group"><FluentButton v-for="command in scopedInsertions" :key="command.label" tone="subtle" :disabled="!bank || encodingOpus" @click="insertScope(command.open, command.close)">{{ t(command.label) }}</FluentButton><FluentButton tone="subtle" :disabled="!bank || encodingOpus" @click="insertClip">{{ t('clip') }}</FluentButton><FluentButton tone="subtle" :disabled="!bank || encodingOpus" @click="insertPhoneme('a e:')">{{ t('insertPhonemes') }}</FluentButton></div>
                   <div class="help-examples">
-                    <p>{{ t('wholeWord') }} <code>&lt;pitch value="1.2"&gt;attention&lt;/pitch&gt;</code>{{ t('fullStop') }} {{ t('repeatHelp') }}</p>
+                    <p>{{ t('wholeWord') }} <code>&lt;pitch value="1.2"&gt;attention&lt;/pitch&gt;</code>{{ t('fullStop') }} {{ t('markupStutter') }} <code>&lt;stutter repeats="2"&gt;attention&lt;/stutter&gt;</code>{{ t('fullStop') }} {{ t('repeatHelp') }}</p>
                     <p>{{ t('cursorHelp') }} <code>{{ t('wordPlaceholder') }}</code>{{ t('fullStop') }}</p>
                     <p>{{ t('standaloneHelp') }} <code>&lt;start&gt;</code>/<code>&lt;start/&gt;</code> {{ t('andWord') }} <code>&lt;end&gt;</code>/<code>&lt;end/&gt;</code> {{ t('equivalent') }} <code>&lt;br&gt;</code>{{ t('brHelp') }}<code>&lt;br/&gt;</code>{{ t('brAlsoPauses') }}</p>
                     <p>{{ t('pauseHelp') }} <code>&lt;pause seconds="0.5"&gt;</code> {{ t('orWord') }} <code>&lt;pause seconds="0.5"/&gt;</code>{{ t('listSeparator') }} {{ t('clipHelp') }} <code>&lt;clip id="cassie"&gt;</code> {{ t('orWord') }} <code>&lt;clip id="cassie"/&gt;</code>{{ t('comma') }} {{ t('replaceClipId') }}</p>
                     <p>{{ t('phonemeHelp') }} <code>/ a e: /</code>{{ t('fullStop') }} {{ t('caseHelp') }}</p>
                     <p>{{ t('rateExample') }} <code>&lt;rate value="1.2"&gt;attention&lt;/rate&gt;</code>{{ t('fullStop') }} {{ t('rateHelp') }}</p>
-                    <p>{{ t('voiceExample') }} <code>&lt;voice pitch="3" breathiness="0.3" formant="-2"&gt;attention&lt;/voice&gt;</code>{{ t('fullStop') }} {{ t('voiceTagHelp') }}</p>
+                    <p>{{ t('markupVolume') }} <code>&lt;volume value="0.7"&gt;attention&lt;/volume&gt;</code>{{ t('fullStop') }}</p>
+                    <p>{{ t('markupTiming') }} <code>&lt;offset seconds="0.1"&gt;attention&lt;/offset&gt;</code>{{ t('comma') }} <code>&lt;duration seconds="0.3"&gt;attention&lt;/duration&gt;</code>{{ t('comma') }} <code>&lt;spacing seconds="0.2"&gt;attention&lt;/spacing&gt;</code>{{ t('fullStop') }}</p>
+                    <p>{{ t('voiceExample') }} <code>&lt;voice pitch="3" loudness="2" tension="0.2" breathiness="0.3" formant="-2"&gt;attention&lt;/voice&gt;</code>{{ t('fullStop') }} {{ t('voiceTagHelp') }}</p>
                   </div>
                 </details>
               </div>
@@ -368,6 +384,7 @@ onBeforeUnmount(() => {
                 class="announcement-player"
                 :src="playbackUrl"
                 :available-duration="playbackDuration"
+                :timeline="playbackResult?.timeline ?? []"
                 :rendering="rendering"
                 :progress="progress"
                 :has-text="Boolean(text.trim()) && Boolean(bank)"
@@ -387,19 +404,23 @@ onBeforeUnmount(() => {
             <section class="panel">
               <div class="panel-heading"><div><h2>{{ t('settings') }}</h2><p>{{ t('globalMix') }}</p></div></div>
               <div class="settings">
-                <label><span>{{ t('pitchLabel', { value: pitch.toFixed(2) }) }}</span><FluentSlider v-model="pitch" :min="0.65" :max="1.35" :step="0.01" :aria-label="t('pitch')" /></label>
-                <label><span>{{ t('volumeLabel', { value: Math.round(volume * 100) }) }}</span><FluentSlider v-model="volume" :min="0.1" :max="1" :step="0.01" :aria-label="t('volume')" /></label>
-                <label><span>{{ t('gapLabelSetting', { value: gap.toFixed(2) }) }}</span><FluentSlider v-model="gap" :min="0" :max="0.8" :step="0.01" :aria-label="t('wordGap')" /></label>
-                <label><span>{{ t('rateLabel', { value: rate.toFixed(2) }) }}<small>{{ t('rateHelp') }}</small></span><FluentSlider v-model="rate" :min="0.5" :max="2" :step="0.05" :aria-label="t('rate')" /></label>
-                <details class="voice-processing">
-                  <summary>{{ t('voiceProcessing') }}</summary>
+                <label><span>{{ t('pitchLabel', { value: pitch.toFixed(2) }) }}</span><FineControl v-model="pitch" :min="0.65" :max="1.35" :step="0.01" :label="t('pitch')" /></label>
+                <label><span>{{ t('volumeLabel', { value: Math.round(volume * 100) }) }}</span><FineControl v-model="volume" :min="0" :max="1" :step="0.01" :label="t('volume')" /></label>
+                <label><span>{{ t('gapLabelSetting', { value: gap.toFixed(2) }) }}</span><FineControl v-model="gap" :min="0" :max="0.8" :step="0.01" :label="t('wordGap')" /></label>
+                <label><span>{{ t('rateLabel', { value: rate.toFixed(2) }) }}<small>{{ t('rateHelp') }}</small></span><FineControl v-model="rate" :min="0.5" :max="2" :step="0.01" :label="t('rate')" /></label>
+                <section class="voice-processing" :aria-label="t('voiceProcessing')">
+                  <h3>{{ t('voiceProcessing') }}</h3>
                   <p>{{ t('voiceHelp') }}</p>
-                  <label><span>{{ t('voicePitchLabel', { value: voicePitchSemitones.toFixed(1) }) }}</span><FluentSlider v-model="voicePitchSemitones" :min="-12" :max="12" :step="0.5" :aria-label="t('voicePitch')" /></label>
-                  <label><span>{{ t('breathinessLabel', { value: breathiness.toFixed(2) }) }}</span><FluentSlider v-model="breathiness" :min="0" :max="1" :step="0.05" :aria-label="t('breathiness')" /></label>
-                  <label><span>{{ t('formantLabel', { value: formantSemitones.toFixed(1) }) }}</span><FluentSlider v-model="formantSemitones" :min="-6" :max="6" :step="0.5" :aria-label="t('formant')" /></label>
-                </details>
+                  <label><span>{{ t('voicePitchLabel', { value: voicePitchSemitones.toFixed(1) }) }}</span><FineControl v-model="voicePitchSemitones" :min="-12" :max="12" :step="0.1" :label="t('voicePitch')" /></label>
+                  <label><span>{{ t('loudnessLabel', { value: loudnessDb.toFixed(1) }) }}</span><FineControl v-model="loudnessDb" :min="-24" :max="12" :step="0.1" :label="t('loudness')" /></label>
+                  <p class="control-help">{{ t('loudnessHelp') }}</p>
+                  <label><span>{{ t('tensionLabel', { value: tension.toFixed(2) }) }}</span><FineControl v-model="tension" :min="-1" :max="1" :step="0.01" :label="t('tension')" /></label>
+                  <p class="control-help">{{ t('tensionHelp') }}</p>
+                  <label><span>{{ t('breathinessLabel', { value: breathiness.toFixed(2) }) }}</span><FineControl v-model="breathiness" :min="0" :max="1" :step="0.01" :label="t('breathiness')" /></label>
+                  <label><span>{{ t('formantLabel', { value: formantSemitones.toFixed(1) }) }}</span><FineControl v-model="formantSemitones" :min="-6" :max="6" :step="0.1" :label="t('formant')" /></label>
+                </section>
                 <div class="phoneme-setting"><span>{{ t('missingWords') }}<small>{{ t('missingHelp') }}</small></span><span class="setting-state">{{ t('enabled') }}</span></div>
-                <details class="phone-inventory"><summary>{{ t('inventory', { count: phoneKeys.length }) }}</summary><span v-if="phoneIndexError">{{ phoneIndexError }}</span><div v-else class="phone-list"><FluentButton v-for="phone in phoneKeys" :key="phone" tone="subtle" :aria-label="t('insertPhone', { phone })" :title="t('phoneTitle', { phone })" @click="replaceEditorRange(`/ ${phone} /`)">{{ phone }}</FluentButton></div></details>
+                <details class="phone-inventory"><summary>{{ t('inventory', { count: phoneKeys.length }) }}</summary><span v-if="phoneIndexError">{{ phoneIndexError }}</span><div v-else class="phone-list"><FluentButton v-for="phone in phoneKeys" :key="phone" tone="subtle" :aria-label="t('insertPhone', { phone })" :title="t('phoneTitle', { phone })" @click="insertPhoneme(phone)">{{ phone }}</FluentButton></div></details>
               </div>
             </section>
             <section class="panel output-panel">
