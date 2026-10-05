@@ -1,0 +1,55 @@
+{
+  "product": "SCP: Secret Laboratory",
+  "installedBuildId": "24956965",
+  "sourceFiles": {
+    "SCPSL_Data/sharedassets1.assets": "4cfd58088b985864be74c726acdfe8fc357b612d2cc5ae7af09f02c87e43f9fd",
+    "SCPSL_Data/sharedassets2.assets": "04db67bed53f5e4351e09368ed8a68e439366e82f25428d0f775fd4f84ff4e54",
+    "SCPSL_Data/sharedassets1.resource": "95f54aabd6bd6e4f3eee0d1a75fe77c479c24ac0da8b16fb090071d99bf6be77",
+    "SCPSL_Data/sharedassets2.resource": "d31a0722eaa4d70eb57df92b0ce5d705f2ce16a1803afb9722ef6c51d0b28bdc",
+    "license.txt": "437cbbdf90c64d29211c3b7f633c8d32052ad144b3a05928404f27d40e3cc0e7"
+  },
+  "extractedClipCount": 964,
+  "audio": {
+    "container": "Ogg Opus",
+    "channels": 1,
+    "sampleRateHz": 48000,
+    "bitrate": "48 kbit/s VBR",
+    "trimmed": false
+  },
+  "attribution": "CASSIE audio assets from SCP: Secret Laboratory by Northwood Studios; licensed under CC BY-SA 3.0 according to the installed license.txt. License evidence is copied to data/licenses/scpsl-license.txt.",
+  "licenseEvidenceSha256": "437cbbdf90c64d29211c3b7f633c8d32052ad144b3a05928404f27d40e3cc0e7",
+  "selection": {
+    "containers": [
+      "SCPSL_Data/sharedassets1.assets",
+      "SCPSL_Data/sharedassets2.assets"
+    ],
+    "wordRule": "mono AudioClips with word-like asset names across the listed serialized assets, plus the explicit CASSIE phrase allowlist in scripts/extract_cassie.py",
+    "effects": [
+      "CASSIE-background-std"
+    ],
+    "excludedNonSpeechNames": [
+      "127 Box Ambient Closed",
+      "127 Box Ambient Open",
+      "127 Box Close",
+      "127 Box Open",
+      "Ambient*",
+      "Beep_Start",
+      "EZ Zoom Loop",
+      "ElevatorMoving",
+      "MegaPatch2_01",
+      "Waterfall L",
+      "Waterfall Muffled",
+      "Waterfall Pit",
+      "Waterfall r",
+      "hit",
+      "xmas_bouncyballs",
+      "xmas_jinglebells"
+    ],
+    "limitation": "This selection is based on installed asset names/channels and documented CASSIE announcement content; stripped IL2CPP component references do not expose a canonical wordbank table in the installed files."
+  },
+  "toolchain": {
+    "UnityPy": "1.25.4",
+    "imageio-ffmpeg": "0.6.0",
+    "ffmpeg": "7.1 libopus"
+  }
+}
