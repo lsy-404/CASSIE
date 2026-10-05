@@ -75,7 +75,7 @@ export async function encodeOpus(
     return new Blob([copy], { type: 'audio/ogg' });
   } catch (error) {
     if (signal?.aborted) throw new DOMException('Opus export cancelled.', 'AbortError');
-    throw error;
+    throw error instanceof Error ? error : new Error(String(error));
   } finally {
     signal?.removeEventListener('abort', abort);
     ffmpeg.terminate();

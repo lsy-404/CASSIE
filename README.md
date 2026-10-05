@@ -36,6 +36,8 @@ Use words from the supplied bank, separated by spaces. Unrecognized words are re
 
 The parser is independently implemented from the [documented modern CASSIE grammar](https://en.scpslgame.com/index.php?title=Updates/14.2.3). The renderer has bounded duration and token counts. It does not reproduce the game's announcement queue or promise identical procedural background behavior.
 
+Exact phrase recordings take priority. Available base words can be joined with recorded affixes; missing fragments are reported. Article variants use the following written initial, so pronunciation exceptions may differ from the game.
+
 ## Cloudflare deployment
 
 ```sh
@@ -44,6 +46,8 @@ npm run deploy
 ```
 
 `wrangler.jsonc` deploys **Workers Static Assets** to the configured account and custom domain. There is no server script, database, runtime API, or server-side audio processing. For your own deployment, change the account ID and domain first. Missing assets return 404.
+
+Hashed application assets cache for one year; audio and FFmpeg resources cache for one day, while the bank manifest revalidates. The current bank fits Static Assets, so this deployment needs no R2 bucket.
 
 FFmpeg's single-thread core is larger than Cloudflare's per-asset limit. `scripts/prepare-ffmpeg.mjs` compresses the pinned npm core with gzip and splits it into pieces no larger than 8 MiB during installation/build. The browser verifies SHA-256 hashes and decompresses the module locally with `DecompressionStream`; use a modern browser. Generated core assets are ignored by Git and included in deployment output. Release archives and checksums accompany the deployment package.
 

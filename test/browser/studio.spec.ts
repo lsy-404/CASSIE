@@ -31,7 +31,7 @@ test('renders genuine voice audio and exports WAV and Opus under deployed header
   const pcm = new Int16Array(bytes.buffer.slice(bytes.byteOffset + 44, bytes.byteOffset + bytes.length));
   const rms = Math.sqrt(pcm.reduce((sum, value) => sum + (value / 32768) ** 2, 0) / pcm.length);
   expect(rms).toBeGreaterThan(0.005);
-  await page.getByRole('button', { name: '↘ OPUS', exact: true }).click();
+  await page.getByRole('button', { name: 'OPUS', exact: true }).click();
   await expect(page.getByRole('link', { name: 'Download Opus file' })).toBeVisible({ timeout: 90_000 });
   const opusDownload = page.waitForEvent('download');
   await page.getByRole('link', { name: 'Download Opus file' }).click();
@@ -50,6 +50,7 @@ test('renders genuine voice audio and exports WAV and Opus under deployed header
   } finally { decoder.free(); }
   expect(errors).toEqual([]);
   expect(remoteRequests).toEqual([]);
+  await page.screenshot({ path: info.outputPath('desktop.png'), fullPage: true });
 });
 
 test('editing unknown and empty text keeps the composer usable, and cancellation allows another render', async ({ page }) => {
