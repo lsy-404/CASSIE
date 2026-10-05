@@ -60,10 +60,11 @@ function getCategory(clip: BankClip): keyof typeof categoryLabels {
 export function getClipUsage(clip: BankClip): ClipUsage {
   const category = getCategory(clip);
   const internalLetter = /^_[a-z]$/i.test(clip.id);
-  const needsExplicitClipCommand = internalLetter || ["prefix", "suffix", "article", "pause", "background", "effect"].includes(category);
-  const insertText = needsExplicitClipCommand ? `$CLIP_${clip.id}` : clip.id;
+  const singleLetter = category === "letter";
+  const needsExplicitClipCommand = internalLetter || singleLetter || ["prefix", "suffix", "article", "pause", "background", "effect"].includes(category);
+  const insertText = needsExplicitClipCommand ? `/clip:${clip.id}` : clip.id;
   const name = chineseNames[clip.id] ?? clip.id.replace(/^_([a-z])$/i, "$1").replaceAll("-", " ").replaceAll("_", " ");
-  const speechReady = !internalLetter && ["word", "phrase", "digit", "letter"].includes(category);
+  const speechReady = !internalLetter && !singleLetter && ["word", "phrase", "digit"].includes(category);
 
   return {
     category: categoryLabels[category],

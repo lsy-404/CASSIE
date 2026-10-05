@@ -1,6 +1,7 @@
 import { reactive } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import { analyzeText, createWordPlan } from '../src/audio/parser';
+import { getClipUsage } from '../src/audio/catalog';
 import { analyzeAnnouncement, renderAnnouncement } from '../src/audio/engine';
 import { applyStutter, encodeWav, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, splicePhonemeWindows, stretchVowelLoop, transformWord } from '../src/audio/dsp';
 import type { Bank } from '../src/audio/types';
@@ -41,6 +42,15 @@ function word(id: string, extra: Partial<Parameters<typeof transformWord>[2]> = 
 }
 
 describe('CASSIE announcement parser', () => {
+  it('uses slash clip commands for explicit fragments and single-letter clips', () => {
+    const usage = (id: string) => getClipUsage({ id, file: `/audio/${id}.opus`, duration: 0.2, kind: 'word' });
+    expect(usage('_a')).toMatchObject({ insertText: '/clip:_a' });
+    expect(usage('a')).toMatchObject({ insertText: '/clip:a' });
+    expect(usage('the_vowel')).toMatchObject({ insertText: '/clip:the_vowel' });
+    expect(usage('hello')).toMatchObject({ insertText: 'hello' });
+    expect(usage('a').description).toContain('/clip:a');
+  });
+
   it('expands signed decimal numbers into bank words', () => {
     expect(analyzeText('-103.25', bank).words).toEqual(['negative', 'one', 'hundred', 'three', 'point', 'two', 'five']);
   });
