@@ -50,7 +50,7 @@ function hasPhone(phone: string, catalog: PhonemeCatalog): boolean {
 function validCatalog(value: unknown, bank: Bank): PhonemeCatalog {
   if (!value || typeof value !== 'object') throw new Error('The phoneme catalog is invalid.');
   const catalog = value as Partial<PhonemeCatalog>;
-  if ((catalog.schemaVersion !== 1 && catalog.schemaVersion !== 2) || !catalog.sourceBank || catalog.sourceBank.version !== bank.version ||
+  if (catalog.schemaVersion !== 2 || !catalog.sourceBank || catalog.sourceBank.version !== bank.version ||
       catalog.sourceBank.sha256 !== bank.manifestSha256 || !catalog.phones || typeof catalog.phones !== 'object') {
     throw new Error('The phoneme catalog does not match this audio bank.');
   }

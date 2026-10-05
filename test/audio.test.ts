@@ -25,7 +25,7 @@ const phoneBank: Bank = {
 };
 
 const phoneCatalog: PhonemeCatalog = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   sourceBank: { version: bank.version, sha256: 'e'.repeat(64) },
   phones: {
     'ɑː': [{ clipId: 'phone-a', ipa: 'ˈɑː', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1, sourceSha256: 'a'.repeat(64) }],
