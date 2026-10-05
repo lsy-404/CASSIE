@@ -11,17 +11,17 @@ test('default announcement exposes the complete editable markup example', async 
     '<start>', '<end>', '<br>', '<pause seconds="0.5"/>',
     '<pitch value="1.2">', '</pitch>', '<volume value="0.7">', '</volume>',
     '<stutter repeats="1">', '</stutter>', '<offset seconds="0.1">', '</offset>',
-    '<duration seconds="0.3">', '</duration>', '<spacing seconds="0.2">', '</spacing>',
+    '<duration seconds="0.3">', '</duration>', '<spacing seconds="0.2">', '</spacing>', '<rate value="1.1">', '</rate>',
     'me<pitch value="1.1">tri</pitch>cs', 'ROC AUC I a A', '<clip id="cassie"/>', '/ a e: /',
   ]) expect(value).toContain(sample);
   await expect(editor).toHaveCSS('min-height', '250px');
-  await expect(page.getByText('公告已就绪', { exact: true })).toBeVisible({ timeout: 90_000 });
-  await expect(page.locator('audio')).toBeVisible();
+  await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 90_000 });
+  await expect(page.locator('.announcement-player')).toBeVisible();
   await expect(page.locator('.annotated-editor .token-error').filter({ hasText: /^</ })).toHaveCount(0);
 });
 
 async function waitForReady(page: import('@playwright/test').Page, timeout = 90000) {
-  await expect(page.getByText('公告已就绪', { exact: true })).toBeVisible({ timeout });
+  await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout });
 }
 
 async function saveWav(page: import('@playwright/test').Page, path: string) {
@@ -58,7 +58,7 @@ test('live render creates local WAV, native player tracks words and gaps, and Op
   await page.locator('textarea').fill('attention lockdown personnel');
   await waitForReady(page);
   const audio = page.locator('audio');
-  await expect(audio).toBeVisible();
+  await expect(page.locator('.announcement-player')).toBeVisible();
   expect(await audio.evaluate((element: HTMLAudioElement) => element.paused)).toBe(true);
   expect(await page.locator('.token-recorded, .token-synthesized').count()).toBeGreaterThanOrEqual(3);
   await audio.evaluate((element: HTMLAudioElement) => {
@@ -184,7 +184,7 @@ test('markup help and insertion preserve exact inline text and selections', asyn
   await expect(field).toHaveValue('me/ a e: /trics');
 
   await field.fill('me<pitch value="1.2">tri</pitch>cs');
-  await expect(page.getByText('公告已就绪', { exact: true })).toBeVisible({ timeout: 90_000 });
+  await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 90_000 });
   await expect(page.locator('.highlight-layer')).toHaveText('me<pitch value="1.2">tri</pitch>cs');
   await expect(page.locator('.annotated-editor .token-gap')).toHaveCount(0);
   await expect(page.locator('.annotated-editor .token-marker')).toHaveCount(2);
@@ -192,7 +192,7 @@ test('markup help and insertion preserve exact inline text and selections', asyn
   await expect(page.locator('.annotated-editor .token-error.spell-missing')).toHaveCount(0);
 
   await field.fill('<pitch value="1.2">attention</pitch> <volume value="0.7">personnel</volume> <pause seconds="0.5"/>');
-  await expect(page.getByText('公告已就绪', { exact: true })).toBeVisible({ timeout: 90_000 });
+  await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 90_000 });
   await expect(page.locator('.annotated-editor .token-marker')).toHaveCount(5);
   await expect(page.locator('.annotated-editor .token-error')).toHaveCount(0);
   expect(await page.locator('.highlight-layer').textContent()).toBe('<pitch value="1.2">attention</pitch> <volume value="0.7">personnel</volume> <pause seconds="0.5"/>');

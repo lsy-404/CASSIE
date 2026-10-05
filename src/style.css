@@ -10,6 +10,7 @@ a { color: inherit; }
 .brand { display: inline-flex; align-items: baseline; gap: 12px; text-decoration: none; }
 .brand strong { font-size: 18px; font-weight: 650; }
 .brand span, .topbar > a:last-child { font-size: 12px; }
+.topbar-actions { display: flex; align-items: center; gap: 12px; }
 .workspace { width: min(1240px, calc(100% - 40px)); margin: 0 auto; padding: 36px 0; flex: 1; }
 .page-heading { margin-bottom: 22px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .page-heading p { margin: 0 0 4px; }
@@ -48,7 +49,6 @@ h1 { margin: 0 0 5px; font-size: clamp(27px, 4vw, 36px); font-weight: 600; }
 .token-legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 9px; font-size: 12px; }
 .token-legend span { text-decoration-line: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
 .spell-legend { text-decoration-style: wavy !important; text-decoration-color: var(--fluent-danger); }
-.audio-player { width: 100%; margin-top: 12px; }
 .analysis-details { margin-top: 12px; font-size: 12px; }
 .analysis-details summary, .advanced-tools summary { cursor: pointer; }
 .analysis-details p { margin: 8px 0; }
