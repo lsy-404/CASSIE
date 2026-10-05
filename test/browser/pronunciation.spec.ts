@@ -47,3 +47,35 @@ test('ordinary English and best-effort phonemes produce audible audio throughout
   await page.screenshot({ path: info.outputPath('paragraph.png'), fullPage: true });
   expect(errors).toEqual([]);
 });
+
+test('announcement commands play the game boundary excerpts and highlight their source markers', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/');
+  await expect(page.locator('textarea')).toBeEnabled();
+  await page.locator('textarea').fill('/start cassie /end');
+  await expect(page.getByText('公告已就绪', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('.annotated-editor .token-marker')).toHaveCount(2);
+  await expect(page.locator('.annotated-editor .token-error')).toHaveCount(0);
+  const audio = page.locator('audio');
+  const duration = await audio.evaluate(async (element: HTMLAudioElement) => {
+    if (element.readyState < 1) {
+      await new Promise<void>((resolve) => element.addEventListener('loadedmetadata', () => resolve(), { once: true }));
+    }
+    element.currentTime = 0.1;
+    element.dispatchEvent(new Event('seeking'));
+    return element.duration;
+  });
+  expect(duration).toBeGreaterThan(13);
+  expect(duration).toBeLessThan(16);
+  await expect(page.locator('.annotated-editor .active')).toHaveText('/start');
+  await audio.evaluate((element: HTMLAudioElement) => {
+    element.currentTime = element.duration - 0.5;
+    element.dispatchEvent(new Event('seeking'));
+  });
+  await expect(page.locator('.annotated-editor .active')).toHaveText('/end');
+  const download = page.waitForEvent('download');
+  await page.getByRole('link', { name: '下载 WAV', exact: true }).click();
+  await (await download).saveAs(info.outputPath('boundary-cues.wav'));
+  expect(errors).toEqual([]);
+});
