@@ -2,7 +2,7 @@
 
 | Component | License | Source |
 | --- | --- | --- |
-| platform-kit Fluent 0.2.5 | Apache-2.0 | https://github.com/lsy-404/platform-kit/tree/fluent-v0.2.5 |
+| platform-kit Fluent 0.2.6 | Apache-2.0 | https://github.com/lsy-404/platform-kit/tree/fluent-v0.2.6 |
 | Vue 3.5.43 | MIT | https://github.com/vuejs/core/tree/v3.5.43 |
 | ogg-opus-decoder 1.7.5 and Opus decoder/common modules | MIT | https://github.com/eshaz/wasm-audio-decoders |
 | codec-parser | LGPL-3.0 | https://github.com/eshaz/codec-parser |

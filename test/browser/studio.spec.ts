@@ -27,11 +27,13 @@ test('live render creates local WAV, native player tracks words and gaps, and Op
   await expect(page.getByRole('heading', { name: '素材目录' })).toHaveCount(0);
   const trackStyle = await page.locator('input[type="range"]').first().evaluate((input) => ({
     position: (input as HTMLInputElement).style.getPropertyValue('--fluent-slider-position'),
+    backgroundColor: getComputedStyle(input).backgroundColor,
     trackRule: Array.from(document.styleSheets).flatMap((sheet) => {
       try { return Array.from(sheet.cssRules); } catch { return []; }
     }).find((rule) => rule.cssText.includes('.fluent-slider__input::-webkit-slider-runnable-track'))?.cssText ?? '',
   }));
   expect(trackStyle.position).toMatch(/%$/);
+  expect(trackStyle.backgroundColor).toBe('rgba(0, 0, 0, 0)');
   expect(trackStyle.trackRule).toContain('var(--fluent-accent)');
   expect(trackStyle.trackRule).toContain('var(--fluent-border)');
   await expect(page.getByText('ENGINE READY', { exact: true })).toHaveCount(0);
@@ -145,6 +147,8 @@ test('direct phonemes and unknown English words synthesize locally by default', 
   await page.locator('textarea').fill('/ a e: /');
   await expect(page.locator('.analysis-details summary')).toBeVisible();
   await waitForReady(page, 90000);
+  await expect(page.locator('.annotated-editor .token-error')).toHaveText('/ a e: /');
+  await expect(page.getByText(/was stretched from/).last()).toBeVisible();
   const phonemePath = info.outputPath('phonemes.wav');
   const bytes = await saveWav(page, phonemePath);
   expect(bytes.toString('ascii', 0, 4)).toBe('RIFF');
