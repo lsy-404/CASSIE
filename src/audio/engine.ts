@@ -110,6 +110,11 @@ export async function renderAnnouncement(
     gap: Number.isFinite(options.gap) ? Math.min(0.8, Math.max(0, options.gap)) : 0.24,
     rate: Number.isFinite(options.rate) ? Math.min(2, Math.max(0.5, options.rate!)) : 1,
     phonemes: options.phonemes !== false,
+    voice: {
+      pitchSemitones: Number.isFinite(options.voice?.pitchSemitones) ? Math.min(12, Math.max(-12, options.voice!.pitchSemitones)) : 0,
+      breathiness: Number.isFinite(options.voice?.breathiness) ? Math.min(1, Math.max(0, options.voice!.breathiness)) : 0,
+      formantSemitones: Number.isFinite(options.voice?.formantSemitones) ? Math.min(6, Math.max(-6, options.voice!.formantSemitones)) : 0,
+    },
   };
   const { plan, warnings } = await preparePlan(text, bank, safeOptions.phonemes === true, signal);
   if (signal?.aborted) throw new DOMException('The audio render was cancelled.', 'AbortError');
@@ -176,4 +181,4 @@ export async function renderAnnouncement(
 }
 
 export { encodeWav } from './dsp';
-export type { AnalysisToken, Bank, BankClip, RenderOptions, RenderResult, TimelineEntry } from './types';
+export type { AnalysisToken, Bank, BankClip, RenderOptions, RenderResult, TimelineEntry, VoiceOptions } from './types';

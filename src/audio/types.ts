@@ -21,6 +21,13 @@ export interface RenderOptions {
   gap: number;
   rate?: number;
   phonemes?: boolean;
+  voice?: VoiceOptions;
+}
+
+export interface VoiceOptions {
+  pitchSemitones: number;
+  breathiness: number;
+  formantSemitones: number;
 }
 
 export interface RenderResult {
@@ -56,6 +63,7 @@ export interface WordPlan {
   pitch: number;
   volume: number;
   rate?: number;
+  voice?: Partial<VoiceOptions>;
   startAt?: number;
   maxDuration?: number;
   sleep?: number;

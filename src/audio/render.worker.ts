@@ -1,6 +1,9 @@
 import { OggOpusDecoder } from 'ogg-opus-decoder';
 import { advancePlaybackCursorAfterRepeat, appendTimelineEntry, clipTimelineToDuration, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchSpeechPreservingGaps, stretchSpeechRate, stretchVowelLoop, transformWord } from './dsp';
-import type { Bank, BankClip, RenderOptions, TimelineEntry, WordPlan } from './types';
+import { blendVoiceEdges, editWorldFeatures, isNeutralVoice, processVoicePreservingGaps } from './voice-dsp';
+import { createWorldVocoder } from './world';
+import type { WorldVocoder } from './world';
+import type { Bank, BankClip, RenderOptions, TimelineEntry, VoiceOptions, WordPlan } from './types';
 
 type RequestMessage = { type: 'render'; bank: Bank; plan: WordPlan[]; options: RenderOptions };
 type ResponseMessage =
@@ -29,6 +32,7 @@ async function fetchClip(clip: BankClip, decoder: OggOpusDecoder): Promise<Float
 scope.onmessage = async ({ data }) => {
   if (data.type !== 'render') return;
   let decoder: OggOpusDecoder | undefined;
+  let world: WorldVocoder | undefined;
   try {
     const activeDecoder = new OggOpusDecoder();
     decoder = activeDecoder;
@@ -58,6 +62,37 @@ scope.onmessage = async ({ data }) => {
       decodedCount += 1;
       reportProgress();
       return decoded;
+    };
+    const processVoice = async (samples: Float32Array, voice: VoiceOptions): Promise<Float32Array> => {
+      if (isNeutralVoice(voice) || !samples.length) return samples;
+      if (samples.length > OUTPUT_SAMPLE_RATE * 20) throw new Error('WORLD voice processing supports speech blocks up to 20 seconds.');
+      let peak = 0;
+      for (const sample of samples) {
+        if (!Number.isFinite(sample)) throw new Error('Voice input contains non-finite audio.');
+        peak = Math.max(peak, Math.abs(sample));
+      }
+      if (peak === 0) return samples.slice();
+      const normalizedGain = 0.8 / peak;
+      const paddedLength = Math.max(samples.length, Math.ceil(OUTPUT_SAMPLE_RATE * 0.03));
+      const padding = Math.floor((paddedLength - samples.length) / 2);
+      const normalized = new Float32Array(paddedLength);
+      for (let index = 0; index < samples.length; index += 1) normalized[padding + index] = samples[index] * normalizedGain;
+      world ??= await createWorldVocoder();
+      let features;
+      try {
+        features = world.analyze(normalized, OUTPUT_SAMPLE_RATE);
+        const edited = editWorldFeatures(features, voice);
+        features.f0.set(edited.f0);
+        features.spectral.set(edited.spectral);
+        features.aperiodicity.set(edited.aperiodicity);
+        const synthesized = world.synthesize(features);
+        if (synthesized.length !== paddedLength) throw new Error('WORLD changed the speech block duration.');
+        const restored = new Float32Array(samples.length);
+        for (let index = 0; index < restored.length; index += 1) restored[index] = synthesized[padding + index] / normalizedGain;
+        return blendVoiceEdges(samples, restored, OUTPUT_SAMPLE_RATE);
+      } finally {
+        if (features) world.dispose(features);
+      }
     };
 
     const layers: Array<{ samples: Float32Array; start: number; gain?: number }> = [];
@@ -253,13 +288,23 @@ scope.onmessage = async ({ data }) => {
         }
         phraseTimeline = mapSourceTimeline(spans, decoded.length, { ...word, rate: 1 }, data.options.pitch, OUTPUT_SAMPLE_RATE, 0, pitched.length);
       }
-      let samples = pitched;
+      const voice: VoiceOptions = {
+        pitchSemitones: word.voice?.pitchSemitones ?? data.options.voice?.pitchSemitones ?? 0,
+        breathiness: word.voice?.breathiness ?? data.options.voice?.breathiness ?? 0,
+        formantSemitones: word.voice?.formantSemitones ?? data.options.voice?.formantSemitones ?? 0,
+      };
+      let voiceProcessed = pitched;
+      if (sourceClip.kind === 'word' && word.timelineKind !== 'cue' && !isNeutralVoice(voice)) {
+        const gaps = phraseTimeline?.filter((entry) => entry.kind === 'gap') ?? [];
+        voiceProcessed = await processVoicePreservingGaps(pitched, OUTPUT_SAMPLE_RATE, gaps, (speech) => processVoice(speech, voice));
+      }
+      let samples = voiceProcessed;
       if (sourceClip.kind === 'word') {
         if (phraseTimeline) {
-          const stretched = stretchSpeechPreservingGaps(pitched, OUTPUT_SAMPLE_RATE, rate, phraseTimeline);
+          const stretched = stretchSpeechPreservingGaps(voiceProcessed, OUTPUT_SAMPLE_RATE, rate, phraseTimeline);
           samples = stretched.samples;
           phraseTimeline = stretched.timeline;
-        } else samples = stretchSpeechRate(pitched, OUTPUT_SAMPLE_RATE, rate);
+        } else samples = stretchSpeechRate(voiceProcessed, OUTPUT_SAMPLE_RATE, rate);
       }
       if (word.startAt !== undefined && word.startAt >= source.length / OUTPUT_SAMPLE_RATE) {
         warnings.push(`Start time skipped all of “${word.display}”.`);
@@ -319,6 +364,7 @@ scope.onmessage = async ({ data }) => {
   } catch (error) {
     scope.postMessage({ type: 'error', message: error instanceof Error ? error.message : 'Audio rendering failed.' });
   } finally {
+    world?.dispose();
     decoder?.free();
   }
 };
