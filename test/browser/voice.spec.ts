@@ -15,6 +15,11 @@ async function wav(page: Page, text: string, path: string) {
 
 function bytes(samples: Int16Array) { return Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength); }
 
+function rms(samples: Int16Array): number {
+  const core = samples.subarray(4_800, samples.length - 4_800);
+  return Math.sqrt(core.reduce((sum, sample) => sum + (sample / 32768) ** 2, 0) / core.length);
+}
+
 function peakFrequency(samples: Int16Array): number {
   const core = samples.subarray(4_800, samples.length - 4_800);
   let peak = 0;
@@ -57,8 +62,20 @@ test('WASM post-processing raises and lowers a known fundamental without changin
   const neutral = await wav(page, 'cassie', info.outputPath('known-tone.wav'));
   const raised = await wav(page, '<voice pitch="3">cassie</voice>', info.outputPath('known-tone-raised.wav'));
   const lowered = await wav(page, '<voice pitch="-3">cassie</voice>', info.outputPath('known-tone-lowered.wav'));
+  const louder = await wav(page, '<voice loudness="6">cassie</voice>', info.outputPath('known-tone-louder.wav'));
+  const softer = await wav(page, '<voice loudness="-6">cassie</voice>', info.outputPath('known-tone-softer.wav'));
+  const tense = await wav(page, '<voice loudness="3" tension="0.7">cassie</voice>', info.outputPath('known-tone-tense.wav'));
+  const tensionOnly = await wav(page, '<voice tension="0.7">cassie</voice>', info.outputPath('known-tone-tension-only.wav'));
   expect(raised.length).toBe(neutral.length);
   expect(lowered.length).toBe(neutral.length);
+  expect(louder.length).toBe(neutral.length);
+  expect(softer.length).toBe(neutral.length);
+  expect(tense.length).toBe(neutral.length);
+  expect(tensionOnly.length).toBe(neutral.length);
+  expect(rms(louder) / rms(neutral)).toBeGreaterThan(1.7);
+  expect(rms(softer) / rms(neutral)).toBeLessThan(0.55);
+  expect(bytes(tensionOnly)).not.toEqual(bytes(neutral));
+  expect(louder.reduce((peak, sample) => Math.max(peak, Math.abs(sample)), 0)).toBeLessThanOrEqual(32767);
   expect(Math.abs(peakFrequency(neutral) - 160)).toBeLessThan(2);
   expect(Math.abs(peakFrequency(raised) - 160 * 2 ** (3 / 12))).toBeLessThan(4);
   expect(Math.abs(peakFrequency(lowered) - 160 * 2 ** (-3 / 12))).toBeLessThan(4);
@@ -112,7 +129,7 @@ test('voice processing preserves boundary cues, fixed gaps and explicit pauses',
   const start = await wav(page, '<start>', info.outputPath('voice-start.wav'));
   const end = await wav(page, '<end>', info.outputPath('voice-end.wav'));
   const normal = await wav(page, '<start>cassie cassie<br>cassie<end>', info.outputPath('voice-normal.wav'));
-  const processed = await wav(page, '<voice pitch="-3" breathiness="0.45" formant="2"><start>cassie cassie<br>cassie<end></voice>', info.outputPath('voice-processed.wav'));
+  const processed = await wav(page, '<voice pitch="-3" breathiness="0.45" formant="2" loudness="3" tension="0.5"><start>cassie cassie<br>cassie<end></voice>', info.outputPath('voice-processed.wav'));
   expect(processed.length).toBe(normal.length);
   expect(bytes(processed.subarray(0, start.length))).toEqual(bytes(start));
   expect(bytes(processed.subarray(-end.length))).toEqual(bytes(end));

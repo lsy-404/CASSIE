@@ -199,14 +199,14 @@ function tokenizeInput(text: string): ScanResult {
       ? SCOPED_TAGS.has(tag.name) && !Object.keys(tag.attrs).length
       : SCOPED_TAGS.has(tag.name)
         ? !tag.selfClosing && (tag.name === 'voice'
-          ? Object.keys(tag.attrs).length > 0 && Object.keys(tag.attrs).every((key) => ['pitch', 'breathiness', 'formant'].includes(key))
+          ? Object.keys(tag.attrs).length > 0 && Object.keys(tag.attrs).every((key) => ['pitch', 'breathiness', 'formant', 'loudness', 'tension'].includes(key))
           : Object.keys(tag.attrs).length === 1 && Object.hasOwn(tag.attrs, tag.name === 'stutter' ? 'repeats' : tag.name === 'pitch' || tag.name === 'volume' || tag.name === 'rate' ? 'value' : 'seconds'))
         : MARKER_TAGS.has(tag.name) && (tag.name === 'br' ? !Object.keys(tag.attrs).length : tag.name === 'pause' ? Object.keys(tag.attrs).length === 1 && Object.hasOwn(tag.attrs, 'seconds') : tag.name === 'clip' ? Object.keys(tag.attrs).length === 1 && Object.hasOwn(tag.attrs, 'id') : !Object.keys(tag.attrs).length);
     const valueName = tag.name === 'stutter' ? 'repeats' : tag.name === 'pitch' || tag.name === 'volume' || tag.name === 'rate' ? 'value' : 'seconds';
     const rawScopedValue = tag.attrs[valueName];
     const scopedValue = Number(rawScopedValue);
     const validVoice = tag.name !== 'voice' || Object.entries(tag.attrs).every(([key, raw]) => {
-      const bounds = key === 'pitch' ? [-12, 12] : key === 'breathiness' ? [0, 1] : [-6, 6];
+      const bounds = key === 'pitch' ? [-12, 12] : key === 'breathiness' ? [0, 1] : key === 'formant' ? [-6, 6] : key === 'loudness' ? [-24, 12] : [-1, 1];
       return raw.trim() !== '' && Number.isFinite(Number(raw)) && Number(raw) >= bounds[0] && Number(raw) <= bounds[1];
     });
     const validValue = tag.closing || tag.name === 'voice' ? tag.closing || validVoice : !SCOPED_TAGS.has(tag.name) && tag.name !== 'pause' ||
@@ -306,6 +306,8 @@ function tokenizeInput(text: string): ScanResult {
           if (Object.hasOwn(tag.attrs, 'pitch')) voice.pitchSemitones = Number(tag.attrs.pitch);
           if (Object.hasOwn(tag.attrs, 'breathiness')) voice.breathiness = Number(tag.attrs.breathiness);
           if (Object.hasOwn(tag.attrs, 'formant')) voice.formantSemitones = Number(tag.attrs.formant);
+          if (Object.hasOwn(tag.attrs, 'loudness')) voice.loudnessDb = Number(tag.attrs.loudness);
+          if (Object.hasOwn(tag.attrs, 'tension')) voice.tension = Number(tag.attrs.tension);
           next.voice = voice;
           activeStack.push({ before: activeScope, name: tag.name });
           activeScope = next;

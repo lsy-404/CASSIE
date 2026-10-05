@@ -114,6 +114,8 @@ export async function renderAnnouncement(
       pitchSemitones: Number.isFinite(options.voice?.pitchSemitones) ? Math.min(12, Math.max(-12, options.voice!.pitchSemitones)) : 0,
       breathiness: Number.isFinite(options.voice?.breathiness) ? Math.min(1, Math.max(0, options.voice!.breathiness)) : 0,
       formantSemitones: Number.isFinite(options.voice?.formantSemitones) ? Math.min(6, Math.max(-6, options.voice!.formantSemitones)) : 0,
+      loudnessDb: Number.isFinite(options.voice?.loudnessDb) ? Math.min(12, Math.max(-24, options.voice!.loudnessDb!)) : 0,
+      tension: Number.isFinite(options.voice?.tension) ? Math.min(1, Math.max(-1, options.voice!.tension!)) : 0,
     },
   };
   const { plan, warnings } = await preparePlan(text, bank, safeOptions.phonemes === true, signal);
