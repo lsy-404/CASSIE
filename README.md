@@ -38,11 +38,13 @@ The parser is independently implemented from the [documented modern CASSIE gramm
 
 Exact phrase recordings take priority. Available base words can be joined with recorded affixes; missing fragments are reported. Article variants use the following written initial, so pronunciation exceptions may differ from the game.
 
-`$CLIP_id` explicitly inserts any supplied clip, including effects and internal fragments. `$START` and `$END` are application cue commands; they warn and skip when no verified announcement boundary recording is available. They are not game modifiers.
+`$CLIP_id` explicitly inserts any supplied clip, including effects and internal fragments. Choose a clip in the catalog as your custom beginning or ending prompt, then insert it from the toolbar. `$START` and `$END` are application cue commands; they warn and skip when no verified announcement boundary recording is available. They are not game modifiers.
 
 ## Experimental phoneme composition
 
 Type space-separated phones between slashes, for example `/ a e: /`, or enter IPA such as `/ h ə l oʊ /`. Direct phoneme blocks work without enabling English word expansion. The interface lists the available measured phones and reports missing units.
+
+The shortcuts `a` and `e` select `ɑː` and `ɛ`. A trailing `:` requests a long vowel: a matching recorded long vowel is used when available; otherwise the vowel's middle portion is repeated with crossfades while preserving its pitch. IPA `j` remains the palatal glide; use `jh` for `dʒ`. Long-vowel repetition can sound rough.
 
 Enable experimental phoneme composition to pronounce unrecorded English words using eSpeak's US English pronunciation through `phonemizer`. Existing word, phrase and affix recordings take priority. Pronunciation conversion and composition run locally; missing phones cause the whole unrecorded word to be skipped with a warning.
 
