@@ -22,7 +22,7 @@ Install the browser once with `npx playwright install chromium` before browser t
 
 ## Announcement syntax
 
-Use words from the supplied bank, separated by spaces. Unrecognized words are reported and skipped. This is recorded-word synthesis, so arbitrary text cannot be pronounced. Numbers are expanded into speech units where available.
+Use words from the supplied bank, separated by spaces. Numbers are expanded into speech units where available. The Fluent toolbar inserts game modifiers, while the catalog identifies playable voice, affix and effect clips and supports individual previews.
 
 | Modifier | Meaning |
 | --- | --- |
@@ -37,6 +37,18 @@ Use words from the supplied bank, separated by spaces. Unrecognized words are re
 The parser is independently implemented from the [documented modern CASSIE grammar](https://en.scpslgame.com/index.php?title=Updates/14.2.3). The renderer has bounded duration and token counts. It does not reproduce the game's announcement queue or promise identical procedural background behavior.
 
 Exact phrase recordings take priority. Available base words can be joined with recorded affixes; missing fragments are reported. Article variants use the following written initial, so pronunciation exceptions may differ from the game.
+
+`$CLIP_id` explicitly inserts any supplied clip, including effects and internal fragments. `$START` and `$END` are application cue commands; they warn and skip when no verified announcement boundary recording is available. They are not game modifiers.
+
+## Experimental phoneme composition
+
+Type space-separated phones between slashes, for example `/ a e: /`, or enter IPA such as `/ h ə l oʊ /`. Direct phoneme blocks work without enabling English word expansion. The interface lists the available measured phones and reports missing units.
+
+Enable experimental phoneme composition to pronounce unrecorded English words using eSpeak's US English pronunciation through `phonemizer`. Existing word, phrase and affix recordings take priority. Pronunciation conversion and composition run locally; missing phones cause the whole unrecorded word to be skipped with a warning.
+
+The index contains 2,761 measured interior windows from 777 source clips, covering 55 IPA keys. Echogarden's synthesis-reference MFCC/DTW alignment estimates boundaries from the actual audio; the first and last phone of each source word are excluded. The renderer joins those windows with short crossfades. These are automatically aligned, context-dependent fragments, so pronunciation and transitions are experimental and can sound rough. This is not a general English TTS voice.
+
+Generation code, timestamp selection and composition code are AGPL-3.0-only. The original and excerpted game audio retain CC BY-SA 3.0. Reproduce the timestamp index using `scripts/build-phonemes.mjs`; the source and output hashes are in `data/phonemes-manifest.json`.
 
 ## Cloudflare deployment
 
