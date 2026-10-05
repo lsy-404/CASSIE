@@ -5,12 +5,14 @@ export interface BankClip {
   file: string;
   duration: number;
   kind: ClipKind;
+  sha256?: string;
 }
 
 export interface Bank {
   version: string;
   source: string;
   clips: BankClip[];
+  manifestSha256?: string;
 }
 
 export interface RenderOptions {
@@ -18,6 +20,7 @@ export interface RenderOptions {
   volume: number;
   gap: number;
   background: boolean;
+  phonemes?: boolean;
 }
 
 export interface RenderResult {
@@ -40,4 +43,15 @@ export interface WordPlan {
   sleep?: number;
   spacing?: number;
   stutter?: { position: number; length: number; repeats: number };
+  phonemeUnits?: PhonemeUnit[];
+}
+
+export interface PhonemeUnit {
+  clipId: string;
+  startSeconds: number;
+  endSeconds: number;
+  ipa: string;
+  sourceDurationSeconds: number;
+  sourceSha256: string;
+  stretchFactor?: number;
 }

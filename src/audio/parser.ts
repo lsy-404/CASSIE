@@ -1,5 +1,7 @@
 import type { Bank, BankClip, WordPlan } from './types';
 import { announcementCueIds } from './catalog';
+import { parseExplicitPhones, parseGeneratedPhones, resolvePhoneUnits } from './phonemes';
+import type { PhonemeCatalog } from './phonemes';
 
 const MAX_TOKENS = 512;
 const MAX_INPUT_LENGTH = 8192;
@@ -64,7 +66,7 @@ function numberWords(value: string): string[] {
 }
 
 function tokenPattern(): RegExp {
-  return /\$START\b|\$END\b|\$CLIP_[A-Za-z0-9_-]+|\$[A-Za-z]+_[^\s$]+|-?\d+(?:\.\d+)?|[\p{L}_-][\p{L}\p{N}_-]*(?:['’][\p{L}]+)*/giu;
+  return /\/[^/\r\n]{1,256}\/|\$START\b|\$END\b|\$CLIP_[A-Za-z0-9_-]+|\$[A-Za-z]+_[^\s$]+|-?\d+(?:\.\d+)?|[\p{L}_-][\p{L}\p{N}_-]*(?:['’][\p{L}]+)*/giu;
 }
 
 function resolveClip(token: string, lookup: Map<string, BankClip>, nextToken?: string): BankClip | undefined {
@@ -166,12 +168,19 @@ export interface AnnouncementCueIds {
   end: string | null;
 }
 
-function compileWordPlan(text: string, bank: Bank, cueIds: AnnouncementCueIds): { plan: WordPlan[]; warnings: string[] } {
+function compileWordPlan(
+  text: string,
+  bank: Bank,
+  cueIds: AnnouncementCueIds,
+  phonemeCatalog?: PhonemeCatalog,
+  phonemized: ReadonlyMap<string, string> = new Map(),
+): { plan: WordPlan[]; warnings: string[]; unresolvedWords: string[] } {
   if (text.length > MAX_INPUT_LENGTH) throw new Error(`Announcement exceeds the ${MAX_INPUT_LENGTH}-character limit.`);
   const lookup = new Map(bank.clips.filter((clip) => clip.kind === 'word').map((clip) => [normalize(clip.id), clip]));
   const clipLookup = new Map(bank.clips.map((clip) => [normalize(clip.id), clip]));
   const plan: WordPlan[] = [];
   const warnings: string[] = [];
+  const unresolvedWords = new Set<string>();
   const tokens = [...text.matchAll(tokenPattern())].map((match) => match[0]);
   if (tokens.length > MAX_TOKENS) {
     throw new Error(`Announcement exceeds the ${MAX_TOKENS}-token limit.`);
@@ -183,6 +192,33 @@ function compileWordPlan(text: string, bank: Bank, cueIds: AnnouncementCueIds): 
   for (let tokenIndex = 0; tokenIndex < tokens.length; tokenIndex += 1) {
     const raw = tokens[tokenIndex];
     const token = raw.toLocaleLowerCase('en-US');
+    const directPhones = /^\/(.*)\/$/u.exec(raw);
+    if (directPhones) {
+      if (!phonemeCatalog) {
+        warnings.push('The phoneme catalog is unavailable; the IPA segment was skipped.');
+        continue;
+      }
+      const parsed = parseExplicitPhones(directPhones[1], phonemeCatalog);
+      if (parsed.warnings.length) {
+        warnings.push(...parsed.warnings);
+        continue;
+      }
+      const resolved = resolvePhoneUnits(parsed.phones, phonemeCatalog, bank);
+      if (resolved.warnings.length) {
+        warnings.push(...resolved.warnings);
+        continue;
+      }
+      plan.push({
+        clipId: resolved.units[0].clipId,
+        display: `IPA ${raw}`,
+        pitch,
+        volume,
+        phonemeUnits: resolved.units,
+        ...pending,
+      });
+      pending = {};
+      continue;
+    }
     if (token.startsWith('$')) {
       if (token === '$start' || token === '$end') {
         const cueId = token === '$start' ? cueIds.start : cueIds.end;
@@ -273,6 +309,29 @@ function compileWordPlan(text: string, bank: Bank, cueIds: AnnouncementCueIds): 
       const generated = clip ? undefined : inflection(spoken, lookup);
       const playableClip = clip ?? generated?.clip;
       if (!playableClip) {
+        const generatedPhones = phonemized.get(spoken.toLocaleLowerCase('en-US'));
+        if (generatedPhones && phonemeCatalog) {
+          const parsed = parseGeneratedPhones(generatedPhones, phonemeCatalog);
+          const resolved = parsed.warnings.length
+            ? { units: [], warnings: parsed.warnings }
+            : resolvePhoneUnits(parsed.phones, phonemeCatalog, bank);
+          if (resolved.warnings.length) {
+            warnings.push(...resolved.warnings.map((warning) => `“${spoken}”: ${warning}`));
+            continue;
+          }
+          if (plan.length >= MAX_TOKENS) throw new Error(`Announcement exceeds the ${MAX_TOKENS}-token limit.`);
+          plan.push({
+            clipId: resolved.units[0].clipId,
+            display: spoken,
+            pitch,
+            volume,
+            phonemeUnits: resolved.units,
+            ...pending,
+          });
+          pending = {};
+          continue;
+        }
+        unresolvedWords.add(spoken.toLocaleLowerCase('en-US'));
         warnings.push(`No audio clip for “${spoken}”.`);
         continue;
       }
@@ -289,17 +348,20 @@ function compileWordPlan(text: string, bank: Bank, cueIds: AnnouncementCueIds): 
       pending = {};
     }
   }
-  return { plan, warnings };
+  return { plan, warnings, unresolvedWords: [...unresolvedWords] };
 }
 
 export function createWordPlan(
   text: string,
   bank: Bank,
   cueIds: AnnouncementCueIds = announcementCueIds,
-): { plan: WordPlan[]; warnings: string[] } {
+  phonemeCatalog?: PhonemeCatalog,
+  phonemized: ReadonlyMap<string, string> = new Map(),
+  allowEmpty = false,
+): { plan: WordPlan[]; warnings: string[]; unresolvedWords: string[] } {
   if (!text.trim()) throw new Error('No playable words were found in the announcement.');
-  const result = compileWordPlan(text, bank, cueIds);
-  if (!result.plan.length) throw new Error('No playable words were found in the announcement.');
+  const result = compileWordPlan(text, bank, cueIds, phonemeCatalog, phonemized);
+  if (!result.plan.length && !allowEmpty) throw new Error('No playable words were found in the announcement.');
   return result;
 }
 
@@ -307,11 +369,12 @@ export function analyzeText(
   text: string,
   bank: Bank,
   cueIds: AnnouncementCueIds = announcementCueIds,
+  phonemeCatalog?: PhonemeCatalog,
 ): { words: string[]; warnings: string[] } {
   if (!text.trim()) return { words: [], warnings: [] };
   let result: { plan: WordPlan[]; warnings: string[] };
   try {
-    result = compileWordPlan(text, bank, cueIds);
+    result = compileWordPlan(text, bank, cueIds, phonemeCatalog);
   } catch (error) {
     return { words: [], warnings: [error instanceof Error ? error.message : 'Could not analyze announcement.'] };
   }
