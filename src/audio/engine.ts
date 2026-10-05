@@ -105,7 +105,6 @@ export async function renderAnnouncement(
     pitch: Number.isFinite(options.pitch) ? Math.min(1.35, Math.max(0.65, options.pitch)) : 1,
     volume: Number.isFinite(options.volume) ? Math.min(1, Math.max(0, options.volume)) : 1,
     gap: Number.isFinite(options.gap) ? Math.min(0.8, Math.max(0, options.gap)) : 0.24,
-    background: options.background === true,
     phonemes: options.phonemes !== false,
   };
   const { plan, warnings } = await preparePlan(text, bank, safeOptions.phonemes === true, signal);

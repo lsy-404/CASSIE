@@ -192,15 +192,6 @@ scope.onmessage = async ({ data }) => {
     }
 
     if (!audioSampleCount) throw new Error('No audio could be rendered from the selected clips.');
-    if (data.options.background) {
-      const background = data.bank.clips.find((clip) => clip.id.toLocaleLowerCase('en-US') === 'cassie-background-std' && clip.kind === 'effect');
-      if (!background) warnings.push('CASSIE background audio is not available in this bank.');
-      else {
-        const backgroundSamples = await fetchClip(background, decoder);
-        const length = Math.min(backgroundSamples.length, Math.ceil(timelineEnd * OUTPUT_SAMPLE_RATE));
-        if (length > 0) layers.push({ samples: backgroundSamples.subarray(0, length), start: 0, gain: 0.2 });
-      }
-    }
     const samples = mixLayers(layers);
     const result = {
       type: 'done' as const,
