@@ -12,7 +12,7 @@ The extractor reads the installed Unity serialized assets, decodes selected Audi
 
 The word selection uses the mono, word-like AudioClip names in `SCPSL_Data/sharedassets1.assets` and `sharedassets2.assets`, with explicit exclusions for known non-speech clips and one phrase allowlist entry for a CASSIE announcement. The installed IL2CPP data exposes no canonical public wordbank table; the source manifest records this selection limitation. The directly named `CASSIE-background-std` asset is included as an effect. `bell_start` and `bell_end` are excluded because serialized references do not establish them as CASSIE announcement cues. `Beep_Start` references `Gram Detector` objects. The manifest records start and end cue IDs as unavailable until source evidence identifies them.
 
-## Interior phoneme windows
+## Phoneme windows and phrase word timings
 
 Install the pinned aligner into the ignored work directory, then build the derived phone-window index from the checked-in Opus bank:
 
@@ -21,4 +21,4 @@ npm install --prefix work\phoneme-tools --no-save echogarden@3.4.0
 node scripts\build-phonemes.mjs
 ```
 
-The builder uses Echogarden's English eSpeak-reference DTW path and its nested word/token/phone timeline. It records only measured phone intervals inside words, drops each word's first and last phone, and ignores windows shorter than 20 ms. Each selected interval retains its source clip ID, source SHA-256, raw IPA label, and timestamps. IPA lookup keys remove only a leading or trailing stress marker; the exact aligned label remains in each entry. Failures are recorded in `public/phonemes.json` and `data/phonemes-manifest.json`; no equal-duration boundaries are synthesized. The aligner package is a build-time tool and is not included in the browser bundle.
+The builder uses Echogarden's English eSpeak-reference DTW path and its nested word/token/phone timeline. Schema version 2 retains measured first, middle, and last phone intervals of each word, with phone position and adjacent IPA labels; windows shorter than 20 ms or outside the source clip are omitted. Multiword clips also retain Echogarden's measured word intervals in `wordTimings`, only when every aligned word has a valid interval. All timestamps are seconds relative to the source clip. IPA lookup keys remove a leading or trailing stress marker, while each unit retains its original IPA label, source clip ID, source SHA-256, and timestamps. Alignment timelines are cached under ignored `work/phoneme-alignments` by clip hash and transcript. Failures are recorded in `public/phonemes.json` and `data/phonemes-manifest.json`; no equal-duration boundaries are synthesized. The aligner package is a build-time tool and is not included in the browser bundle.
