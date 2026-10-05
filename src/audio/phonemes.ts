@@ -7,9 +7,9 @@ export interface PhonemeWindow {
   endSeconds: number;
   sourceDurationSeconds: number;
   sourceSha256: string;
-  position?: 'initial' | 'medial' | 'final' | 'single';
-  previousIpa?: string | null;
-  nextIpa?: string | null;
+  position: 'initial' | 'medial' | 'final' | 'single';
+  previousIpa: string | null;
+  nextIpa: string | null;
 }
 
 export interface PhonemeCatalog {
@@ -76,7 +76,9 @@ function findCandidates(phone: string, catalog: PhonemeCatalog, bankById: Map<st
     if (!clip || clip.kind !== 'word' || !/^[a-f\d]{64}$/i.test(window.sourceSha256) ||
         clip.sha256?.toLocaleLowerCase('en-US') !== window.sourceSha256.toLocaleLowerCase('en-US') ||
         !Number.isFinite(window.startSeconds) || !Number.isFinite(window.endSeconds) ||
-        !Number.isFinite(window.sourceDurationSeconds) || window.startSeconds < 0 ||
+        !Number.isFinite(window.sourceDurationSeconds) || !['initial', 'medial', 'final', 'single'].includes(window.position) ||
+        (window.previousIpa !== null && typeof window.previousIpa !== 'string') ||
+        (window.nextIpa !== null && typeof window.nextIpa !== 'string') || window.startSeconds < 0 ||
         window.endSeconds - window.startSeconds < 0.02 || window.endSeconds > window.sourceDurationSeconds ||
         window.sourceDurationSeconds > clip.duration + 0.02 || window.sourceDurationSeconds < clip.duration - 0.02) return [];
     return [{ clip, window }];
@@ -88,16 +90,16 @@ function median(numbers: number[]): number {
   return sorted[Math.floor(sorted.length / 2)];
 }
 
-function chooseWindow(phone: string, catalog: PhonemeCatalog, bankById: Map<string, BankClip>, expected?: string, previous?: string, next?: string, prior?: { clip: BankClip; window: Pick<PhonemeWindow, 'startSeconds' | 'endSeconds'> }): { clip: BankClip; window: PhonemeWindow } | undefined {
+function chooseWindow(phone: string, catalog: PhonemeCatalog, bankById: Map<string, BankClip>, expected: PhonemeWindow['position'], previous?: string, next?: string, prior?: { clip: BankClip; window: Pick<PhonemeWindow, 'startSeconds' | 'endSeconds'> }): { clip: BankClip; window: PhonemeWindow } | undefined {
   const candidates = findCandidates(phone, catalog, bankById);
   if (!candidates.length) return undefined;
   const target = median(candidates.map(({ window }) => window.endSeconds - window.startSeconds));
   const compare = (left: typeof candidates[number], right: typeof candidates[number]) => {
     const rank = ({ window, clip }: typeof left): number[] => {
       const duration = window.endSeconds - window.startSeconds;
-      const position = !expected || !window.position ? 1 : window.position === expected ? 0 : 2;
-      const context = Number(Boolean(previous && window.previousIpa && stressless(window.previousIpa) !== stressless(previous))) +
-        Number(Boolean(next && window.nextIpa && stressless(window.nextIpa) !== stressless(next)));
+      const position = window.position === expected ? 0 : 2;
+      const context = Number(Boolean(previous && window.previousIpa !== null && stressless(window.previousIpa) !== stressless(previous))) +
+        Number(Boolean(next && window.nextIpa !== null && stressless(window.nextIpa) !== stressless(next)));
       const contiguous = prior?.clip.id === clip.id && Math.abs(prior.window.endSeconds - window.startSeconds) <= 0.005 ? 0 : 1;
       const durationClass = duration < 0.08 ? 1 : duration > 0.3 ? 2 : 0;
       return [position, context, contiguous, durationClass, Math.abs(duration - target)];
@@ -146,7 +148,8 @@ function splitGeneratedPhones(value: string, keys: string[]): string[] | undefin
   const normalized = stressless(value.normalize('NFC').replace(/\s+/gu, ''));
   if (!normalized) return undefined;
   const units = Array.from(normalized);
-  const orderedKeys = [...keys, 'oːɹ', 'oː'].sort((left, right) => Array.from(right).length - Array.from(left).length);
+  const stretchable = keys.filter((key) => Array.from(key).length === 1 && isVowel(key) && !key.endsWith('ː')).map((key) => `${key}ː`);
+  const orderedKeys = [...keys, ...stretchable, 'oːɹ', 'oː'].sort((left, right) => Array.from(right).length - Array.from(left).length);
   const result: string[] = [];
   for (let offset = 0; offset < units.length;) {
     const match = orderedKeys.find((key) => units.slice(offset, offset + Array.from(key).length).join('') === key);
@@ -246,6 +249,7 @@ export function resolvePhoneUnits(phones: string[], catalog: PhonemeCatalog, ban
     if (last && !last.stretchFactor && !unit.stretchFactor && last.clipId === unit.clipId && Math.abs(last.endSeconds - unit.startSeconds) <= 0.005) {
       last.endSeconds = unit.endSeconds;
       last.ipa += ` ${unit.ipa}`;
+      last.approximate = last.approximate || unit.approximate || undefined;
     } else units.push(unit);
   }
   return { units, warnings };

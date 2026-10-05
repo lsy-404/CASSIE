@@ -28,10 +28,10 @@ const phoneCatalog: PhonemeCatalog = {
   schemaVersion: 2,
   sourceBank: { version: bank.version, sha256: 'e'.repeat(64) },
   phones: {
-    'ɑː': [{ clipId: 'phone-a', ipa: 'ˈɑː', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1, sourceSha256: 'a'.repeat(64) }],
-    'ɛ': [{ clipId: 'phone-e', ipa: 'ˈɛ', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1, sourceSha256: 'b'.repeat(64) }],
-    'j': [{ clipId: 'phone-j', ipa: 'j', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1, sourceSha256: 'c'.repeat(64) }],
-    'θ': [{ clipId: 'phone-th', ipa: 'θ', startSeconds: 0.01, endSeconds: 0.101, sourceDurationSeconds: 0.1, sourceSha256: 'd'.repeat(64) }],
+    'ɑː': [{ clipId: 'phone-a', ipa: 'ˈɑː', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1, sourceSha256: 'a'.repeat(64), position: 'single', previousIpa: null, nextIpa: null }],
+    'ɛ': [{ clipId: 'phone-e', ipa: 'ˈɛ', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1, sourceSha256: 'b'.repeat(64), position: 'single', previousIpa: null, nextIpa: null }],
+    'j': [{ clipId: 'phone-j', ipa: 'j', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1, sourceSha256: 'c'.repeat(64), position: 'single', previousIpa: null, nextIpa: null }],
+    'θ': [{ clipId: 'phone-th', ipa: 'θ', startSeconds: 0.01, endSeconds: 0.101, sourceDurationSeconds: 0.1, sourceSha256: 'd'.repeat(64), position: 'single', previousIpa: null, nextIpa: null }],
     'dʒ': [],
   },
 };
@@ -157,7 +157,7 @@ describe('CASSIE announcement parser', () => {
       ],
     };
     const window = (clipId: string, sha: string) => ({
-      clipId, ipa: 'oːɹ', startSeconds: 0.01, endSeconds: 0.18, sourceDurationSeconds: 0.2, sourceSha256: sha, position: 'final' as const,
+      clipId, ipa: 'oːɹ', startSeconds: 0.01, endSeconds: 0.18, sourceDurationSeconds: 0.2, sourceSha256: sha, position: 'final' as const, previousIpa: null, nextIpa: null,
     });
     const catalog: PhonemeCatalog = {
       ...phoneCatalog,
@@ -180,6 +180,20 @@ describe('CASSIE announcement parser', () => {
     expect(stretched.plan[0].phonemeUnits?.[0]).toMatchObject({ ipa: 'ɛ', stretchFactor: 1.7, approximate: true });
     expect(stretched.tokens[0].kind).toBe('error');
     expect(stretched.warnings[0]).toMatch(/stretched from/);
+
+    const generatedCatalog: PhonemeCatalog = {
+      ...phoneCatalog,
+      phones: {
+        ...phoneCatalog.phones,
+        t: [{ clipId: 'phone-th', ipa: 't', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1,
+          sourceSha256: 'd'.repeat(64), position: 'final', previousIpa: 'ɛː', nextIpa: null }],
+      },
+    };
+    expect(parseGeneratedPhones('ɛːt', generatedCatalog).phones).toEqual(['ɛː', 't']);
+    const generated = createWordPlan('longword', phoneBank, undefined, generatedCatalog, new Map([['longword', 'ɛːt']]), true);
+    expect(generated.plan[0].phonemeUnits).toHaveLength(2);
+    expect(generated.plan[0].phonemeUnits?.[0]).toMatchObject({ stretchFactor: 1.7, approximate: true });
+    expect(generated.tokens[0].kind).toBe('error');
   });
 
   it('phonemizes explore, worksheet, and unsupport against measured inventory without silent plans', () => {
