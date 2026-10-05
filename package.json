@@ -20,6 +20,7 @@
     "@ffmpeg/ffmpeg": "0.12.15",
     "@platform-kit/fluent": "https://github.com/lsy-404/platform-kit/releases/download/fluent-v0.2.5/platform-kit-fluent-0.2.5.tgz",
     "ogg-opus-decoder": "1.7.5",
+    "phonemizer": "1.2.1",
     "vue": "3.5.43"
   },
   "devDependencies": {
