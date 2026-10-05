@@ -1,22 +1,28 @@
-import { openStudio, unlockTerminal } from './helpers';
+import { openStudio } from './helpers';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { OggOpusDecoder } from 'ogg-opus-decoder';
 
-test('default announcement exposes the complete editable markup example', async ({ page }) => {
+test('default recruitment announcement exposes complete editable markup examples', async ({ page }) => {
   await openStudio(page);
   const editor = page.locator('textarea');
   const value = await editor.inputValue();
-  expect(value.split('\n')).toHaveLength(11);
+  expect(value).toContain('Join the Foundation');
   for (const sample of [
     '<start>', '<end>', '<br>', '<pause seconds="0.5"/>',
     '<pitch value="1.2">', '</pitch>', '<volume value="0.7">', '</volume>',
     '<stutter repeats="1">', '</stutter>', '<offset seconds="0.1">', '</offset>',
     '<duration seconds="0.3">', '</duration>', '<spacing seconds="0.2">', '</spacing>', '<rate value="1.1">', '</rate>',
-    '<voice pitch="3" breathiness="0.3" formant="-2">', '</voice>',
-    'me<pitch value="1.1">tri</pitch>cs', 'ROC AUC I a A', '<clip id="cassie"/>', '/ a e: /',
+    '<voice pitch="1.5" loudness="2" tension="0.2" breathiness="0.3" formant="-1">', '</voice>',
+    'anom<pitch value="1.1">a</pitch>ly', '<clip id="cassie"/>', '/ a e: /',
   ]) expect(value).toContain(sample);
-  await expect(editor).toHaveCSS('min-height', '250px');
+  await expect(editor).toHaveCSS('min-height', '270px');
+  const typography = await page.locator('.annotated-editor').evaluate((container) => {
+    const field = getComputedStyle(container.querySelector('textarea')!);
+    const overlay = getComputedStyle(container.querySelector('.highlight-layer')!);
+    return { field: [field.fontFamily, field.fontSize, field.lineHeight], overlay: [overlay.fontFamily, overlay.fontSize, overlay.lineHeight] };
+  });
+  expect(typography.overlay).toEqual(typography.field);
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 90_000 });
   await expect(page.locator('.announcement-player')).toBeVisible();
   await expect(page.locator('.annotated-editor .token-error').filter({ hasText: /^</ })).toHaveCount(0);
@@ -25,27 +31,27 @@ test('default announcement exposes the complete editable markup example', async 
 test('voice post-processing controls default neutral and scope insertion stays local to speech', async ({ page }) => {
   await openStudio(page);
   const editor = page.locator('textarea');
-  await page.locator('.settings details.voice-processing summary').click();
+  await expect(page.locator('.voice-processing')).toBeVisible();
   const pitchShift = page.getByRole('slider', { name: '音调偏移（半音）' });
   const breathiness = page.getByRole('slider', { name: '气声' });
   const formant = page.getByRole('slider', { name: '共振峰偏移（半音）' });
   for (const slider of [pitchShift, breathiness, formant]) await expect(slider).toHaveValue('0');
   await expect(pitchShift).toHaveAttribute('min', '-12');
   await expect(pitchShift).toHaveAttribute('max', '12');
-  await expect(pitchShift).toHaveAttribute('step', '0.5');
+  await expect(pitchShift).toHaveAttribute('step', '0.1');
   await expect(breathiness).toHaveAttribute('min', '0');
   await expect(breathiness).toHaveAttribute('max', '1');
-  await expect(breathiness).toHaveAttribute('step', '0.05');
+  await expect(breathiness).toHaveAttribute('step', '0.01');
   await expect(formant).toHaveAttribute('min', '-6');
   await expect(formant).toHaveAttribute('max', '6');
-  await expect(formant).toHaveAttribute('step', '0.5');
+  await expect(formant).toHaveAttribute('step', '0.1');
   await expect(page.getByText(/WORLD DSP/)).toBeVisible();
 
   await page.locator('.advanced-tools summary').click();
   await editor.fill('attention');
   await editor.evaluate((field: HTMLTextAreaElement) => field.setSelectionRange(0, field.value.length));
   await page.getByRole('button', { name: '语音作用范围', exact: true }).click();
-  await expect(editor).toHaveValue('<voice pitch="3" breathiness="0.3" formant="-2">attention</voice>');
+  await expect(editor).toHaveValue('<voice pitch="3" loudness="2" tension="0.2" breathiness="0.3" formant="-2">attention</voice>');
 });
 
 test('deferred cursor restoration does not override newer editor input', async ({ page }) => {
@@ -288,7 +294,7 @@ test('direct phonemes and unknown English words synthesize locally by default', 
   await expect(page.locator('.annotated-editor .token-synthesized').filter({ hasText: 'worksheet' })).not.toHaveClass(/spell-missing/);
   await expect(page.locator('.spell-missing').first()).toHaveCSS('text-decoration-line', 'underline');
   await expect(page.locator('.spell-missing').first()).toHaveCSS('text-decoration-style', 'wavy');
-  await expect(page.locator('.spell-missing').first()).toHaveCSS('text-decoration-color', 'rgb(196, 43, 28)');
+  await expect(page.locator('.spell-missing').first()).toHaveCSS('text-decoration-color', 'rgb(255, 153, 164)');
   await waitForReady(page, 90000);
   expect(errors).toEqual([]);
   expect(remoteRequests).toEqual([]);

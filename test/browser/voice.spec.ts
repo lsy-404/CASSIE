@@ -1,4 +1,4 @@
-import { openStudio, unlockTerminal } from './helpers';
+import { openStudio } from './helpers';
 import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
@@ -80,7 +80,7 @@ test('WASM post-processing raises and lowers a known fundamental without changin
   expect(Math.abs(peakFrequency(neutral) - 160)).toBeLessThan(2);
   expect(Math.abs(peakFrequency(raised) - 160 * 2 ** (3 / 12))).toBeLessThan(4);
   expect(Math.abs(peakFrequency(lowered) - 160 * 2 ** (-3 / 12))).toBeLessThan(4);
-  await page.locator('.voice-processing summary').click();
+  await expect(page.locator('.voice-processing')).toBeVisible();
   const slider = page.getByRole('slider', { name: '音调偏移（半音）', exact: true });
   await expect(slider).toHaveValue('0');
   await slider.evaluate((element: HTMLInputElement) => {

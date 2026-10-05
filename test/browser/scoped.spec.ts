@@ -1,4 +1,4 @@
-import { openStudio, unlockTerminal } from './helpers';
+import { openStudio } from './helpers';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
@@ -138,12 +138,12 @@ test('custom controls play an early fragment while later audio is still loading'
     await expect(audio).toHaveAttribute('src', /^blob:/, { timeout: 30_000 });
     await expect(audio).toHaveAttribute('data-complete', 'false');
     await expect(audio).not.toHaveAttribute('controls');
-    await expect(page.locator('.player-progress')).toBeVisible();
+    await expect(page.locator('.timeline-track .timeline-progress')).toBeVisible();
     await page.getByRole('button', { name: '播放', exact: true }).click();
     await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => element.paused)).toBe(false);
     release();
     await expect(audio).toHaveAttribute('data-complete', 'true', { timeout: 30_000 });
-    await expect(page.locator('.player-progress')).toHaveCount(0);
+    await expect(page.locator('.timeline-track .timeline-progress')).toHaveCount(0);
     await expect(page.getByText('公告已就绪', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: '导出', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: '渲染与导出', exact: true })).toHaveCount(0);

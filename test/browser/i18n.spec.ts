@@ -8,7 +8,7 @@ test('language follows browser locale and persists the selected translation', as
   await expect(page.locator('.page-heading h1')).toHaveText('Announcement editor');
   await expect(page.getByRole('checkbox', { name: 'Live render' })).toBeVisible();
   await expect(page.getByRole('slider', { name: /Speech rate/ })).toHaveValue('1');
-  await page.locator('.voice-processing summary').click();
+  await expect(page.locator('.voice-processing')).toBeVisible();
   await expect(page.locator('.voice-processing')).toContainText('Uses the browser\'s WORLD DSP');
   await expect(page.getByRole('slider', { name: 'Pitch shift (semitones)' })).toBeVisible();
 

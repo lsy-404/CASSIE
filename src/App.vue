@@ -302,7 +302,12 @@ async function exportInitialAnnouncement() {
     document.body.append(link);
     link.click();
     link.remove();
-  } finally { initialExportPending = false; }
+  } finally {
+    initialExportPending = false;
+    if (signature !== inputSignature() && liveRender.value && bank.value && text.value.trim() && !rendering.value && !encodingOpus.value) {
+      liveRenderTimer = setTimeout(() => void compose(), 500);
+    }
+  }
 }
 function onEditorScroll(event: Event) {
   const textarea = event.target as HTMLTextAreaElement;
@@ -396,7 +401,7 @@ onBeforeUnmount(() => {
                   <FluentButton v-for="command in primaryInsertions" :key="command.label" tone="secondary" :disabled="!bank || encodingOpus" @click="command.kind === 'scope' ? insertScope(command.open, command.close) : insertMarker(command.value)">{{ t(command.label) }}</FluentButton>
                 </div>
                 <p class="markup-inline-note">{{ t('inlineExample') }} <code>me&lt;pitch value="1.2"&gt;tri&lt;/pitch&gt;cs</code></p>
-                <details class="advanced-tools" open><summary>{{ t('advanced') }}</summary>
+                <details class="advanced-tools"><summary>{{ t('advanced') }}</summary>
                   <div class="tool-group"><FluentButton v-for="command in scopedInsertions" :key="command.label" tone="subtle" :disabled="!bank || encodingOpus" @click="insertScope(command.open, command.close)">{{ t(command.label) }}</FluentButton><FluentButton tone="subtle" :disabled="!bank || encodingOpus" @click="insertClip">{{ t('clip') }}</FluentButton><FluentButton tone="subtle" :disabled="!bank || encodingOpus" @click="insertPhoneme('a e:')">{{ t('insertPhonemes') }}</FluentButton></div>
                   <div class="help-examples">
                     <p>{{ t('wholeWord') }} <code>&lt;pitch value="1.2"&gt;attention&lt;/pitch&gt;</code>{{ t('fullStop') }} {{ t('markupStutter') }} <code>&lt;stutter repeats="2"&gt;attention&lt;/stutter&gt;</code>{{ t('fullStop') }} {{ t('repeatHelp') }}</p>

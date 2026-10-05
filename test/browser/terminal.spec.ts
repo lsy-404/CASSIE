@@ -47,6 +47,26 @@ test('a real failed WASM fetch blocks the terminal', async ({ page }) => {
   await expect(page.locator('textarea')).toHaveCount(0);
 });
 
+test('a phonemizer echo cannot pass the startup pronunciation check', async ({ page }) => {
+  await page.addInitScript(() => {
+    const NativeWorker = globalThis.Worker;
+    globalThis.Worker = class extends NativeWorker {
+      private readonly phonemeProbe: boolean;
+      constructor(url: string | URL, options?: WorkerOptions) {
+        super(url, options);
+        this.phonemeProbe = String(url).includes('phoneme.worker');
+      }
+      override postMessage(message: unknown, transfer: Transferable[] = []) {
+        if (this.phonemeProbe) queueMicrotask(() => this.dispatchEvent(new MessageEvent('message', { data: { phones: { hello: 'hello' } } })));
+        else super.postMessage(message, transfer);
+      }
+    };
+  });
+  await page.goto('/');
+  await expect(page.getByTestId('terminal-error')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('textarea')).toHaveCount(0);
+});
+
 test('base64 URL preloads Unicode text, fine voice settings and locale after unlock', async ({ page }) => {
   await page.goto(launchUrl({
     text: 'Attention <voice loudness="-2.5" tension="0.27">all personnel</voice> / ə /',
@@ -56,7 +76,7 @@ test('base64 URL preloads Unicode text, fine voice settings and locale after unl
   await unlockTerminal(page);
   await expect(page.locator('textarea')).toHaveValue('Attention <voice loudness="-2.5" tension="0.27">all personnel</voice> / ə /');
   await expect(page.getByRole('checkbox', { name: 'Live render' })).toBeVisible();
-  await page.locator('.voice-processing summary').click();
+  await expect(page.locator('.voice-processing')).toBeVisible();
   await expect(page.getByRole('slider', { name: /Loudness/ })).toHaveValue('-3.2');
   await expect(page.getByRole('slider', { name: /Tension/ })).toHaveValue('0.23');
   await expect(page.getByRole('slider', { name: 'Breathiness', exact: true })).toHaveValue('0.17');
@@ -91,4 +111,35 @@ test('invalid URL payload reports an input error and does not download default c
   await unlockTerminal(page);
   await expect(page.getByTestId('url-state-error')).toBeVisible();
   expect(downloads).toEqual([]);
+});
+
+test('URL Opus export encodes and downloads directly after unlock', async ({ page }, info) => {
+  await page.goto(launchUrl({ text: 'attention all personnel', locale: 'en' }, 'opus'));
+  const pending = page.waitForEvent('download', { timeout: 90_000 });
+  await unlockTerminal(page);
+  const download = await pending;
+  expect(download.suggestedFilename()).toBe('cassie-announcement.opus');
+  const file = info.outputPath('url-announcement.opus');
+  await download.saveAs(file);
+  const bytes = await readFile(file);
+  expect(bytes.toString('ascii', 0, 4)).toBe('OggS');
+  expect(bytes.includes(Buffer.from('OpusHead'))).toBe(true);
+});
+
+test('editing during a URL export cancels the old download and resumes live rendering', async ({ page }) => {
+  const downloads: string[] = [];
+  page.on('download', (download) => downloads.push(download.suggestedFilename()));
+  let release = () => undefined;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  await page.route('**/audio/attention.opus', async (route) => { await pending; await route.continue().catch(() => undefined); });
+  try {
+    await page.goto(launchUrl({ text: 'attention all personnel' }, 'wav'));
+    await unlockTerminal(page);
+    await expect(page.getByRole('button', { name: '取消渲染', exact: true })).toBeVisible();
+    await page.locator('textarea').fill('cassie');
+    release();
+    await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('src', /^blob:/, { timeout: 60_000 });
+    expect(downloads).toEqual([]);
+    await expect(page.locator('textarea')).toHaveValue('cassie');
+  } finally { release(); }
 });

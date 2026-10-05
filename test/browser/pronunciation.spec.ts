@@ -1,4 +1,4 @@
-import { openStudio, unlockTerminal } from './helpers';
+import { openStudio } from './helpers';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
