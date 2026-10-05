@@ -33,7 +33,7 @@ scope.onmessage = async ({ data }) => {
     await decoder.ready;
     const clipById = new Map(data.bank.clips.map((clip) => [clip.id, clip]));
     const plan = data.plan;
-    const uniqueIds = [...new Set(plan.flatMap((word) => [word.clipId, ...(word.suffixClipIds ?? [])]))];
+    const uniqueIds = [...new Set(plan.flatMap((word) => [...(word.prefixClipIds ?? []), word.clipId, ...(word.suffixClipIds ?? [])]))];
     const decodedById = new Map<string, Float32Array>();
     const warnings: string[] = [];
     for (let index = 0; index < uniqueIds.length; index += 1) {
@@ -55,11 +55,19 @@ scope.onmessage = async ({ data }) => {
       const word = plan[index];
       const decoded = decodedById.get(word.clipId);
       if (!decoded) throw new Error(`Could not decode ${word.clipId}.`);
-      const wordParts = [decoded, ...(word.suffixClipIds ?? []).map((id) => {
-        const suffix = decodedById.get(id);
-        if (!suffix) throw new Error(`Could not decode suffix ${id}.`);
-        return suffix;
-      })];
+      const wordParts = [
+        ...(word.prefixClipIds ?? []).map((id) => {
+          const prefix = decodedById.get(id);
+          if (!prefix) throw new Error(`Could not decode prefix ${id}.`);
+          return prefix;
+        }),
+        decoded,
+        ...(word.suffixClipIds ?? []).map((id) => {
+          const suffix = decodedById.get(id);
+          if (!suffix) throw new Error(`Could not decode suffix ${id}.`);
+          return suffix;
+        }),
+      ];
       const sourceLength = wordParts.reduce((sum, samples) => sum + samples.length, 0);
       if (sourceLength > OUTPUT_SAMPLE_RATE * 120) throw new Error(`Audio clip ${word.display} exceeds rendering limits.`);
       const source = wordParts.length === 1 ? decoded : new Float32Array(sourceLength);

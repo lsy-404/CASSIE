@@ -30,6 +30,7 @@ export interface RenderResult {
 
 export interface WordPlan {
   clipId: string;
+  prefixClipIds?: string[];
   suffixClipIds?: string[];
   display: string;
   pitch: number;

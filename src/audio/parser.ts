@@ -78,7 +78,7 @@ function resolveClip(token: string, lookup: Map<string, BankClip>, nextToken?: s
   return numeric ? lookup.get(numeric) : undefined;
 }
 
-function inflection(token: string, lookup: Map<string, BankClip>): { clip: BankClip; suffix: BankClip } | undefined {
+function inflection(token: string, lookup: Map<string, BankClip>): { clip: BankClip; prefix?: BankClip; suffix?: BankClip } | undefined {
   const suffixClip = (id: string) => lookup.get(id);
   const tryBases = (bases: string[], suffixId: string) => {
     const suffix = suffixClip(suffixId);
@@ -90,6 +90,29 @@ function inflection(token: string, lookup: Map<string, BankClip>): { clip: BankC
     return undefined;
   };
   const deduplicate = (stem: string) => stem.length > 2 && stem.at(-1) === stem.at(-2) ? stem.slice(0, -1) : '';
+
+  for (const prefixId of ['anti-', 'post-', 'pre-', 'pro-', 'un-']) {
+    const prefixText = prefixId.slice(0, -1);
+    const base = token.startsWith(prefixId)
+      ? token.slice(prefixId.length)
+      : token.startsWith(prefixText)
+        ? token.slice(prefixText.length)
+        : '';
+    const prefix = lookup.get(prefixId);
+    const clip = base ? resolveClip(base, lookup) : undefined;
+    if (prefix && clip) return { clip, prefix };
+  }
+
+  if (token.endsWith('-ish') || token.endsWith('ish')) {
+    const base = token.slice(0, token.endsWith('-ish') ? -4 : -3);
+    const generated = tryBases([base], '-ish');
+    if (generated) return generated;
+  }
+  if (token.endsWith('-like') || token.endsWith('like')) {
+    const base = token.slice(0, token.endsWith('-like') ? -5 : -4);
+    const generated = tryBases([base], '-like');
+    if (generated) return generated;
+  }
 
   if (token.endsWith('ies') && token.length > 3) {
     return tryBases([`${token.slice(0, -3)}y`], '_suffix_plural_regular');
@@ -226,7 +249,8 @@ function compileWordPlan(text: string, bank: Bank): { plan: WordPlan[]; warnings
       }
       const item: WordPlan = {
         clipId: playableClip.id,
-        ...(generated ? { suffixClipIds: [generated.suffix.id] } : {}),
+        ...(generated?.prefix ? { prefixClipIds: [generated.prefix.id] } : {}),
+        ...(generated?.suffix ? { suffixClipIds: [generated.suffix.id] } : {}),
         display: spoken,
         pitch,
         volume,
