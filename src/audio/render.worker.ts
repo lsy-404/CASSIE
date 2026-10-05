@@ -1,5 +1,5 @@
 import { OggOpusDecoder } from 'ogg-opus-decoder';
-import { appendTimelineEntry, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchVowelLoop, transformWord } from './dsp';
+import { appendTimelineEntry, clipTimelineToDuration, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchVowelLoop, transformWord } from './dsp';
 import type { Bank, BankClip, RenderOptions, TimelineEntry, WordPlan } from './types';
 
 type RequestMessage = { type: 'render'; bank: Bank; plan: WordPlan[]; options: RenderOptions };
@@ -209,7 +209,8 @@ scope.onmessage = async ({ data }) => {
       duration: samples.length / OUTPUT_SAMPLE_RATE,
       words: plan.map((word) => word.display),
       warnings,
-      timeline: timeline.sort((left, right) => left.startSeconds - right.startSeconds || left.endSeconds - right.endSeconds),
+      timeline: clipTimelineToDuration(timeline, samples.length / OUTPUT_SAMPLE_RATE)
+        .sort((left, right) => left.startSeconds - right.startSeconds || left.endSeconds - right.endSeconds),
     };
     scope.postMessage(result, [samples.buffer]);
   } catch (error) {

@@ -118,6 +118,14 @@ export function appendTimelineEntry(timeline: TimelineEntry[], entry: TimelineEn
   return true;
 }
 
+export function clipTimelineToDuration(timeline: TimelineEntry[], duration: number): TimelineEntry[] {
+  if (!Number.isFinite(duration) || duration <= 0) return [];
+  return timeline.flatMap((entry) => {
+    const endSeconds = Math.min(entry.endSeconds, duration);
+    return entry.startSeconds < endSeconds ? [{ ...entry, endSeconds }] : [];
+  });
+}
+
 export function mapSourceTimeline(
   spans: SourceTimelineSpan[],
   sourceLength: number,
