@@ -41,11 +41,18 @@
       "Waterfall Muffled",
       "Waterfall Pit",
       "Waterfall r",
+      "bell_end",
+      "bell_start",
       "hit",
       "xmas_bouncyballs",
       "xmas_jinglebells"
     ],
-    "limitation": "This selection is based on installed asset names/channels and documented CASSIE announcement content; stripped IL2CPP component references do not expose a canonical wordbank table in the installed files."
+    "limitation": "This selection is based on installed asset names/channels and documented CASSIE announcement content; stripped IL2CPP component references do not expose a canonical wordbank table in the installed files.",
+    "announcementCues": {
+      "start": null,
+      "end": null,
+      "evidence": "The installed sharedassets contain bell_start and bell_end, but serialized AudioSource references do not identify them as CASSIE cues. Beep_Start references Gram Detector GameObjects. No source-supported CASSIE start/end cue IDs are included."
+    }
   },
   "toolchain": {
     "UnityPy": "1.25.4",
