@@ -2,11 +2,15 @@ import { OggOpusDecoder } from 'ogg-opus-decoder';
 import { advancePlaybackCursorAfterRepeat, appendTimelineEntry, clipTimelineToDuration, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchSpeechPreservingGaps, stretchSpeechRate, stretchVowelLoop, transformWord } from './dsp';
 import { applyVoiceLoudness, blendVoiceEdges, editWorldFeatures, hasWorldVoiceEffects, isNeutralVoice, processVoicePreservingGaps } from './voice-dsp';
 import { createWorldVocoder } from './world';
+import { checkAudioCapability } from '../startup/check-audio';
 import type { WorldVocoder } from './world';
 import type { Bank, BankClip, RenderOptions, TimelineEntry, VoiceOptions, WordPlan } from './types';
 
-type RequestMessage = { type: 'render'; bank: Bank; plan: WordPlan[]; options: RenderOptions };
+type RequestMessage =
+  | { type: 'check'; samples: Float32Array }
+  | { type: 'render'; bank: Bank; plan: WordPlan[]; options: RenderOptions };
 type ResponseMessage =
+  | { type: 'ready'; proof: Float32Array }
   | { type: 'progress'; value: number }
   | { type: 'preview'; samples: Float32Array; sampleRate: number; duration: number; words: string[]; warnings: string[]; timeline: TimelineEntry[] }
   | { type: 'done'; samples: Float32Array; sampleRate: number; duration: number; words: string[]; warnings: string[]; timeline: TimelineEntry[] }
@@ -30,7 +34,15 @@ async function fetchClip(clip: BankClip, decoder: OggOpusDecoder): Promise<Float
 }
 
 scope.onmessage = async ({ data }) => {
-  if (data.type !== 'render') return;
+  if (data.type === 'check') {
+    try {
+      const proof = await checkAudioCapability(data.samples);
+      scope.postMessage({ type: 'ready', proof }, [proof.buffer]);
+    } catch {
+      scope.postMessage({ type: 'error', message: 'Required audio processing is unavailable.' });
+    }
+    return;
+  }
   let decoder: OggOpusDecoder | undefined;
   let world: WorldVocoder | undefined;
   try {

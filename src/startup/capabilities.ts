@@ -73,7 +73,7 @@ export async function checkStartupCapabilities(signal?: AbortSignal): Promise<Ca
     samples[index] = 0.1 * Math.sin((2 * Math.PI * 180 * index) / sampleRate);
   }
   try {
-    opusWorldWorker = new Worker(new URL('./capability.worker.ts', import.meta.url), { type: 'module' });
+    opusWorldWorker = new Worker(new URL('../audio/render.worker.ts', import.meta.url), { type: 'module' });
     phonemeWorker = new Worker(new URL('../audio/phoneme.worker.ts', import.meta.url), { type: 'module' });
     await Promise.all([
       requestWorker(opusWorldWorker, { type: 'check', samples }, (reply) => {

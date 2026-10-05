@@ -1,16 +1,7 @@
 import { OggOpusDecoder } from 'ogg-opus-decoder';
 import { createWorldVocoder } from '../audio/world';
 
-type Request = { type: 'check'; samples: Float32Array };
-type Reply = { type: 'ready'; proof: Float32Array } | { type: 'error'; error: string };
-
-const scope = self as unknown as {
-  onmessage: ((event: MessageEvent<Request>) => void) | null;
-  postMessage(message: Reply, transfer?: Transferable[]): void;
-};
-
-scope.onmessage = async ({ data }) => {
-  if (data.type !== 'check' || !(data.samples instanceof Float32Array)) return;
+export async function checkAudioCapability(samples: Float32Array): Promise<Float32Array> {
   let decoder: OggOpusDecoder | undefined;
   let vocoder: Awaited<ReturnType<typeof createWorldVocoder>> | undefined;
   let features: ReturnType<NonNullable<typeof vocoder>['analyze']> | undefined;
@@ -31,18 +22,22 @@ scope.onmessage = async ({ data }) => {
     await activeDecoder.reset();
 
     vocoder = await createWorldVocoder();
-    features = vocoder.analyze(data.samples, 48_000);
+    features = vocoder.analyze(samples, 48_000);
     const proof = vocoder.synthesize(features);
-    if (proof.length !== data.samples.length || !proof.every(Number.isFinite) ||
+    if (proof.length !== samples.length || !proof.every(Number.isFinite) ||
         !proof.some((sample) => Math.abs(sample) > 1e-8)) {
       throw new Error('WORLD synthesis failed.');
     }
-    scope.postMessage({ type: 'ready', proof }, [proof.buffer]);
-  } catch {
-    scope.postMessage({ type: 'error', error: 'Required audio processing is unavailable.' });
+    return proof;
   } finally {
-    if (features && vocoder) vocoder.dispose(features);
-    vocoder?.dispose();
-    decoder?.free();
+    try {
+      if (features && vocoder) vocoder.dispose(features);
+    } finally {
+      try {
+        vocoder?.dispose();
+      } finally {
+        decoder?.free();
+      }
+    }
   }
-};
+}
