@@ -196,10 +196,11 @@ function compileWordPlan(
         continue;
       }
       const resolved = resolvePhoneUnits(parsed.phones, phonemeCatalog, bank);
-      if (resolved.warnings.length) {
+      if (!resolved.units.length) {
         warnings.push(...resolved.warnings);
         continue;
       }
+      warnings.push(...resolved.warnings);
       pushPlan({
         clipId: resolved.units[0].clipId,
         display: `IPA ${raw}`,
@@ -207,7 +208,7 @@ function compileWordPlan(
         volume,
         phonemeUnits: resolved.units,
         ...pending,
-      }, tokenIndex, tokenIndex, 'word', 'synthesized');
+      }, tokenIndex, tokenIndex, 'word', resolved.warnings.length ? 'error' : 'synthesized');
       pending = {};
       continue;
     }
@@ -346,10 +347,11 @@ function compileWordPlan(
           const resolved = parsed.warnings.length
             ? { units: [], warnings: parsed.warnings }
             : resolvePhoneUnits(parsed.phones, phonemeCatalog, bank);
-          if (resolved.warnings.length) {
+          if (!resolved.units.length) {
             warnings.push(...resolved.warnings.map((warning) => `“${spoken}”: ${warning}`));
             continue;
           }
+          warnings.push(...resolved.warnings.map((warning) => `“${spoken}”: ${warning}`));
           if (plan.length >= MAX_TOKENS) throw new Error(`Announcement exceeds the ${MAX_TOKENS}-token limit.`);
           pushPlan({
             clipId: resolved.units[0].clipId,
@@ -358,7 +360,7 @@ function compileWordPlan(
             volume,
             phonemeUnits: resolved.units,
             ...pending,
-          }, tokenIndex, tokenIndex, 'word', 'synthesized');
+          }, tokenIndex, tokenIndex, 'word', resolved.warnings.length ? 'error' : 'synthesized');
           pending = {};
           continue;
         }

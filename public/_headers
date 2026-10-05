@@ -23,6 +23,10 @@
 /ffmpeg/*
   Cache-Control: public, max-age=86400
 
+/spelling/*
+  Cache-Control: public, max-age=86400
+  Content-Type: text/plain; charset=utf-8
+
 /bank.json
   Cache-Control: no-cache
 

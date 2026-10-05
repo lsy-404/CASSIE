@@ -1,4 +1,4 @@
-import type { ClipKind, WordPlan } from './types';
+import type { ClipKind, TimelineEntry, WordPlan } from './types';
 
 export const OUTPUT_SAMPLE_RATE = 48_000;
 export const MAX_RENDER_SECONDS = 120;
@@ -102,6 +102,69 @@ export function applyStutter(samples: Float32Array, sampleRate: number, stutter?
   }
   repeated.set(samples.subarray(point), offset);
   return repeated;
+}
+
+export interface SourceTimelineSpan {
+  startSample: number;
+  endSample: number;
+  sourceStart: number;
+  sourceEnd: number;
+  kind: TimelineEntry['kind'];
+}
+
+export function mapSourceTimeline(
+  spans: SourceTimelineSpan[],
+  sourceLength: number,
+  plan: Pick<WordPlan, 'startAt' | 'maxDuration' | 'stutter' | 'pitch'>,
+  globalPitch: number,
+  sampleRate: number,
+  outputStartSeconds: number,
+  outputLength: number,
+): TimelineEntry[] {
+  const cropStart = Math.min(sourceLength, Math.floor((plan.startAt ?? 0) * sampleRate));
+  const cropEnd = Math.min(sourceLength, cropStart + (plan.maxDuration === undefined ? sourceLength : Math.floor(plan.maxDuration * sampleRate)));
+  const croppedLength = cropEnd - cropStart;
+  const pitch = plan.pitch * globalPitch;
+  if (croppedLength <= 0 || !Number.isFinite(pitch) || pitch <= 0 || outputLength <= 0) return [];
+  const stutter = plan.stutter;
+  const point = stutter ? Math.min(croppedLength, Math.floor(stutter.position * croppedLength)) : croppedLength;
+  const repeatLength = stutter
+    ? Math.min(croppedLength - point, Math.max(1, Math.floor(stutter.length * sampleRate)))
+    : 0;
+  const repeats = repeatLength > 0 ? stutter?.repeats ?? 0 : 0;
+  const pieces = repeats > 0
+    ? [
+      { sourceStart: cropStart, sourceEnd: cropStart + point, outputStart: 0 },
+      ...Array.from({ length: repeats }, (_, repeat) => ({
+        sourceStart: cropStart + point,
+        sourceEnd: cropStart + point + repeatLength,
+        outputStart: point + repeat * repeatLength,
+      })),
+      { sourceStart: cropStart + point, sourceEnd: cropEnd, outputStart: point + repeats * repeatLength },
+    ]
+    : [{ sourceStart: cropStart, sourceEnd: cropEnd, outputStart: 0 }];
+  const renderedLength = outputLength / sampleRate;
+  const timeline: TimelineEntry[] = [];
+  for (const span of spans) {
+    if (!Number.isFinite(span.startSample) || !Number.isFinite(span.endSample) || span.endSample <= span.startSample) continue;
+    for (const piece of pieces) {
+      const start = Math.max(span.startSample, piece.sourceStart);
+      const end = Math.min(span.endSample, piece.sourceEnd);
+      if (end <= start) continue;
+      const outputStart = outputStartSeconds + (piece.outputStart + start - piece.sourceStart) / (pitch * sampleRate);
+      const outputEnd = outputStartSeconds + (piece.outputStart + end - piece.sourceStart) / (pitch * sampleRate);
+      const clippedStart = Math.max(outputStartSeconds, outputStart);
+      const clippedEnd = Math.min(outputStartSeconds + renderedLength, outputEnd);
+      if (clippedEnd > clippedStart) timeline.push({
+        startSeconds: clippedStart,
+        endSeconds: clippedEnd,
+        sourceStart: span.sourceStart,
+        sourceEnd: span.sourceEnd,
+        kind: span.kind,
+      });
+    }
+  }
+  return timeline;
 }
 
 export function transformWord(samples: Float32Array, sampleRate: number, plan: WordPlan, pitchScale: number, globalGain = 1): Float32Array {

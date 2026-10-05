@@ -1,5 +1,5 @@
 import { OggOpusDecoder } from 'ogg-opus-decoder';
-import { mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchVowelLoop, transformWord } from './dsp';
+import { mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchVowelLoop, transformWord } from './dsp';
 import type { Bank, BankClip, RenderOptions, TimelineEntry, WordPlan } from './types';
 
 type RequestMessage = { type: 'render'; bank: Bank; plan: WordPlan[]; options: RenderOptions };
@@ -155,39 +155,27 @@ scope.onmessage = async ({ data }) => {
         timeline.push({ startSeconds: previousEnd, endSeconds: actualStart, sourceStart: word.gapSourceStart, sourceEnd: word.gapSourceEnd, kind: 'gap' });
       }
       if (word.sourceWordTimings?.length && !word.phonemeUnits?.length) {
-        const sourceDuration = Math.max(1, sourceClip.duration);
-        const cropStart = word.startAt ?? 0;
-        const cropEnd = Math.min(sourceDuration, cropStart + (word.maxDuration ?? sourceDuration));
-        const pitch = word.pitch * data.options.pitch;
-        const stutterPoint = Math.floor(Math.max(0, Math.min(1, word.stutter?.position ?? 0)) * Math.max(0, cropEnd - cropStart));
-        const stutterLength = word.stutter ? Math.min(cropEnd - cropStart - stutterPoint, word.stutter.length) : 0;
-        const repeatedDuration = stutterLength * (word.stutter?.repeats ?? 0);
-        const toRenderedTime = (sourceTime: number) => {
-          const clipped = Math.max(cropStart, Math.min(cropEnd, sourceTime));
-          let offset = clipped - cropStart;
-          if (word.stutter && offset > stutterPoint) offset += repeatedDuration;
-          return actualStart + offset / Math.max(0.0065, pitch);
-        };
-        for (let wordIndex = 0; wordIndex < word.sourceWordTimings.length; wordIndex += 1) {
-          const timing = word.sourceWordTimings[wordIndex];
-          if (!Number.isFinite(timing.startSeconds) || !Number.isFinite(timing.endSeconds) || timing.startSeconds < 0 || timing.endSeconds <= timing.startSeconds || timing.endSeconds > sourceDuration + 0.02) continue;
-          const startSeconds = toRenderedTime(timing.startSeconds);
-          const endSeconds = Math.min(actualEnd, toRenderedTime(timing.endSeconds));
-          if (endSeconds <= startSeconds) continue;
-          timeline.push({ startSeconds, endSeconds, sourceStart: timing.sourceStart, sourceEnd: timing.sourceEnd, kind: 'word' });
-          const next = word.sourceWordTimings[wordIndex + 1];
-          if (next && next.startSeconds > timing.endSeconds) {
-            const betweenStart = timing.sourceEnd;
-            const betweenEnd = next.sourceStart;
-            if (betweenEnd > betweenStart) timeline.push({
-              startSeconds: endSeconds,
-              endSeconds: Math.max(endSeconds, Math.min(actualEnd, toRenderedTime(next.startSeconds))),
-              sourceStart: betweenStart,
-              sourceEnd: betweenEnd,
-              kind: 'gap',
-            });
+        const sourceDuration = decoded.length / OUTPUT_SAMPLE_RATE;
+        const spans: Array<{ startSample: number; endSample: number; sourceStart: number; sourceEnd: number; kind: 'word' | 'gap' }> = [];
+        const validTimings = word.sourceWordTimings.filter((timing) => Number.isFinite(timing.startSeconds) && Number.isFinite(timing.endSeconds) &&
+          timing.startSeconds >= 0 && timing.endSeconds > timing.startSeconds && timing.endSeconds <= sourceDuration + 0.001)
+          .sort((left, right) => left.startSeconds - right.startSeconds);
+        for (let wordIndex = 0; wordIndex < validTimings.length; wordIndex += 1) {
+          const timing = validTimings[wordIndex];
+          const startSample = Math.max(0, Math.floor(timing.startSeconds * OUTPUT_SAMPLE_RATE));
+          const endSample = Math.min(decoded.length, Math.ceil(timing.endSeconds * OUTPUT_SAMPLE_RATE));
+          if (endSample <= startSample) continue;
+          spans.push({ startSample, endSample, sourceStart: timing.sourceStart, sourceEnd: timing.sourceEnd, kind: 'word' });
+          const next = validTimings[wordIndex + 1];
+          const sourceStart = timing.sourceEnd;
+          const sourceEnd = next?.sourceStart ?? sourceStart;
+          const gapStart = Math.min(decoded.length, Math.ceil(timing.endSeconds * OUTPUT_SAMPLE_RATE));
+          const gapEnd = next ? Math.max(0, Math.floor(next.startSeconds * OUTPUT_SAMPLE_RATE)) : gapStart;
+          if (next && next.startSeconds > timing.endSeconds && sourceEnd > sourceStart && gapEnd > gapStart) {
+            spans.push({ startSample: gapStart, endSample: gapEnd, sourceStart, sourceEnd, kind: 'gap' });
           }
         }
+        timeline.push(...mapSourceTimeline(spans, decoded.length, word, data.options.pitch, OUTPUT_SAMPLE_RATE, actualStart, samples.length));
       } else {
         timeline.push({ startSeconds: actualStart, endSeconds: actualEnd, sourceStart: word.sourceStart ?? 0, sourceEnd: word.sourceEnd ?? 0, kind: word.timelineKind ?? (sourceClip.kind === 'effect' ? 'cue' : 'word') });
       }

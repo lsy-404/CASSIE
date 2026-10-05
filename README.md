@@ -42,6 +42,8 @@ Exact phrase recordings take priority. Article variants use the following writte
 
 `/clip:id` explicitly inserts any supplied clip, including effects and internal fragments. Clip IDs and provenance are listed in `public/bank.json`.
 
+Single-letter text is pronounced as English text: `a` is the article and `I` is the pronoun. The game's NATO alphabet recordings remain available explicitly, for example `/clip:a` for Alpha and `/clip:i` for India.
+
 ## Phoneme composition
 
 Type space-separated phones between slashes, for example `/ a e: /`, or enter IPA such as `/ h ə l oʊ /`. Direct phoneme blocks work without enabling English word expansion. The interface lists the available measured phones and reports missing units.
