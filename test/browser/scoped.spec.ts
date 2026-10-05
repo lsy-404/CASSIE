@@ -1,3 +1,4 @@
+import { openStudio, unlockTerminal } from './helpers';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
@@ -16,7 +17,7 @@ async function renderWav(page: import('@playwright/test').Page, text: string, ou
 test('typed scope tags end their volume effect and br creates an explicit pause', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/');
+  await openStudio(page);
   await expect(page.locator('textarea')).toBeEnabled();
   await page.locator('.live-controls label').click();
   await expect(page.getByRole('checkbox', { name: '实时渲染' })).not.toBeChecked();
@@ -52,7 +53,7 @@ test('manual markup is literal editor text and malformed closing tags are red', 
   page.on('request', (request) => {
     if (request.url().includes('untrusted-image')) requests.push(request.url());
   });
-  await page.goto('/');
+  await openStudio(page);
   await expect(page.locator('textarea')).toBeEnabled();
   await page.locator('textarea').fill('attention <img src="untrusted-image"/> <volume value="0.5">cassie</pitch>');
   await expect(page.locator('.annotated-editor .token-error').filter({ hasText: '</pitch>' })).toHaveCount(1);
@@ -65,7 +66,7 @@ test('manual markup is literal editor text and malformed closing tags are red', 
 test('nested stutters repeat their full scopes and advance past overlapping speech', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/');
+  await openStudio(page);
   await expect(page.locator('textarea')).toBeEnabled();
   await page.locator('.live-controls label').click();
   const word = await renderWav(page, 'cassie', info.outputPath('one-word.wav'));
@@ -89,7 +90,7 @@ test('nested stutters repeat their full scopes and advance past overlapping spee
 test('speech rate changes only speech while gaps, pauses and boundary cue PCM stay fixed', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/');
+  await openStudio(page);
   await expect(page.locator('textarea')).toBeEnabled();
   await page.locator('.live-controls label').click();
   const slider = page.getByRole('slider', { name: '语速', exact: true });
@@ -121,7 +122,7 @@ test('speech rate changes only speech while gaps, pauses and boundary cue PCM st
 test('custom controls play an early fragment while later audio is still loading', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/');
+  await openStudio(page);
   await expect(page.locator('textarea')).toBeEnabled();
   await page.locator('.live-controls label').click();
   let release: () => void = () => undefined;

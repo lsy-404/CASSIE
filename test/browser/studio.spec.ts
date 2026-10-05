@@ -1,9 +1,10 @@
+import { openStudio, unlockTerminal } from './helpers';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { OggOpusDecoder } from 'ogg-opus-decoder';
 
 test('default announcement exposes the complete editable markup example', async ({ page }) => {
-  await page.goto('/');
+  await openStudio(page);
   const editor = page.locator('textarea');
   const value = await editor.inputValue();
   expect(value.split('\n')).toHaveLength(11);
@@ -22,7 +23,7 @@ test('default announcement exposes the complete editable markup example', async 
 });
 
 test('voice post-processing controls default neutral and scope insertion stays local to speech', async ({ page }) => {
-  await page.goto('/');
+  await openStudio(page);
   const editor = page.locator('textarea');
   await page.locator('.settings details.voice-processing summary').click();
   const pitchShift = page.getByRole('slider', { name: '音调偏移（半音）' });
@@ -48,7 +49,7 @@ test('voice post-processing controls default neutral and scope insertion stays l
 });
 
 test('deferred cursor restoration does not override newer editor input', async ({ page }) => {
-  await page.goto('/');
+  await openStudio(page);
   await page.locator('textarea').fill('metrics');
   await page.evaluate(() => {
     const button = [...document.querySelectorAll('.advanced-tools button')].find((item) => item.textContent?.trim() === '素材片段');
@@ -88,7 +89,7 @@ test('live render creates local WAV, custom player tracks words and gaps, and Op
   page.context().on('request', (request) => {
     if (/^https?:/.test(request.url()) && new URL(request.url()).origin !== appOrigin) remoteRequests.push(request.url());
   });
-  await page.goto('/');
+  await openStudio(page);
   await expect(page.getByRole('checkbox', { name: '实时渲染' })).toBeChecked();
   await expect(page.getByRole('heading', { name: '素材目录' })).toHaveCount(0);
   const trackStyle = await page.locator('input[type="range"]').first().evaluate((input) => ({
@@ -164,7 +165,7 @@ test('live render creates local WAV, custom player tracks words and gaps, and Op
 test('manual rendering can be cancelled and restarted', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/');
+  await openStudio(page);
   await page.locator('.live-controls .fluent-checkbox__box').click();
   await expect(page.getByRole('checkbox', { name: '实时渲染' })).not.toBeChecked();
   await expect(page.getByRole('button', { name: '生成音频' })).toBeVisible();
@@ -185,7 +186,7 @@ test('manual rendering can be cancelled and restarted', async ({ page }) => {
 
 test('command authoring and editor remain compact at mobile widths with system Fluent theme', async ({ page }, info) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
+  await openStudio(page);
   await expect(page.getByRole('button', { name: '停顿', exact: true })).toBeEnabled();
   await expect(page.getByRole('button', { name: '卡顿', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '开始', exact: true })).toBeVisible();
@@ -202,7 +203,7 @@ test('command authoring and editor remain compact at mobile widths with system F
 });
 
 test('markup help and insertion preserve exact inline text and selections', async ({ page }) => {
-  await page.goto('/');
+  await openStudio(page);
   const field = page.locator('textarea');
   await expect(field).toBeEnabled();
   await expect(page.getByText(/me<pitch value="1.2">tri<\/pitch>cs/)).toBeVisible();
@@ -257,7 +258,7 @@ test('direct phonemes and unknown English words synthesize locally by default', 
   page.context().on('request', (request) => {
     if (/^https?:/.test(request.url()) && new URL(request.url()).origin !== origin) remoteRequests.push(request.url());
   });
-  await page.goto('/');
+  await openStudio(page);
   await page.locator('textarea').fill('/ a e: /');
   await expect(page.locator('.analysis-details summary')).toBeVisible();
   await waitForReady(page, 90000);

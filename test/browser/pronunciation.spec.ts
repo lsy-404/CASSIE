@@ -1,3 +1,4 @@
+import { openStudio, unlockTerminal } from './helpers';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
@@ -7,7 +8,7 @@ test('ordinary English and best-effort phonemes produce audible audio throughout
   test.setTimeout(120_000);
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/');
+  await openStudio(page);
   await page.locator('.live-controls label').click({ timeout: 10_000 });
   await expect(page.getByRole('checkbox', { name: '实时渲染' })).not.toBeChecked();
   await expect(page.locator('textarea')).toBeEnabled();
@@ -51,7 +52,7 @@ test('ordinary English and best-effort phonemes produce audible audio throughout
 test('announcement commands play the game boundary excerpts and highlight their source markers', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/');
+  await openStudio(page);
   await expect(page.locator('textarea')).toBeEnabled();
   await page.locator('textarea').fill('<start/> CASSIE <end/>');
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 30_000 });
@@ -83,7 +84,7 @@ test('announcement commands play the game boundary excerpts and highlight their 
 test('uppercase recorded words stay case-insensitive while standalone I and unknown acronyms are spoken as English', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/');
+  await openStudio(page);
   await page.locator('textarea').fill('CASSIE I XYZ');
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 90_000 });
   await expect(page.locator('.annotated-editor .token-recorded').filter({ hasText: /^CASSIE$/ })).toBeVisible();

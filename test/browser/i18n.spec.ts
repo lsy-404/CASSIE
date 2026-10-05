@@ -1,9 +1,10 @@
+import { openStudio, unlockTerminal } from './helpers';
 import { expect, test } from '@playwright/test';
 
 test.use({ locale: 'en-US' });
 
 test('language follows browser locale and persists the selected translation', async ({ page }) => {
-  await page.goto('/');
+  await openStudio(page);
   await expect(page.locator('.page-heading h1')).toHaveText('Announcement editor');
   await expect(page.getByRole('checkbox', { name: 'Live render' })).toBeVisible();
   await expect(page.getByRole('slider', { name: /Speech rate/ })).toHaveValue('1');
@@ -19,6 +20,7 @@ test('language follows browser locale and persists the selected translation', as
   await expect(page.getByRole('slider', { name: '音调偏移（半音）' })).toBeVisible();
 
   await page.reload();
+  await unlockTerminal(page);
   await expect(page.locator('.page-heading h1')).toHaveText('公告编辑器');
   await page.getByRole('button', { name: '语言' }).click();
   await expect(page.locator('.page-heading h1')).toHaveText('Announcement editor');

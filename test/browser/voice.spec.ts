@@ -1,3 +1,4 @@
+import { openStudio, unlockTerminal } from './helpers';
 import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
@@ -51,7 +52,7 @@ function periodicCorrelation(samples: Int16Array): number {
 test('WASM post-processing raises and lowers a known fundamental without changing duration', async ({ page }, info) => {
   const tone = await readFile(new URL('../fixtures/voice-tone.opus', import.meta.url));
   await page.route('**/audio/cassie.opus', (route) => route.fulfill({ body: tone, contentType: 'audio/ogg' }));
-  await page.goto('/');
+  await openStudio(page);
   await expect(page.locator('textarea')).toBeEnabled();
   await page.locator('.live-controls label').click();
   const neutral = await wav(page, 'cassie', info.outputPath('known-tone.wav'));
@@ -83,7 +84,7 @@ test('WASM post-processing raises and lowers a known fundamental without changin
 test('neutral voice bypasses processing and scoped voice restores original speech', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/');
+  await openStudio(page);
   await expect(page.locator('textarea')).toBeEnabled();
   await page.locator('.live-controls label').click();
   const word = await wav(page, 'cassie', info.outputPath('voice-word.wav'));
@@ -105,7 +106,7 @@ test('neutral voice bypasses processing and scoped voice restores original speec
 test('voice processing preserves boundary cues, fixed gaps and explicit pauses', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/');
+  await openStudio(page);
   await expect(page.locator('textarea')).toBeEnabled();
   await page.locator('.live-controls label').click();
   const word = await wav(page, 'cassie', info.outputPath('voice-original.wav'));
@@ -124,7 +125,7 @@ test('voice processing preserves boundary cues, fixed gaps and explicit pauses',
 });
 
 test('invalid voice parameters are red and markup remains literal', async ({ page }) => {
-  await page.goto('/');
+  await openStudio(page);
   await expect(page.locator('textarea')).toBeEnabled();
   await page.locator('textarea').fill('<voice pitch="99">cassie</voice> <voice breathiness="NaN">attention</voice>');
   await expect(page.locator('.annotated-editor .token-error').filter({ hasText: '<voice' })).toHaveCount(2);
