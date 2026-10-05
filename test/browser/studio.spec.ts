@@ -15,6 +15,9 @@ test('default announcement exposes the complete editable markup example', async 
     'me<pitch value="1.1">tri</pitch>cs', 'ROC AUC I a A', '<clip id="cassie"/>', '/ a e: /',
   ]) expect(value).toContain(sample);
   await expect(editor).toHaveCSS('min-height', '250px');
+  await expect(page.getByText('公告已就绪', { exact: true })).toBeVisible({ timeout: 90_000 });
+  await expect(page.locator('audio')).toBeVisible();
+  await expect(page.locator('.annotated-editor .token-error').filter({ hasText: /^</ })).toHaveCount(0);
 });
 
 async function waitForReady(page: import('@playwright/test').Page, timeout = 90000) {
@@ -185,7 +188,8 @@ test('markup help and insertion preserve exact inline text and selections', asyn
   await expect(page.locator('.highlight-layer')).toHaveText('me<pitch value="1.2">tri</pitch>cs');
   await expect(page.locator('.annotated-editor .token-gap')).toHaveCount(0);
   await expect(page.locator('.annotated-editor .token-marker')).toHaveCount(2);
-  await expect(page.locator('.annotated-editor .token-error')).toHaveCount(0);
+  await expect(page.locator('.annotated-editor .token-error')).toHaveCount(3);
+  await expect(page.locator('.annotated-editor .token-error.spell-missing')).toHaveCount(0);
 
   await field.fill('<pitch value="1.2">attention</pitch> <volume value="0.7">personnel</volume> <pause seconds="0.5"/>');
   await expect(page.getByText('公告已就绪', { exact: true })).toBeVisible({ timeout: 90_000 });

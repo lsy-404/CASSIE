@@ -28,16 +28,18 @@ Type complete English words directly. Numbers expand into speech units where ava
 | --- | --- |
 | `<pitch value="1.2">text</pitch>` | Set speed and pitch for enclosed speech |
 | `<volume value="0.7">text</volume>` | Set volume for enclosed speech |
-| `<stutter repeats="3">text</stutter>` | Repeat enclosed speech |
+| `<stutter repeats="3">text</stutter>` | Play enclosed speech, then repeat it three more times |
 | `<offset seconds="0.1">text</offset>` | Skip the start of enclosed speech |
 | `<duration seconds="0.3">text</duration>` | Limit the duration of enclosed speech |
 | `<spacing seconds="0.2">text</spacing>` | Set the enclosed speech's start spacing |
 | `<pause seconds="0.5"/>` | Insert half a second of silence |
 | `<br>` or `<br/>` | Insert half a second of silence |
 | `<clip id="id"/>` | Insert a supplied recording by its clip ID |
-| `<start/>`, `<end/>` | Insert the announcement boundary cues |
+| `<start>`, `<end>` | Insert the announcement boundary cues |
 
-Effects end at their closing tag. Tags can nest; closing an inner tag restores the enclosing parameters. For example, `<pitch value="1.2">attention</pitch> personnel` changes only `attention`. You can put tags inside a word, such as `me<pitch value="1.2">tri</pitch>cs`; its speech fragments join without a word gap. Such fragments use phoneme composition and can sound rough. Opening and closing tags remain visible in the editor and are never rendered as HTML.
+The standalone markers `start`, `end`, `pause`, `clip`, and `br` also accept a trailing slash, such as `<start/>`. They do not need closing tags. The initial editable announcement demonstrates every supported tag, uppercase text, inline effects, and direct phones.
+
+Effects end at their closing tag. Tags can nest; closing an inner tag restores the enclosing parameters. For example, `<pitch value="1.2">attention</pitch> personnel` changes only `attention`. You can put tags inside a word, such as `me<pitch value="1.2">tri</pitch>cs`. The complete word is pronounced first, and phonemized spelling prefixes locate the nearest phone boundaries for its effects; the measured phone fragments join without a word gap. Such boundaries are approximate and receive a red advisory. Opening and closing tags remain visible in the editor and are never rendered as HTML.
 
 The effects simplify the [documented modern CASSIE behavior](https://en.scpslgame.com/index.php?title=Updates/14.2.3). Slash pairs are reserved for direct phonemes. Invalid, unknown, mismatched, or unclosed tags produce red error marks and a warning. The renderer has bounded duration and token counts and does not reproduce the game's announcement queue. Ambient facility mixing has been removed.
 
@@ -45,7 +47,7 @@ Exact phrase recordings take priority. Article variants use the following writte
 
 `<clip id="id"/>` explicitly inserts a supplied clip, including effects and internal fragments. Clip IDs and provenance are listed in `public/bank.json`.
 
-Recorded words match regardless of capitalization, including `CASSIE` and `Attention`. Unrecorded all-uppercase acronyms, such as `ROC` and `AUC`, use English letter names. A standalone `I` remains the pronoun, lowercase `a` is the article, and uppercase `A` is the letter name. The game's NATO alphabet recordings remain available explicitly, for example `<clip id="a"/>` for Alpha and `<clip id="i"/>` for India.
+Recorded words match regardless of capitalization, including `CASSIE` and `Attention`. Unrecorded all-uppercase acronyms, such as `ROC` and `AUC`, and standalone uppercase letters use English letter names. A standalone `I` remains the pronoun, lowercase `a` is the article, and uppercase `A` is the letter name. The game's NATO alphabet recordings remain available explicitly, for example `<clip id="a"/>` for Alpha and `<clip id="i"/>` for India.
 
 ## Phoneme composition
 

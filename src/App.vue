@@ -8,7 +8,7 @@ import { analyzeAnnouncement, encodeWav, loadBank, renderAnnouncement, type Anal
 import { checkEnglishSpelling } from "./spelling";
 
 type Bank = Awaited<ReturnType<typeof loadBank>>;
-type AnalysisToken = EngineAnalysisToken & { spellingMissing?: boolean; spellingWord?: string };
+type AnalysisToken = EngineAnalysisToken & { spellingMissing?: boolean };
 type RenderedAnnouncement = Omit<Awaited<ReturnType<typeof renderAnnouncement>>, "samples"> & { samples: Float32Array<ArrayBuffer>; timeline: TimelineEntry[] };
 const bank = ref<Bank | null>(null);
 const loading = ref(true);
@@ -77,7 +77,7 @@ const editorParts = computed(() => {
     const end = ordered[index + 1];
     const token = analysis.value.tokens.find((item) => start >= item.sourceStart && start < item.sourceEnd);
     const timing = timeline.find((item) => start >= item.sourceStart && start < item.sourceEnd);
-    const kind = timing?.kind === "gap" ? "gap" : token?.kind ?? "neutral";
+    const kind = token?.kind ?? (timing?.kind === "gap" ? "gap" : "neutral");
     return { key: `${start}-${end}`, text: text.value.slice(start, end), kind, spellingMissing: Boolean(token?.spellingMissing), active: Boolean(activeTimelineItem.value && start >= activeTimelineItem.value.sourceStart && start < activeTimelineItem.value.sourceEnd), label: token?.spellingMissing ? "词典未收录，仍可合成" : kind === "recorded" ? "原始录音" : kind === "synthesized" ? "合成音频" : kind === "marker" ? "识别命令" : kind === "gap" ? "间隔" : kind === "error" ? "渲染错误" : "普通文本" };
   });
 });
@@ -132,7 +132,7 @@ function scheduleAnalysis() {
     analysisController = controller;
     try {
       const result = await analyzeAnnouncement(text.value, currentBank, true, controller.signal);
-      let tokens = result.tokens as AnalysisToken[];
+      let tokens: AnalysisToken[] = result.tokens;
       const spellingWords = [...new Set(tokens
         .filter((token) => (token.kind === "synthesized" || token.kind === "error") && token.spellingWord)
         .map((token) => token.spellingWord!))];
