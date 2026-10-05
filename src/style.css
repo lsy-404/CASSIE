@@ -27,6 +27,8 @@ h1 { margin: 0 0 5px; font-size: clamp(27px, 4vw, 36px); font-weight: 600; }
 .tool-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .tool-group strong { min-width: 90px; font-size: 13px; }
 .help-text, .available-note { margin: 0; font-size: 12px; }
+.cue-selection { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.cue-selection code { overflow-wrap: anywhere; }
 .help-text code { font-family: ui-monospace, monospace; }
 .phrase-field .fluent-field__input { min-height: 150px; resize: vertical; }
 .token-summary { margin-top: 12px; display: grid; gap: 8px; font-size: 12px; }
@@ -44,9 +46,15 @@ h1 { margin: 0 0 5px; font-size: clamp(27px, 4vw, 36px); font-weight: 600; }
 .show-more { width: 100%; margin-top: 8px; }
 .settings { display: grid; gap: 16px; }
 .settings label { display: grid; gap: 5px; }
-.settings label > span, .ambient-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.settings label > span, .ambient-row, .phoneme-setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .settings b { font-weight: 500; }
 .ambient-row small { display: block; margin-top: 3px; }
+.phoneme-setting small { display: block; margin-top: 3px; }
+.phone-inventory { display: grid; gap: 8px; }
+.phone-inventory > strong { font-size: 13px; font-weight: 600; }
+.phone-list { max-height: 160px; overflow: auto; display: flex; flex-wrap: wrap; align-content: start; gap: 4px; }
+.ipa-summary { display: grid; gap: 4px; }
+.footer a { text-decoration: underline; text-underline-offset: 2px; }
 .output-panel > .fluent-notice { margin-bottom: 10px; }
 .render-progress { margin-bottom: 14px; display: grid; gap: 6px; }
 .render-progress span { font-size: 12px; }
