@@ -9,5 +9,6 @@ __pycache__/
 .dev.vars*
 test/results/
 public/ffmpeg/
+public/spelling/
 
 /agents/

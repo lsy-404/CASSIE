@@ -8,8 +8,8 @@ export interface ClipUsage {
 }
 
 export const announcementCueIds = {
-  start: null,
-  end: null,
+  start: "cassie-start",
+  end: "cassie-end",
 } as const satisfies { start: string | null; end: string | null };
 
 const categoryLabels = {
@@ -28,9 +28,16 @@ const categoryLabels = {
 const chineseNames: Record<string, string> = {
   "all-remaining-personnel": "全体剩余人员",
   "cassie-background-std": "CASSIE 标准背景音",
+  "cassie-start": "CASSIE 广播开始提示",
+  "cassie-end": "CASSIE 广播结束提示",
   the_consonant: "辅音前冠词",
   the_vowel: "元音前冠词",
   _silence: "静音停顿",
+};
+
+const cueDescriptions: Record<string, string> = {
+  "cassie-start": "广播开始边界节选（源时间 0–2.5 秒）。",
+  "cassie-end": "广播结束边界节选（源时间 29.1 秒至完整尾音）。",
 };
 
 const completePhrases = new Set(["all-remaining-personnel"]);
@@ -53,17 +60,18 @@ function getCategory(clip: BankClip): keyof typeof categoryLabels {
 export function getClipUsage(clip: BankClip): ClipUsage {
   const category = getCategory(clip);
   const internalLetter = /^_[a-z]$/i.test(clip.id);
-  const needsExplicitClipCommand = internalLetter || ["prefix", "suffix", "article", "pause", "background", "effect"].includes(category);
-  const insertText = needsExplicitClipCommand ? `$CLIP_${clip.id}` : clip.id;
+  const singleLetter = category === "letter";
+  const needsExplicitClipCommand = internalLetter || singleLetter || ["prefix", "suffix", "article", "pause", "background", "effect"].includes(category);
+  const insertText = needsExplicitClipCommand ? `/clip:${clip.id}` : clip.id;
   const name = chineseNames[clip.id] ?? clip.id.replace(/^_([a-z])$/i, "$1").replaceAll("-", " ").replaceAll("_", " ");
-  const speechReady = !internalLetter && ["word", "phrase", "digit", "letter"].includes(category);
+  const speechReady = !internalLetter && !singleLetter && ["word", "phrase", "digit"].includes(category);
 
   return {
     category: categoryLabels[category],
     label: `${categoryLabels[category]}：${name}`,
     insertText,
-    description: speechReady
+    description: cueDescriptions[clip.id] ?? (speechReady
       ? `可直接输入「${clip.id}」播报。`
-      : `这是可用的${categoryLabels[category]}，需通过「${insertText}」插入。`,
+      : `这是可用的${categoryLabels[category]}，需通过「${insertText}」插入。`),
   };
 }

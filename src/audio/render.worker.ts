@@ -1,11 +1,11 @@
 import { OggOpusDecoder } from 'ogg-opus-decoder';
-import { mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchVowelLoop, transformWord } from './dsp';
-import type { Bank, BankClip, RenderOptions, WordPlan } from './types';
+import { appendTimelineEntry, clipTimelineToDuration, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchVowelLoop, transformWord } from './dsp';
+import type { Bank, BankClip, RenderOptions, TimelineEntry, WordPlan } from './types';
 
 type RequestMessage = { type: 'render'; bank: Bank; plan: WordPlan[]; options: RenderOptions };
 type ResponseMessage =
   | { type: 'progress'; value: number }
-  | { type: 'done'; samples: Float32Array; sampleRate: number; duration: number; words: string[]; warnings: string[] }
+  | { type: 'done'; samples: Float32Array; sampleRate: number; duration: number; words: string[]; warnings: string[]; timeline: TimelineEntry[] }
   | { type: 'error'; message: string };
 const scope = self as unknown as {
   onmessage: ((event: MessageEvent<RequestMessage>) => void) | null;
@@ -33,7 +33,7 @@ scope.onmessage = async ({ data }) => {
     await decoder.ready;
     const clipById = new Map(data.bank.clips.map((clip) => [clip.id, clip]));
     const plan = data.plan;
-    const uniqueIds = [...new Set(plan.flatMap((word) => [...(word.prefixClipIds ?? []), word.clipId, ...(word.suffixClipIds ?? []), ...(word.phonemeUnits ?? []).map((unit) => unit.clipId)]))];
+    const uniqueIds = [...new Set(plan.flatMap((word) => [...(word.prefixClipIds ?? []), ...(word.clipId ? [word.clipId] : []), ...(word.suffixClipIds ?? []), ...(word.phonemeUnits ?? []).map((unit) => unit.clipId)]))];
     const decodedById = new Map<string, Float32Array>();
     const warnings: string[] = [];
     for (let index = 0; index < uniqueIds.length; index += 1) {
@@ -51,8 +51,36 @@ scope.onmessage = async ({ data }) => {
     let previousStart = 0;
     let previousEnd = 0;
     let timelineEnd = 0;
+    const timeline: TimelineEntry[] = [];
     for (let index = 0; index < plan.length; index += 1) {
       const word = plan[index];
+      if (word.pauseDuration !== undefined) {
+        if (!Number.isFinite(word.pauseDuration) || word.pauseDuration < 0 || word.pauseDuration > 120) {
+          throw new Error('Pause duration exceeds the 120-second limit.');
+        }
+        const previousPlan = index > 0 ? plan[index - 1] : undefined;
+        const previousClip = previousPlan?.clipId ? clipById.get(previousPlan.clipId) : undefined;
+        const previousKind = previousPlan?.pauseDuration !== undefined ? 'pause' : previousClip?.kind;
+        const start = Math.max(0, word.spacing !== undefined
+          ? previousStart + word.spacing + (word.sleep ?? 0)
+          : nextClipStart(previousEnd, previousKind, 'pause', data.options.gap, word.sleep ?? 0));
+        const samples = new Float32Array(Math.ceil(word.pauseDuration * OUTPUT_SAMPLE_RATE));
+        if (start > previousEnd && word.gapSourceStart !== undefined && word.gapSourceEnd !== undefined) {
+          appendTimelineEntry(timeline, { startSeconds: previousEnd, endSeconds: start, sourceStart: word.gapSourceStart, sourceEnd: word.gapSourceEnd, kind: 'gap' });
+        }
+        appendTimelineEntry(timeline, { startSeconds: start, endSeconds: start + samples.length / OUTPUT_SAMPLE_RATE, sourceStart: word.sourceStart ?? 0, sourceEnd: word.sourceEnd ?? 0, kind: 'gap' });
+        if (samples.length) {
+          audioSampleCount += samples.length;
+          if (audioSampleCount > maxLayerSamples) throw new Error('Audio content exceeds the five-minute processing limit.');
+          layers.push({ samples, start: Math.floor(start * OUTPUT_SAMPLE_RATE) });
+        }
+        previousEnd = start + samples.length / OUTPUT_SAMPLE_RATE;
+        previousStart = start;
+        timelineEnd = Math.max(timelineEnd, previousEnd);
+        if (timelineEnd > 120) throw new Error('Rendered audio exceeds the 120-second limit.');
+        scope.postMessage({ type: 'progress', value: 0.6 + 0.35 * (index + 1) / plan.length });
+        continue;
+      }
       const sourceClip = clipById.get(word.clipId);
       if (!sourceClip) throw new Error(`Audio bank is missing ${word.clipId}.`);
       const decoded = decodedById.get(word.clipId);
@@ -114,11 +142,43 @@ scope.onmessage = async ({ data }) => {
       if (word.startAt !== undefined && word.startAt >= source.length / OUTPUT_SAMPLE_RATE) {
         warnings.push(`Start time skipped all of “${word.display}”.`);
       }
-      const previousClip = index > 0 ? clipById.get(plan[index - 1].clipId) : undefined;
+      const previousPlan = index > 0 ? plan[index - 1] : undefined;
+      const previousClip = previousPlan?.clipId ? clipById.get(previousPlan.clipId) : undefined;
+      const previousKind = previousPlan?.pauseDuration !== undefined ? 'pause' : previousClip?.kind;
       const start = Math.max(0, word.spacing !== undefined
         ? previousStart + word.spacing + (word.sleep ?? 0)
-        : nextClipStart(previousEnd, previousClip?.kind, sourceClip.kind, data.options.gap, word.sleep ?? 0));
+        : nextClipStart(previousEnd, previousKind, sourceClip.kind, data.options.gap, word.sleep ?? 0));
       const frameStart = Math.floor(start * OUTPUT_SAMPLE_RATE);
+      const actualStart = frameStart / OUTPUT_SAMPLE_RATE;
+      const actualEnd = actualStart + samples.length / OUTPUT_SAMPLE_RATE;
+      if (actualStart > previousEnd && word.gapSourceStart !== undefined && word.gapSourceEnd !== undefined) {
+        appendTimelineEntry(timeline, { startSeconds: previousEnd, endSeconds: actualStart, sourceStart: word.gapSourceStart, sourceEnd: word.gapSourceEnd, kind: 'gap' });
+      }
+      if (word.sourceWordTimings?.length && !word.phonemeUnits?.length) {
+        const sourceDuration = decoded.length / OUTPUT_SAMPLE_RATE;
+        const spans: Array<{ startSample: number; endSample: number; sourceStart: number; sourceEnd: number; kind: 'word' | 'gap' }> = [];
+        const validTimings = word.sourceWordTimings.filter((timing) => Number.isFinite(timing.startSeconds) && Number.isFinite(timing.endSeconds) &&
+          timing.startSeconds >= 0 && timing.endSeconds > timing.startSeconds && timing.endSeconds <= sourceDuration + 0.001)
+          .sort((left, right) => left.startSeconds - right.startSeconds);
+        for (let wordIndex = 0; wordIndex < validTimings.length; wordIndex += 1) {
+          const timing = validTimings[wordIndex];
+          const startSample = Math.max(0, Math.floor(timing.startSeconds * OUTPUT_SAMPLE_RATE));
+          const endSample = Math.min(decoded.length, Math.ceil(timing.endSeconds * OUTPUT_SAMPLE_RATE));
+          if (endSample <= startSample) continue;
+          spans.push({ startSample, endSample, sourceStart: timing.sourceStart, sourceEnd: timing.sourceEnd, kind: 'word' });
+          const next = validTimings[wordIndex + 1];
+          const sourceStart = timing.sourceEnd;
+          const sourceEnd = next?.sourceStart ?? sourceStart;
+          const gapStart = Math.min(decoded.length, Math.ceil(timing.endSeconds * OUTPUT_SAMPLE_RATE));
+          const gapEnd = next ? Math.max(0, Math.floor(next.startSeconds * OUTPUT_SAMPLE_RATE)) : gapStart;
+          if (next && next.startSeconds > timing.endSeconds && sourceEnd > sourceStart && gapEnd > gapStart) {
+            spans.push({ startSample: gapStart, endSample: gapEnd, sourceStart, sourceEnd, kind: 'gap' });
+          }
+        }
+        for (const entry of mapSourceTimeline(spans, decoded.length, word, data.options.pitch, OUTPUT_SAMPLE_RATE, actualStart, samples.length)) appendTimelineEntry(timeline, entry);
+      } else {
+        appendTimelineEntry(timeline, { startSeconds: actualStart, endSeconds: actualEnd, sourceStart: word.sourceStart ?? 0, sourceEnd: word.sourceEnd ?? 0, kind: word.timelineKind ?? (sourceClip.kind === 'effect' ? 'cue' : 'word') });
+      }
       if (samples.length && frameStart + samples.length > 0) {
         audioSampleCount += samples.length;
         if (audioSampleCount > maxLayerSamples) throw new Error('Audio content exceeds the five-minute processing limit.');
@@ -149,6 +209,8 @@ scope.onmessage = async ({ data }) => {
       duration: samples.length / OUTPUT_SAMPLE_RATE,
       words: plan.map((word) => word.display),
       warnings,
+      timeline: clipTimelineToDuration(timeline, samples.length / OUTPUT_SAMPLE_RATE)
+        .sort((left, right) => left.startSeconds - right.startSeconds || left.endSeconds - right.endSeconds),
     };
     scope.postMessage(result, [samples.buffer]);
   } catch (error) {

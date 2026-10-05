@@ -8,13 +8,14 @@
     "SCPSL_Data/sharedassets2.resource": "d31a0722eaa4d70eb57df92b0ce5d705f2ce16a1803afb9722ef6c51d0b28bdc",
     "license.txt": "437cbbdf90c64d29211c3b7f633c8d32052ad144b3a05928404f27d40e3cc0e7"
   },
-  "extractedClipCount": 964,
+  "extractedClipCount": 966,
   "audio": {
     "container": "Ogg Opus",
     "channels": 1,
     "sampleRateHz": 48000,
     "bitrate": "48 kbit/s VBR",
-    "trimmed": false
+    "trimmed": false,
+    "derivedCueWindows": true
   },
   "attribution": "CASSIE audio assets from SCP: Secret Laboratory by Northwood Studios; licensed under CC BY-SA 3.0 according to the installed license.txt. License evidence is copied to data/licenses/scpsl-license.txt.",
   "licenseEvidenceSha256": "437cbbdf90c64d29211c3b7f633c8d32052ad144b3a05928404f27d40e3cc0e7",
@@ -49,9 +50,73 @@
     ],
     "limitation": "This selection is based on installed asset names/channels and documented CASSIE announcement content; stripped IL2CPP component references do not expose a canonical wordbank table in the installed files.",
     "announcementCues": {
-      "start": null,
-      "end": null,
-      "evidence": "The installed sharedassets contain bell_start and bell_end, but serialized AudioSource references do not identify them as CASSIE cues. Beep_Start references Gram Detector GameObjects. No source-supported CASSIE start/end cue IDs are included."
+      "start": "cassie-start",
+      "end": "cassie-end",
+      "evidence": "CassieBackgroundPlayer on the Background Player GameObject references two AudioSources; both source AudioClips resolve to CASSIE-background-std. Source-defined announcement offsets support the start and end excerpts documented in derivedCueExcerpts."
+    },
+    "derivedCueExcerpts": {
+      "sourceName": "CASSIE-background-std",
+      "sourceContainer": "SCPSL_Data/sharedassets2.assets",
+      "sourcePathId": 3200,
+      "sourceFrequency": 44100,
+      "sourceChannels": 2,
+      "sourceDurationSeconds": 39.42856979370117,
+      "sourceDecodedWavSha256": "c54b7b92de9d48333d57876f594baa748c0dbd831e29e2a7d51feddd544cc714",
+      "unityReferences": {
+        "level": "SCPSL_Data/level2",
+        "gameObject": {
+          "pathId": 1719,
+          "name": "Background Player"
+        },
+        "backgroundPlayer": {
+          "scriptFileId": 1,
+          "scriptPathId": 1150,
+          "componentPathId": 15129
+        },
+        "startingAudioSource": {
+          "pathId": 6105,
+          "clipFileId": 2,
+          "clipPathId": 3200,
+          "transitionCurveKeyCount": 3
+        },
+        "endingAudioSource": {
+          "pathId": 6102,
+          "clipFileId": 2,
+          "clipPathId": 3200,
+          "transitionCurveKeyCount": 2
+        }
+      },
+      "boundaries": {
+        "startSeconds": 2.5,
+        "endSeconds": 29.100000381469727,
+        "evidence": "Static code shows CassieTtsAnnouncer shifts voice start by AnnouncementStart (2.5 seconds), and CassieBackgroundPlayer schedules the starting source at that timestamp and the ending source at voice end minus AnnouncementEnd (29.1 seconds). Both AudioSources point to this clip. These excerpts preserve only the source boundary windows; they do not reproduce runtime queueing or AudioSource volume crossfades."
+      },
+      "windows": {
+        "cassie-start": {
+          "startSample": 0,
+          "endSample": 110250,
+          "sampleRateHz": 44100,
+          "startSeconds": 0.0,
+          "endSeconds": 2.5,
+          "sourceStartSeconds": 0.0,
+          "sourceEndSeconds": 2.5,
+          "sourceDecodedWavSha256": "c54b7b92de9d48333d57876f594baa748c0dbd831e29e2a7d51feddd544cc714",
+          "decodedWavSha256": "274e2fb4ac27a458cdea1edd804392e0ebd73991711ad94e1f511566e4806edb",
+          "opusSha256": "e0f0c309f921b2d4b4f38c99b676ea4e097890dcc545544b86152f4b95f7d683"
+        },
+        "cassie-end": {
+          "startSample": 1283310,
+          "endSample": 1738800,
+          "sampleRateHz": 44100,
+          "startSeconds": 29.1,
+          "endSeconds": 39.42857142857143,
+          "sourceStartSeconds": 29.100000381469727,
+          "sourceEndSeconds": 39.42856979370117,
+          "sourceDecodedWavSha256": "c54b7b92de9d48333d57876f594baa748c0dbd831e29e2a7d51feddd544cc714",
+          "decodedWavSha256": "f49e2050309c426e0941bcc0c5c3cd8b63a5e1152e74bffeec90110692eca315",
+          "opusSha256": "b4294fb4adc2824bcd6ef6c8738203b500af28001399648377ff5cf11a63d7fa"
+        }
+      }
     }
   },
   "toolchain": {

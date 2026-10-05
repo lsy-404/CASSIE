@@ -1,23 +1,27 @@
 {
-  "product": "CASSIE interior phoneme bank",
+  "product": "CASSIE phoneme and phrase word timing index",
   "sourceBankVersion": "SCP: Secret Laboratory build 24956965",
-  "sourceBankSha256": "0b81277a288ef3ae394dedfe14e84b9e2c3896aa87c609f2ed92a34d4dfdab45",
-  "outputSha256": "18bba46a13bc42770e3898d3086b7cfc8fdff90998b27f27c07e7b4df9d08a9f",
+  "sourceBankSha256": "1265ba3d8f958f7b782e0b94d75319200fee29c7e9380fd856901c3cf8f6a975",
+  "outputSha256": "74d215f986cafd88b3fdbc546bf8883c064655e8ea727d749a88c086e92bf1e6",
   "aligner": {
     "package": "echogarden",
     "version": "3.4.0",
     "engine": "dtw",
     "language": "en-US",
     "timeline": "nested word/token/phone intervals from synthesis-reference MFCC dynamic-time-warping alignment",
-    "ipaKeyRule": "The lookup key removes a leading or trailing primary/secondary stress marker from the aligned IPA phone; the original aligned IPA label is retained on each window."
+    "ipaKeyRule": "The lookup key removes a leading or trailing primary/secondary stress marker from the aligned IPA phone; the original aligned IPA label is retained on each window.",
+    "contextRule": "Phone position and neighboring IPA labels are taken from the full ordered phone timeline for each aligned word; neighboring labels omit stress markers.",
+    "wordTimingRule": "Multiword clip entries use Echogarden's measured top-level word intervals in seconds relative to the source clip."
   },
   "selection": {
     "candidates": 854,
     "processed": 854,
-    "clipsWithInteriorPhones": 777,
-    "phoneWindows": 2761,
-    "excludedWordEdges": true,
+    "clipsWithPhones": 854,
+    "phoneWindows": 4285,
+    "excludedWordEdges": false,
     "minimumWindowSeconds": 0.02,
+    "clipsWithWordTimings": 18,
+    "wordTimingWindows": 56,
     "failureCount": 0,
     "failures": []
   },

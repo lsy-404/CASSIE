@@ -1,10 +1,12 @@
 import { reactive } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import { analyzeText, createWordPlan } from '../src/audio/parser';
+import { getClipUsage } from '../src/audio/catalog';
 import { analyzeAnnouncement, renderAnnouncement } from '../src/audio/engine';
-import { applyStutter, encodeWav, mixLayers, monoFromChannels, nextClipStart, splicePhonemeWindows, stretchVowelLoop, transformWord } from '../src/audio/dsp';
+import { appendTimelineEntry, applyStutter, clipTimelineToDuration, encodeWav, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, splicePhonemeWindows, stretchVowelLoop, transformWord } from '../src/audio/dsp';
 import type { Bank } from '../src/audio/types';
 import type { PhonemeCatalog } from '../src/audio/phonemes';
+import { parseGeneratedPhones, resolvePhoneUnits } from '../src/audio/phonemes';
 
 const bank: Bank = {
   version: '1',
@@ -24,13 +26,13 @@ const phoneBank: Bank = {
 };
 
 const phoneCatalog: PhonemeCatalog = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   sourceBank: { version: bank.version, sha256: 'e'.repeat(64) },
   phones: {
-    'ɑː': [{ clipId: 'phone-a', ipa: 'ˈɑː', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1, sourceSha256: 'a'.repeat(64) }],
-    'ɛ': [{ clipId: 'phone-e', ipa: 'ˈɛ', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1, sourceSha256: 'b'.repeat(64) }],
-    'j': [{ clipId: 'phone-j', ipa: 'j', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1, sourceSha256: 'c'.repeat(64) }],
-    'θ': [{ clipId: 'phone-th', ipa: 'θ', startSeconds: 0.01, endSeconds: 0.101, sourceDurationSeconds: 0.1, sourceSha256: 'd'.repeat(64) }],
+    'ɑː': [{ clipId: 'phone-a', ipa: 'ˈɑː', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1, sourceSha256: 'a'.repeat(64), position: 'single', previousIpa: null, nextIpa: null }],
+    'ɛ': [{ clipId: 'phone-e', ipa: 'ˈɛ', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1, sourceSha256: 'b'.repeat(64), position: 'single', previousIpa: null, nextIpa: null }],
+    'j': [{ clipId: 'phone-j', ipa: 'j', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1, sourceSha256: 'c'.repeat(64), position: 'single', previousIpa: null, nextIpa: null }],
+    'θ': [{ clipId: 'phone-th', ipa: 'θ', startSeconds: 0.01, endSeconds: 0.101, sourceDurationSeconds: 0.1, sourceSha256: 'd'.repeat(64), position: 'single', previousIpa: null, nextIpa: null }],
     'dʒ': [],
   },
 };
@@ -40,6 +42,15 @@ function word(id: string, extra: Partial<Parameters<typeof transformWord>[2]> = 
 }
 
 describe('CASSIE announcement parser', () => {
+  it('uses slash clip commands for explicit fragments and single-letter clips', () => {
+    const usage = (id: string) => getClipUsage({ id, file: `/audio/${id}.opus`, duration: 0.2, kind: 'word' });
+    expect(usage('_a')).toMatchObject({ insertText: '/clip:_a' });
+    expect(usage('a')).toMatchObject({ insertText: '/clip:a' });
+    expect(usage('the_vowel')).toMatchObject({ insertText: '/clip:the_vowel' });
+    expect(usage('hello')).toMatchObject({ insertText: 'hello' });
+    expect(usage('a').description).toContain('/clip:a');
+  });
+
   it('expands signed decimal numbers into bank words', () => {
     expect(analyzeText('-103.25', bank).words).toEqual(['negative', 'one', 'hundred', 'three', 'point', 'two', 'five']);
   });
@@ -75,32 +86,47 @@ describe('CASSIE announcement parser', () => {
     expect(result.plan[0]).toMatchObject({ clipId: 'all-remaining-personnel', display: 'all remaining personnel' });
   });
 
-  it('applies persistent pitch/volume and one-word sleep/stutter modifiers', () => {
-    const result = createWordPlan('$PITCH_1.25 $VOL_0.4 cassie $SLEEP_0.6 $STUTT_0.1_0.1_3 word', bank);
+  it('maps measured phrase word timings to their original UTF-16 spans', () => {
+    const catalog = {
+      ...phoneCatalog,
+      wordTimings: {
+        'all-remaining-personnel': [
+          { text: 'all', startSeconds: 0.02, endSeconds: 0.12 },
+          { text: 'remaining', startSeconds: 0.14, endSeconds: 0.31 },
+          { text: 'personnel', startSeconds: 0.33, endSeconds: 0.49 },
+        ],
+      },
+    } satisfies PhonemeCatalog;
+    const phrase = createWordPlan('All remaining personnel', bank, undefined, catalog).plan[0];
+    expect(phrase.sourceWordTimings?.map(({ sourceStart, sourceEnd }) => [sourceStart, sourceEnd])).toEqual([[0, 3], [4, 13], [14, 23]]);
+  });
+
+  it('applies persistent pitch/volume, explicit pauses, and one-word stutter modifiers', () => {
+    const result = createWordPlan('/pitch:1.25 /volume:0.4 /pause:0.6 /stutter:0.1:0.1:3 cassie word', bank);
     expect(result.plan[0]).toMatchObject({ pitch: 1.25, volume: 0.4 });
-    expect(result.plan[1]).toMatchObject({ pitch: 1.25, volume: 0.4, sleep: 0.6, stutter: { position: 0.1, length: 0.1, repeats: 3 } });
+    expect(result.plan[0]).toMatchObject({ pauseDuration: 0.6 });
+    expect(result.plan[1]).toMatchObject({ pitch: 1.25, volume: 0.4, stutter: { position: 0.1, length: 0.1, repeats: 3 } });
     expect(result.warnings).toEqual([]);
   });
 
   it('retains the game timing and clip-selection modifiers', () => {
-    const result = createWordPlan('$STARTT_0.1 $MAXDUR_0.3 cassie $SPAC_0.8 word', bank);
+    const result = createWordPlan('/offset:0.1 /duration:0.3 cassie /spacing:0.8 word', bank);
     expect(result.plan[0]).toMatchObject({ startAt: 0.1, maxDuration: 0.3 });
     expect(result.plan[1]).toMatchObject({ spacing: 0.8 });
     expect(result.warnings).toEqual([]);
   });
 
   it('splices direct IPA, applies ASCII vowel aliases, and carries modifiers onto the segment', () => {
-    const result = createWordPlan('$PITCH_1.2 $VOL_0.6 $SLEEP_0.3 / a e: /', phoneBank, undefined, phoneCatalog);
+    const result = createWordPlan('/pitch:1.2 /volume:0.6 / a e: /', phoneBank, undefined, phoneCatalog);
     expect(result.plan[0]).toMatchObject({
       pitch: 1.2,
       volume: 0.6,
-      sleep: 0.3,
       phonemeUnits: [
         { clipId: 'phone-a', ipa: 'ɑː' },
         { clipId: 'phone-e', ipa: 'ɛ', stretchFactor: 1.7 },
       ],
     });
-    expect(result.warnings).toEqual([]);
+    expect(result.warnings).toEqual(['Approximate phoneme match: /ɛː/ was stretched from /ɛ/.']);
   });
 
   it('skips a direct IPA segment when any phone lacks a verified source window', () => {
@@ -114,6 +140,147 @@ describe('CASSIE announcement parser', () => {
     const affricate = createWordPlan('/ jh /', phoneBank, undefined, phoneCatalog, new Map(), true);
     expect(glide.plan[0].phonemeUnits?.[0]).toMatchObject({ clipId: 'phone-j', ipa: 'j' });
     expect(affricate.warnings).toEqual(['No verified audio window for /dʒ/; the complete segment was skipped.']);
+  });
+
+  it('segments known generated allophone variants without discarding their exact pronunciation', () => {
+    const inventory: PhonemeCatalog = {
+      ...phoneCatalog,
+      phones: {
+        ...phoneCatalog.phones,
+        'aɪ': [], 'ə': [], 'ɛ': [], 'ɜː': [], 'iː': [], 'ʌ': [], 'ɔː': [], 'ɔːɹ': [],
+        w: [], k: [], s: [], p: [], l: [], n: [], ʃ: [], t: [],
+      },
+    };
+    expect(parseGeneratedPhones('ɛksploːɹ', inventory)).toMatchObject({ phones: ['ɛ', 'k', 's', 'p', 'l', 'oːɹ'], warnings: [] });
+    expect(parseGeneratedPhones('wˈɜːkʃiːt', inventory)).toMatchObject({ phones: ['w', 'ɜː', 'k', 'ʃ', 'iː', 't'], warnings: [] });
+    expect(parseGeneratedPhones('ʌnsəpˈoːɹt', inventory)).toMatchObject({ phones: ['ʌ', 'n', 's', 'ə', 'p', 'oːɹ', 't'], warnings: [] });
+    expect(parseGeneratedPhones('ˈaɪ', inventory)).toMatchObject({ phones: ['aɪ'], warnings: [] });
+    expect(parseGeneratedPhones('ə', inventory)).toMatchObject({ phones: ['ə'], warnings: [] });
+  });
+
+  it('keeps exact rhotic vowels ahead of aliases and marks audible vowel stretch as approximate', () => {
+    const exactBank: Bank = {
+      ...phoneBank,
+      clips: [...phoneBank.clips,
+        { id: 'phone-exact-r', file: '/audio/phone-exact-r.opus', duration: 0.2, kind: 'word', sha256: 'f'.repeat(64) },
+        { id: 'phone-approx-r', file: '/audio/phone-approx-r.opus', duration: 0.2, kind: 'word', sha256: 'e'.repeat(64) },
+      ],
+    };
+    const window = (clipId: string, sha: string) => ({
+      clipId, ipa: 'oːɹ', startSeconds: 0.01, endSeconds: 0.18, sourceDurationSeconds: 0.2, sourceSha256: sha, position: 'final' as const, previousIpa: null, nextIpa: null,
+    });
+    const catalog: PhonemeCatalog = {
+      ...phoneCatalog,
+      phones: {
+        ...phoneCatalog.phones,
+        'ɔːɹ': [window('phone-approx-r', 'e'.repeat(64))],
+        'oːɹ': [window('phone-exact-r', 'f'.repeat(64))],
+      },
+    };
+    const exact = resolvePhoneUnits(['oːɹ'], catalog, exactBank);
+    expect(exact.units[0]).toMatchObject({ clipId: 'phone-exact-r', ipa: 'oːɹ' });
+    expect(exact.warnings).toEqual([]);
+
+    const approximateCatalog = { ...catalog, phones: { ...catalog.phones, 'oːɹ': [] } };
+    const approximate = resolvePhoneUnits(['oːɹ'], approximateCatalog, exactBank);
+    expect(approximate.units[0]).toMatchObject({ clipId: 'phone-approx-r', ipa: 'ɔːɹ', approximate: true });
+    expect(approximate.warnings).toHaveLength(1);
+
+    const stretched = createWordPlan('/ e: /', phoneBank, undefined, phoneCatalog);
+    expect(stretched.plan[0].phonemeUnits?.[0]).toMatchObject({ ipa: 'ɛ', stretchFactor: 1.7, approximate: true });
+    expect(stretched.tokens[0].kind).toBe('error');
+    expect(stretched.warnings[0]).toMatch(/stretched from/);
+
+    const generatedCatalog: PhonemeCatalog = {
+      ...phoneCatalog,
+      phones: {
+        ...phoneCatalog.phones,
+        t: [{ clipId: 'phone-th', ipa: 't', startSeconds: 0.01, endSeconds: 0.09, sourceDurationSeconds: 0.1,
+          sourceSha256: 'd'.repeat(64), position: 'final', previousIpa: 'ɛː', nextIpa: null }],
+      },
+    };
+    expect(parseGeneratedPhones('ɛːt', generatedCatalog).phones).toEqual(['ɛː', 't']);
+    const generated = createWordPlan('longword', phoneBank, undefined, generatedCatalog, new Map([['longword', 'ɛːt']]), true);
+    expect(generated.plan[0].phonemeUnits).toHaveLength(2);
+    expect(generated.plan[0].phonemeUnits?.[0]).toMatchObject({ stretchFactor: 1.7, approximate: true });
+    expect(generated.tokens[0].kind).toBe('error');
+  });
+
+  it('phonemizes explore, worksheet, and unsupport against measured inventory without silent plans', () => {
+    const pronunciations = {
+      explore: 'ɛksploːɹ',
+      worksheet: 'wˈɜːkʃiːt',
+      unsupport: 'ʌnsəpˈoːɹt',
+    };
+    const inventory = [...new Set(['ɛ', 'k', 's', 'p', 'l', 'ɔːɹ', 'w', 'ɜː', 'ʃ', 'iː', 't', 'ʌ', 'n', 'ə'])];
+    const clips = inventory.map((_, index) => ({
+      id: `phone-${index}`,
+      file: `/audio/phone-${index}.opus`,
+      duration: 0.2,
+      kind: 'word' as const,
+      sha256: index.toString(16).padStart(64, '0'),
+    }));
+    const catalog: PhonemeCatalog = {
+      schemaVersion: 2,
+      sourceBank: { version: bank.version, sha256: 'e'.repeat(64) },
+      phones: Object.fromEntries(inventory.map((phone, index) => [phone, [{
+        clipId: `phone-${index}`, ipa: phone, startSeconds: 0.01, endSeconds: 0.18, sourceDurationSeconds: 0.2,
+        sourceSha256: index.toString(16).padStart(64, '0'), position: 'single', previousIpa: null, nextIpa: null,
+      }]])),
+    };
+    const result = createWordPlan(Object.keys(pronunciations).join(' '), { ...bank, clips: [...bank.clips, ...clips] }, undefined, catalog, new Map(Object.entries(pronunciations)), true);
+    expect(result.plan).toHaveLength(3);
+    expect(result.plan.every((item) => item.phonemeUnits?.length)).toBe(true);
+    expect(result.tokens.map((token) => token.kind)).toEqual(['error', 'synthesized', 'error']);
+    expect(result.warnings.filter((warning) => warning.includes('Approximate phoneme match'))).toHaveLength(2);
+  });
+
+  it('selects source-position and neighboring-phone matches, then merges adjacent windows', () => {
+    const clips = ['initial', 'medial', 'final', 'context', 'adjacent'].map((id, index) => ({
+      id,
+      file: `/audio/${id}.opus`,
+      duration: 0.5,
+      kind: 'word' as const,
+      sha256: String(index + 1).repeat(64),
+    }));
+    const source = (clipId: string, index: number, start: number, end: number, position: 'initial' | 'medial' | 'final' | 'single', previousIpa: string | null, nextIpa: string | null) => ({
+      clipId,
+      ipa: 'b',
+      startSeconds: start,
+      endSeconds: end,
+      sourceDurationSeconds: 0.5,
+      sourceSha256: String(index + 1).repeat(64),
+      position,
+      previousIpa,
+      nextIpa,
+    });
+    const selectionBank = { ...bank, clips: [...bank.clips, ...clips] };
+    const catalog: PhonemeCatalog = {
+      schemaVersion: 2,
+      sourceBank: { version: bank.version, sha256: 'e'.repeat(64) },
+      phones: {
+        b: [source('medial', 1, 0.01, 0.11, 'medial', 'ɛ', 't'), source('initial', 0, 0.01, 0.21, 'initial', null, 'ɛ')],
+        ɛ: [source('adjacent', 4, 0.11, 0.2, 'final', 'b', null)],
+        t: [
+          { ...source('final', 2, 0.01, 0.09, 'medial', 'b', 'ɛ'), ipa: 't' },
+          { ...source('context', 3, 0.01, 0.17, 'medial', 'ɛ', 'b'), ipa: 't' },
+        ],
+      },
+    };
+    const initial = resolvePhoneUnits(['b', 'ɛ'], catalog, selectionBank);
+    expect(initial.units[0].clipId).toBe('initial');
+    const context = resolvePhoneUnits(['b', 't', 'ɛ'], catalog, selectionBank);
+    expect(context.units[1].clipId).toBe('final');
+    const adjacentCatalog: PhonemeCatalog = {
+      ...catalog,
+      phones: {
+        b: [source('adjacent', 4, 0.11, 0.15, 'initial', null, 'ɛ')],
+        ɛ: [source('adjacent', 4, 0.15, 0.2, 'final', 'b', null)],
+      },
+    };
+    const contiguous = resolvePhoneUnits(['b', 'ɛ'], adjacentCatalog, selectionBank);
+    expect(contiguous.units).toHaveLength(1);
+    expect(contiguous.units[0]).toMatchObject({ clipId: 'adjacent', startSeconds: 0.11, endSeconds: 0.2, ipa: 'b ɛ' });
   });
 
   it.each(['constructor', '__proto__'])('treats inherited catalog key %s as an unsupported phone', (phone) => {
@@ -137,7 +304,7 @@ describe('CASSIE announcement parser', () => {
         { id: 'end_beep', file: '/audio/end_beep.opus', duration: 0.2, kind: 'effect' as const },
       ],
     };
-    const result = createWordPlan('$START cassie $CLIP_the_vowel $END', cueBank, { start: 'start_beep', end: 'end_beep' });
+    const result = createWordPlan('/start cassie /clip:the_vowel /end', cueBank, { start: 'start_beep', end: 'end_beep' });
     expect(result.plan.map(({ clipId, display }) => [clipId, display])).toEqual([
       ['start_beep', 'start cue'],
       ['cassie', 'cassie'],
@@ -147,12 +314,40 @@ describe('CASSIE announcement parser', () => {
     expect(result.warnings).toEqual([]);
   });
 
+  it('recognizes slash commands next to spaced IPA blocks and resumes after an unclosed block', () => {
+    const direct = createWordPlan('/pause:0.5 / a e: /', phoneBank, undefined, phoneCatalog);
+    expect(direct.plan.map((item) => item.timelineKind)).toEqual(['gap', 'word']);
+    expect(direct.plan[1].phonemeUnits).toHaveLength(2);
+    const incomplete = analyzeText('/ a cassie', bank);
+    expect(incomplete.words).toEqual(['cassie']);
+    expect(incomplete.warnings).toContain('Unclosed IPA segment; text after the slash was parsed normally.');
+  });
+
+  it('classifies slash markers and spoken source spans, including only actual spaces as gaps', () => {
+    const plan = createWordPlan('cassie /pitch:1.1 word', bank).plan;
+    expect(plan[1]).toMatchObject({ sourceStart: 18, sourceEnd: 22, gapSourceStart: 17, gapSourceEnd: 18 });
+    expect(analyzeText('cassie /pitch:1.1 word', bank).tokens.map(({ kind }) => kind)).toEqual(['recorded', 'marker', 'recorded']);
+    expect(createWordPlan('newword', phoneBank, undefined, phoneCatalog, new Map([['newword', 'j']]), true).tokens[0].kind).toBe('synthesized');
+  });
+
+  it('keeps NATO letter recordings out of normal English while preserving explicit clip selection', () => {
+    const letterBank = {
+      ...bank,
+      clips: [...bank.clips,
+        { id: 'a', file: '/audio/a.opus', duration: 0.5, kind: 'word' as const },
+        { id: 'i', file: '/audio/i.opus', duration: 0.5, kind: 'word' as const },
+      ],
+    };
+    expect(createWordPlan('a I', letterBank, undefined, undefined, new Map(), true).unresolvedWords).toEqual(['a', 'i']);
+    expect(createWordPlan('/clip:a', letterBank).plan[0].clipId).toBe('a');
+  });
+
   it('allows direct effect clips and warns for unknown or unavailable cue assets', () => {
     const effectBank = {
       ...bank,
       clips: [...bank.clips, { id: 'cassie-background-std', file: '/audio/cassie-background-std.opus', duration: 39.43, kind: 'effect' as const }],
     };
-    const result = analyzeText('$START $CLIP_cassie-background-std $CLIP_not-in-bank $END cassie', effectBank);
+    const result = analyzeText('/start /clip:cassie-background-std /clip:not-in-bank /end cassie', effectBank);
     expect(result.words).toEqual(['cassie-background-std', 'cassie']);
     expect(result.warnings).toEqual([
       'The START cue is unavailable in this audio bank.',
@@ -161,61 +356,10 @@ describe('CASSIE announcement parser', () => {
     ]);
   });
 
-  it('composes generated inflections from the root word and a real suffix clip', () => {
-    const suffixes = ['_suffix_ing', '_suffix_plural_regular', '_suffix_plural_syllabic', '_suffix_past_t'];
-    const suffixBank = {
-      ...bank,
-      clips: [...bank.clips, ...suffixes.map((id) => ({ id, file: `/audio/${id}.opus`, duration: 0.1, kind: 'word' as const }))],
-    };
-    const result = createWordPlan('running cities boxes walked unknown', suffixBank);
-    expect(result.plan.map((item) => [item.clipId, item.suffixClipIds])).toEqual([
-      ['run', ['_suffix_ing']],
-      ['city', ['_suffix_plural_regular']],
-      ['box', ['_suffix_plural_syllabic']],
-      ['walk', ['_suffix_past_t']],
-    ]);
-    expect(result.warnings).toEqual(['No audio clip for “unknown”.']);
-  });
-
-  it('composes source-backed prefixes and derivational suffixes around exact base clips', () => {
-    const affixes = ['-ish', '-like', 'anti-', 'post-', 'pre-', 'pro-', 'un-'];
-    const affixBank = {
-      ...bank,
-      clips: [...bank.clips, ...affixes.map((id) => ({ id, file: `/audio/${id}.opus`, duration: 0.1, kind: 'word' as const }))],
-    };
-    const result = createWordPlan('greenish human-like anti-personnel posthuman prehuman prohuman unsafe', affixBank);
-    expect(result.plan.map((item) => [item.prefixClipIds, item.clipId, item.suffixClipIds])).toEqual([
-      [undefined, 'green', ['-ish']],
-      [undefined, 'human', ['-like']],
-      [['anti-'], 'personnel', undefined],
-      [['post-'], 'human', undefined],
-      [['pre-'], 'human', undefined],
-      [['pro-'], 'human', undefined],
-      [['un-'], 'safe', undefined],
-    ]);
-  });
-
-  it('keeps complete word recordings ahead of affix construction and warns when an affix is unavailable', () => {
-    const suffixBank = { ...bank, clips: [...bank.clips, { id: '-ish', file: '/audio/-ish.opus', duration: 0.1, kind: 'word' as const }] };
-    expect(createWordPlan('greenish', suffixBank).plan[0]).toMatchObject({ clipId: 'green', suffixClipIds: ['-ish'] });
-    const exactBank = { ...suffixBank, clips: [...suffixBank.clips, { id: 'greenish', file: '/audio/greenish.opus', duration: 0.5, kind: 'word' as const }] };
-    const exact = createWordPlan('greenish', exactBank).plan[0];
-    expect(exact.clipId).toBe('greenish');
-    expect(exact).not.toHaveProperty('suffixClipIds');
-    expect(analyzeText('greenish', bank).warnings).toContain('No audio clip for “greenish”.');
-  });
-
-  it('does not claim inflections when the sound bank lacks suffix audio', () => {
-    expect(analyzeText('running cities', bank)).toMatchObject({
-      words: [],
-      warnings: ['No audio clip for “running”.', 'No audio clip for “cities”.'],
-    });
-  });
-
   it('keeps bank ids with underscores intact and makes preview tolerant', () => {
     const suffixBank = { ...bank, clips: [...bank.clips, { id: '_suffix_plural_regular', file: '/audio/_suffix_plural_regular.opus', duration: 0.1, kind: 'word' as const }] };
     expect(analyzeText('_suffix_plural_regular', suffixBank).words).toEqual(['_suffix_plural_regular']);
-    expect(analyzeText(' '.repeat(600), bank)).toEqual({ words: [], warnings: [] });
+    expect(analyzeText(' '.repeat(600), bank)).toEqual({ words: [], warnings: [], tokens: [] });
     expect(analyzeText('cassie '.repeat(513), bank).words).toEqual([]);
   });
 
@@ -227,7 +371,14 @@ describe('CASSIE announcement parser', () => {
   });
 
   it('ignores out-of-range modifiers with a warning', () => {
-    expect(analyzeText('$PITCH_99 cassie', bank).warnings).toContain('Invalid PITCH modifier: $PITCH_99');
+    expect(analyzeText('/pitch:99 cassie', bank).warnings).toContain('Invalid /pitch command: /pitch:99');
+  });
+
+  it('rejects legacy dollar modifiers without treating them as spoken words', () => {
+    const result = analyzeText('$PITCH_1.2 cassie', bank);
+    expect(result.words).toEqual(['cassie']);
+    expect(result.warnings).toContain('Dollar-prefixed syntax is unsupported: $PITCH_1.2');
+    expect(result.tokens[0].kind).toBe('error');
   });
 });
 
@@ -252,6 +403,45 @@ describe('audio DSP', () => {
     expect(nextClipStart(1, 'word', 'effect', 0.24)).toBe(1);
     expect(nextClipStart(1.2, 'effect', 'word', 0.24)).toBe(1.2);
     expect(nextClipStart(0, undefined, 'effect', 0.24, 0.5)).toBe(0.5);
+  });
+
+  it('maps phrase word and whitespace spans through crop, noninteger stutter points, repeats, and pitch', () => {
+    const timeline = mapSourceTimeline([
+      { startSample: 10, endSample: 25, sourceStart: 0, sourceEnd: 3, kind: 'word' },
+      { startSample: 25, endSample: 35, sourceStart: 3, sourceEnd: 4, kind: 'gap' },
+      { startSample: 35, endSample: 90, sourceStart: 5, sourceEnd: 11, kind: 'word' },
+    ], 100, {
+      startAt: 0.1,
+      maxDuration: 0.8,
+      pitch: 1,
+      stutter: { position: 0.257, length: 0.1, repeats: 2 },
+    }, 1.25, 100, 2, 80);
+    const repeatedWord = timeline.filter((entry) => entry.kind === 'word' && entry.sourceStart === 5);
+    const repeatedGap = timeline.filter((entry) => entry.kind === 'gap' && entry.sourceStart === 3);
+    expect(repeatedWord).toHaveLength(3);
+    expect(repeatedGap).toHaveLength(4);
+    expect(timeline.every((entry) => entry.startSeconds >= 2 && entry.endSeconds <= 2.8 && entry.endSeconds > entry.startSeconds)).toBe(true);
+  });
+
+  it('omits zero-length pause and fully cropped audio spans from the timeline', () => {
+    const timeline: ReturnType<typeof mapSourceTimeline> = [];
+    expect(appendTimelineEntry(timeline, { startSeconds: 1, endSeconds: 1, sourceStart: 0, sourceEnd: 8, kind: 'gap' })).toBe(false);
+    expect(appendTimelineEntry(timeline, { startSeconds: 2.5, endSeconds: 2.5, sourceStart: 9, sourceEnd: 13, kind: 'word' })).toBe(false);
+    expect(appendTimelineEntry(timeline, { startSeconds: 1, endSeconds: 1.25, sourceStart: 0, sourceEnd: 8, kind: 'gap' })).toBe(true);
+    expect(timeline).toEqual([{ startSeconds: 1, endSeconds: 1.25, sourceStart: 0, sourceEnd: 8, kind: 'gap' }]);
+  });
+
+  it('keeps timeline entries inside the final rendered PCM duration', () => {
+    const timeline = [
+      { startSeconds: 0, endSeconds: 0.5, sourceStart: 0, sourceEnd: 4, kind: 'word' as const },
+      { startSeconds: 0.5, endSeconds: 0.75, sourceStart: 4, sourceEnd: 8, kind: 'gap' as const },
+      { startSeconds: 0.75, endSeconds: 1, sourceStart: 8, sourceEnd: 13, kind: 'cue' as const },
+    ];
+    expect(clipTimelineToDuration(timeline, 0.6)).toEqual([
+      timeline[0],
+      { ...timeline[1], endSeconds: 0.6 },
+    ]);
+    expect(clipTimelineToDuration(timeline, 0.5)).toEqual([timeline[0]]);
   });
 
   it('lengthens vowel centers without changing pitch and fades phone sequence boundaries', () => {
@@ -282,12 +472,12 @@ describe('audio worker handoff', () => {
     await expect(analyzeAnnouncement('cassie', bank)).resolves.toMatchObject({ words: ['cassie'], ipa: [] });
     await expect(analyzeAnnouncement('unrecordedword', bank)).resolves.toMatchObject({
       words: [],
-      warnings: ['No audio clip for “unrecordedword”.'],
+      warnings: expect.arrayContaining(['No audio clip for “unrecordedword”.']),
       ipa: [],
     });
-    await expect(analyzeAnnouncement('   ', bank)).resolves.toEqual({ words: [], warnings: [], ipa: [] });
+    await expect(analyzeAnnouncement('   ', bank)).resolves.toEqual({ words: [], warnings: [], ipa: [], tokens: [] });
     await expect(renderAnnouncement('unrecordedword', bank, { pitch: 1, volume: 1, gap: 0.24, background: false }))
-      .rejects.toThrow('No audio clip for “unrecordedword”.');
+      .rejects.toThrow(/No audio clip|phoneme catalog is unavailable/i);
   });
 
   it('copies Vue reactive bank data into a structured-cloneable worker request', async () => {
@@ -304,6 +494,7 @@ describe('audio worker handoff', () => {
           duration: 1 / 48_000,
           words: ['cassie'],
           warnings: [],
+          timeline: [{ startSeconds: 0, endSeconds: 1 / 48_000, sourceStart: 0, sourceEnd: 6, kind: 'word' }],
         } } as MessageEvent));
       }
       terminate() {}
@@ -312,6 +503,7 @@ describe('audio worker handoff', () => {
     try {
       const result = await renderAnnouncement('cassie', reactive(bank), { pitch: 1, volume: 1, gap: 0.24, background: false });
       expect(result.words).toEqual(['cassie']);
+      expect(result.timeline).toHaveLength(1);
     } finally {
       vi.unstubAllGlobals();
     }

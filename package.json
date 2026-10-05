@@ -1,13 +1,13 @@
 {
   "name": "cassie",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
   "scripts": {
-    "postinstall": "node scripts/prepare-ffmpeg.mjs",
+    "postinstall": "node scripts/prepare-ffmpeg.mjs && node scripts/prepare-spelling.mjs",
     "dev": "vite --host 127.0.0.1",
-    "build": "node scripts/prepare-ffmpeg.mjs && vue-tsc --noEmit && vite build",
+    "build": "node scripts/prepare-ffmpeg.mjs && node scripts/prepare-spelling.mjs && vue-tsc --noEmit && vite build",
     "test": "vitest run",
     "test:browser": "playwright test",
     "preview": "vite preview --host 127.0.0.1",
@@ -18,13 +18,17 @@
   "dependencies": {
     "@ffmpeg/core": "0.12.10",
     "@ffmpeg/ffmpeg": "0.12.15",
-    "@platform-kit/fluent": "https://github.com/lsy-404/platform-kit/releases/download/fluent-v0.2.5/platform-kit-fluent-0.2.5.tgz",
+    "@platform-kit/fluent": "https://github.com/lsy-404/platform-kit/releases/download/fluent-v0.2.6/platform-kit-fluent-0.2.6.tgz",
+    "dictionary-en": "4.0.0",
+    "dictionary-en-gb": "3.0.0",
+    "nspell": "2.1.5",
     "ogg-opus-decoder": "1.7.5",
     "phonemizer": "1.2.1",
     "vue": "3.5.43"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
+    "@types/nspell": "2.1.6",
     "@vitejs/plugin-vue": "6.0.9",
     "typescript": "~6.0.3",
     "vite": "8.3.2",
