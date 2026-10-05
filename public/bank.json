@@ -2499,6 +2499,56 @@
       "sha256": "794393d4ce8d6c93c47531a3193f4b02e2420afb8a7551bbacc90cfe2ed45584"
     },
     {
+      "id": "cassie-end",
+      "file": "/audio/cassie-end.opus",
+      "duration": 10.328571,
+      "kind": "effect",
+      "sourceName": "CASSIE-background-std (end excerpt)",
+      "sourceContainer": "SCPSL_Data/sharedassets2.assets",
+      "sourcePathId": 3200,
+      "sourceFrequency": 44100,
+      "sourceChannels": 2,
+      "decodedWavSha256": "f49e2050309c426e0941bcc0c5c3cd8b63a5e1152e74bffeec90110692eca315",
+      "sha256": "b4294fb4adc2824bcd6ef6c8738203b500af28001399648377ff5cf11a63d7fa",
+      "sourceWindow": {
+        "startSample": 1283310,
+        "endSample": 1738800,
+        "sampleRateHz": 44100,
+        "startSeconds": 29.1,
+        "endSeconds": 39.42857142857143,
+        "sourceStartSeconds": 29.100000381469727,
+        "sourceEndSeconds": 39.42856979370117,
+        "sourceDecodedWavSha256": "c54b7b92de9d48333d57876f594baa748c0dbd831e29e2a7d51feddd544cc714",
+        "decodedWavSha256": "f49e2050309c426e0941bcc0c5c3cd8b63a5e1152e74bffeec90110692eca315",
+        "opusSha256": "b4294fb4adc2824bcd6ef6c8738203b500af28001399648377ff5cf11a63d7fa"
+      }
+    },
+    {
+      "id": "cassie-start",
+      "file": "/audio/cassie-start.opus",
+      "duration": 2.5,
+      "kind": "effect",
+      "sourceName": "CASSIE-background-std (start excerpt)",
+      "sourceContainer": "SCPSL_Data/sharedassets2.assets",
+      "sourcePathId": 3200,
+      "sourceFrequency": 44100,
+      "sourceChannels": 2,
+      "decodedWavSha256": "274e2fb4ac27a458cdea1edd804392e0ebd73991711ad94e1f511566e4806edb",
+      "sha256": "e0f0c309f921b2d4b4f38c99b676ea4e097890dcc545544b86152f4b95f7d683",
+      "sourceWindow": {
+        "startSample": 0,
+        "endSample": 110250,
+        "sampleRateHz": 44100,
+        "startSeconds": 0.0,
+        "endSeconds": 2.5,
+        "sourceStartSeconds": 0.0,
+        "sourceEndSeconds": 2.5,
+        "sourceDecodedWavSha256": "c54b7b92de9d48333d57876f594baa748c0dbd831e29e2a7d51feddd544cc714",
+        "decodedWavSha256": "274e2fb4ac27a458cdea1edd804392e0ebd73991711ad94e1f511566e4806edb",
+        "opusSha256": "e0f0c309f921b2d4b4f38c99b676ea4e097890dcc545544b86152f4b95f7d683"
+      }
+    },
+    {
       "id": "cast",
       "file": "/audio/cast.opus",
       "duration": 0.717914,

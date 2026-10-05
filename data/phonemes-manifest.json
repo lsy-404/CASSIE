@@ -1,8 +1,8 @@
 {
   "product": "CASSIE phoneme and phrase word timing index",
   "sourceBankVersion": "SCP: Secret Laboratory build 24956965",
-  "sourceBankSha256": "0b81277a288ef3ae394dedfe14e84b9e2c3896aa87c609f2ed92a34d4dfdab45",
-  "outputSha256": "0f7eb05105933cd81d8a8557670750cbed7c38c1f661be0d666b924c2fbd6b8d",
+  "sourceBankSha256": "1265ba3d8f958f7b782e0b94d75319200fee29c7e9380fd856901c3cf8f6a975",
+  "outputSha256": "74d215f986cafd88b3fdbc546bf8883c064655e8ea727d749a88c086e92bf1e6",
   "aligner": {
     "package": "echogarden",
     "version": "3.4.0",
