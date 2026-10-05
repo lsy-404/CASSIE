@@ -19,7 +19,6 @@ export interface RenderOptions {
   pitch: number;
   volume: number;
   gap: number;
-  background: boolean;
   phonemes?: boolean;
 }
 
