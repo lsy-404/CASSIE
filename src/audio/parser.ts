@@ -8,6 +8,12 @@ const ONES = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'ei
 const TEENS = ['ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
 const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
 const SCALES = ['', 'thousand', 'million', 'billion'];
+const NUMBER_CLIP_IDS: Record<string, string> = {
+  zero: '0', one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9',
+  ten: '10', eleven: '11', twelve: '12', thirteen: '13', fourteen: '14', fifteen: '15', sixteen: '16',
+  seventeen: '17', eighteen: '18', nineteen: '19', twenty: '20', thirty: '30', forty: '40', fifty: '50',
+  sixty: '60', seventy: '70', eighty: '80', ninety: '90',
+};
 
 function normalize(value: string): string {
   return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('en-US');
@@ -60,8 +66,16 @@ function tokenPattern(): RegExp {
   return /\$[A-Za-z]+_[^\s$]+|-?\d+(?:\.\d+)?|[\p{L}_-][\p{L}\p{N}_-]*(?:['’][\p{L}]+)*/gu;
 }
 
-function resolveClip(token: string, lookup: Map<string, BankClip>): BankClip | undefined {
-  return lookup.get(normalize(token));
+function resolveClip(token: string, lookup: Map<string, BankClip>, nextToken?: string): BankClip | undefined {
+  if (token === 'the') {
+    const nextWord = nextToken && /^-?\d/.test(nextToken) ? numberWords(nextToken)[0] : nextToken;
+    const article = lookup.get(nextWord && /^[aeiou]/i.test(nextWord) ? 'the_vowel' : 'the_consonant');
+    if (article) return article;
+  }
+  const direct = lookup.get(normalize(token));
+  if (direct) return direct;
+  const numeric = NUMBER_CLIP_IDS[normalize(token)];
+  return numeric ? lookup.get(numeric) : undefined;
 }
 
 function inflection(token: string, lookup: Map<string, BankClip>): { clip: BankClip; suffix: BankClip } | undefined {
@@ -136,7 +150,8 @@ function compileWordPlan(text: string, bank: Bank): { plan: WordPlan[]; warnings
   let volume = 1;
   let pending: Omit<WordPlan, 'clipId' | 'display' | 'pitch' | 'volume'> = {};
 
-  for (const raw of tokens) {
+  for (let tokenIndex = 0; tokenIndex < tokens.length; tokenIndex += 1) {
+    const raw = tokens[tokenIndex];
     const token = raw.toLocaleLowerCase('en-US');
     if (token.startsWith('$')) {
       const match = /^\$(PITCH|VOL|STARTT|MAXDUR|SLEEP|SPAC|STUTT)_(.+)$/i.exec(token);
@@ -177,10 +192,32 @@ function compileWordPlan(text: string, bank: Bank): { plan: WordPlan[]; warnings
       continue;
     }
 
+    const phraseParts = [token];
+    let phraseClip: BankClip | undefined;
+    let phraseEnd = tokenIndex;
+    for (let candidateIndex = tokenIndex + 1; candidateIndex < Math.min(tokens.length, tokenIndex + 12); candidateIndex += 1) {
+      const candidate = tokens[candidateIndex].toLocaleLowerCase('en-US');
+      if (candidate.startsWith('$')) break;
+      phraseParts.push(candidate);
+      const match = lookup.get(normalize(phraseParts.join('-')));
+      if (match) {
+        phraseClip = match;
+        phraseEnd = candidateIndex;
+      }
+    }
+    if (phraseClip) {
+      const display = tokens.slice(tokenIndex, phraseEnd + 1).join(' ').toLocaleLowerCase('en-US');
+      plan.push({ clipId: phraseClip.id, display, pitch, volume, ...pending });
+      pending = {};
+      tokenIndex = phraseEnd;
+      continue;
+    }
+
     const expanded = /^-?\d/.test(token) ? numberWords(token) : [token.replace(/[’]/g, "'")];
+    const nextToken = tokens.slice(tokenIndex + 1).find((candidate) => !candidate.startsWith('$'));
     for (const spoken of expanded) {
       if (plan.length >= MAX_TOKENS) throw new Error(`Announcement exceeds the ${MAX_TOKENS}-token limit.`);
-      const clip = resolveClip(spoken, lookup);
+      const clip = resolveClip(spoken, lookup, token === 'the' ? nextToken : undefined);
       const generated = clip ? undefined : inflection(spoken, lookup);
       const playableClip = clip ?? generated?.clip;
       if (!playableClip) {
