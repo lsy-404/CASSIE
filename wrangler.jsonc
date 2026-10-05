@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cassie",
+  "account_id": "df4481f3ce1fa0394b4617442a97d147",
+  "compatibility_date": "2026-10-05",
+  "routes": [
+    { "pattern": "cassie.leisiyu.dev", "custom_domain": true }
+  ],
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "none"
+  }
+}
