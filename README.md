@@ -1,6 +1,6 @@
 # CASSIE
 
-A CASSIE announcement studio for [SCP: Secret Laboratory](https://scpslgame.com/), running entirely in your browser. Edit an announcement, search the supplied sound bank, adjust playback, preview it, and download WAV or Opus audio.
+A CASSIE announcement studio for [SCP: Secret Laboratory](https://scpslgame.com/), running entirely in your browser. Edit an announcement, adjust playback, listen with synchronized text highlighting, and download WAV or Opus audio.
 
 **Site:** https://cassie.leisiyu.dev
 
@@ -22,33 +22,37 @@ Install the browser once with `npx playwright install chromium` before browser t
 
 ## Announcement syntax
 
-Use words from the supplied bank, separated by spaces. Numbers are expanded into speech units where available. The Fluent toolbar inserts game modifiers, while the catalog identifies playable voice, affix and effect clips and supports individual previews.
+Use words from the supplied bank, separated by spaces. Numbers are expanded into speech units where available. The Fluent toolbar inserts slash commands that simplify the game's modifier behavior. Rendering updates as you edit; turn off the live-render checkbox to render manually. The audio bar supports seeking, with current words and spaces highlighted in the announcement.
 
 | Modifier | Meaning |
 | --- | --- |
-| `$PITCH_1.2` | Set subsequent playback speed and pitch |
-| `$VOL_0.7` | Set subsequent voice volume |
-| `$STARTT_0.1` | Skip the beginning of the next clip |
-| `$MAXDUR_0.3` | Limit the next clip's duration |
-| `$SLEEP_0.5` | Delay the next clip |
-| `$SPAC_0.2` | Start the next clip this many seconds after the previous start; overlap is possible |
-| `$STUTT_0.3_0.1_3` | Repeat a section of the next clip |
+| `/pitch:1.2` | Set subsequent playback speed and pitch |
+| `/volume:0.7` | Set subsequent voice volume |
+| `/offset:0.1` | Skip the beginning of the next clip |
+| `/duration:0.3` | Limit the next clip's duration |
+| `/pause:0.5` | Insert half a second of silence |
+| `/spacing:0.2` | Start the next clip this many seconds after the previous start; overlap is possible |
+| `/stutter:0.3:0.1:3` | Repeat a section of the next clip |
+| `/clip:id` | Insert a supplied recording by its clip ID |
+| `/start`, `/end` | Insert the announcement boundary cues |
 
-The parser is independently implemented from the [documented modern CASSIE grammar](https://en.scpslgame.com/index.php?title=Updates/14.2.3). The renderer has bounded duration and token counts. It does not reproduce the game's announcement queue or promise identical procedural background behavior.
+The parser implements a simplified command syntax based on the [documented modern CASSIE behavior](https://en.scpslgame.com/index.php?title=Updates/14.2.3). Commands use a leading slash; phonemes use a pair of slashes. The renderer has bounded duration and token counts. It does not reproduce the game's announcement queue.
 
-Exact phrase recordings take priority. Available base words can be joined with recorded affixes; missing fragments are reported. Article variants use the following written initial, so pronunciation exceptions may differ from the game.
+Exact phrase recordings take priority. Article variants use the following written initial, so pronunciation exceptions may differ from the game.
 
-`$CLIP_id` explicitly inserts any supplied clip, including effects and internal fragments. Choose a clip in the catalog as your custom beginning or ending prompt, then insert it from the toolbar. `$START` and `$END` are application cue commands; they warn and skip when no verified announcement boundary recording is available. They are not game modifiers.
+`/clip:id` explicitly inserts any supplied clip, including effects and internal fragments. Clip IDs and provenance are listed in `public/bank.json`.
 
-## Experimental phoneme composition
+## Phoneme composition
 
 Type space-separated phones between slashes, for example `/ a e: /`, or enter IPA such as `/ h ə l oʊ /`. Direct phoneme blocks work without enabling English word expansion. The interface lists the available measured phones and reports missing units.
 
 The shortcuts `a` and `e` select `ɑː` and `ɛ`. A trailing `:` requests a long vowel: a matching recorded long vowel is used when available; otherwise the vowel's middle portion is repeated with crossfades while preserving its pitch. IPA `j` remains the palatal glide; use `jh` for `dʒ`. Long-vowel repetition can sound rough.
 
-Enable experimental phoneme composition to pronounce unrecorded English words using eSpeak's US English pronunciation through `phonemizer`. Existing word, phrase and affix recordings take priority. Pronunciation conversion and composition run locally; missing phones cause the whole unrecorded word to be skipped with a warning.
+Unrecorded English words automatically use eSpeak's US English pronunciation through `phonemizer`. Existing word and phrase recordings take priority. Pronunciation conversion and composition run locally; missing phones cause the whole unrecorded word to be skipped with a warning.
 
-The index contains 2,761 measured interior windows from 777 source clips, covering 55 IPA keys. Echogarden's synthesis-reference MFCC/DTW alignment estimates boundaries from the actual audio; the first and last phone of each source word are excluded. The renderer joins those windows with short crossfades. These are automatically aligned, context-dependent fragments, so pronunciation and transitions are experimental and can sound rough. This is not a general English TTS voice.
+Underlines distinguish original recordings (green), composed words or phones (yellow), errors (red), and recognized slash commands (blue). Words absent from the local US English Hunspell dictionary use a wavy underline and still synthesize. Dictionary hints can flag proper names or specialized vocabulary. Playback highlights the current word or intervening space using the rendered audio timeline.
+
+Echogarden's synthesis-reference MFCC/DTW alignment estimates phoneme boundaries from the actual audio, including the beginnings and endings of source words. Selection first favors the target word position, then neighboring phones and continuous source windows, with duration used to break ties. The renderer joins measured windows with short crossfades. These automatically aligned fragments can sound rough; pronunciation and transitions remain experimental.
 
 Generation code, timestamp selection and composition code are AGPL-3.0-only. The original and excerpted game audio retain CC BY-SA 3.0. Reproduce the timestamp index using `scripts/build-phonemes.mjs`; the source and output hashes are in `data/phonemes-manifest.json`.
 
