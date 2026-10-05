@@ -5,8 +5,8 @@ export const MAX_RENDER_SECONDS = 120;
 
 export function nextClipStart(
   previousEnd: number,
-  previousKind: ClipKind | undefined,
-  nextKind: ClipKind,
+  previousKind: ClipKind | 'pause' | undefined,
+  nextKind: ClipKind | 'pause',
   speechGap: number,
   sleep = 0,
 ): number {
@@ -18,7 +18,7 @@ export function nextClipStart(
 function crossfadeJoin(left: Float32Array, right: Float32Array, sampleRate: number): Float32Array {
   if (!left.length) return right;
   if (!right.length) return left;
-  const overlap = Math.min(Math.round(sampleRate * 0.005), Math.floor(left.length / 4), Math.floor(right.length / 4));
+  const overlap = Math.min(Math.round(sampleRate * 0.002), Math.floor(left.length / 4), Math.floor(right.length / 4));
   if (!overlap) {
     const output = new Float32Array(left.length + right.length);
     output.set(left);
@@ -52,7 +52,8 @@ export function stretchVowelLoop(samples: Float32Array, sampleRate: number, fact
     const pieceLength = Math.min(loop.length, needed + fade);
     output = crossfadeJoin(output, loop.subarray(0, pieceLength), sampleRate);
   }
-  return crossfadeJoin(output, tail, sampleRate);
+  const joined = crossfadeJoin(output, tail, sampleRate);
+  return joined.length > targetLength ? joined.subarray(0, targetLength) : joined;
 }
 
 export function splicePhonemeWindows(segments: Float32Array[], sampleRate: number): Float32Array {
@@ -60,7 +61,7 @@ export function splicePhonemeWindows(segments: Float32Array[], sampleRate: numbe
   let output: Float32Array<ArrayBufferLike> = segments[0];
   for (let index = 1; index < segments.length; index += 1) output = crossfadeJoin(output, segments[index], sampleRate);
   const faded = output.slice();
-  const fadeLength = Math.min(Math.round(sampleRate * 0.005), Math.floor(faded.length / 2));
+  const fadeLength = Math.min(Math.round(sampleRate * 0.002), Math.floor(faded.length / 2));
   for (let index = 0; index < fadeLength; index += 1) {
     const gain = (index + 1) / fadeLength;
     faded[index] *= gain;

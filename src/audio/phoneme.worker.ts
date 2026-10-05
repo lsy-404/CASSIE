@@ -16,7 +16,7 @@ scope.onmessage = async ({ data }) => {
     for (const word of data.words) {
       const result = await phonemize(word, 'en-us');
       const phonetic = result.find((item) => item.trim());
-      if (phonetic) phones[word.toLocaleLowerCase('en-US')] = phonetic;
+      if (phonetic) phones[word.toLocaleLowerCase('en-US')] = word.toLocaleLowerCase('en-US') === 'a' ? 'ə' : phonetic;
     }
     scope.postMessage({ phones });
   } catch (error) {

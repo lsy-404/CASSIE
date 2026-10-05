@@ -29,6 +29,22 @@ export interface RenderResult {
   duration: number;
   words: string[];
   warnings: string[];
+  timeline: TimelineEntry[];
+}
+
+export interface TimelineEntry {
+  startSeconds: number;
+  endSeconds: number;
+  sourceStart: number;
+  sourceEnd: number;
+  kind: 'word' | 'gap' | 'cue';
+}
+
+export interface AnalysisToken {
+  sourceStart: number;
+  sourceEnd: number;
+  kind: 'recorded' | 'synthesized' | 'error' | 'marker';
+  text: string;
 }
 
 export interface WordPlan {
@@ -44,6 +60,13 @@ export interface WordPlan {
   spacing?: number;
   stutter?: { position: number; length: number; repeats: number };
   phonemeUnits?: PhonemeUnit[];
+  pauseDuration?: number;
+  sourceStart?: number;
+  sourceEnd?: number;
+  gapSourceStart?: number;
+  gapSourceEnd?: number;
+  timelineKind?: 'word' | 'gap' | 'cue';
+  sourceWordTimings?: Array<{ text: string; startSeconds: number; endSeconds: number; sourceStart: number; sourceEnd: number }>;
 }
 
 export interface PhonemeUnit {
