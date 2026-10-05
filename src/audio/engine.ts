@@ -63,7 +63,9 @@ async function preparePlan(text: string, bank: Bank, phonemesEnabled: boolean, s
   }
 
   try {
-    const phonemized = await phonemizeWords(initial.unresolvedWords, signal);
+    const letterNames = [...new Set(initial.unresolvedWords.filter((word) => word.startsWith('letter:')).map((word) => word.slice(7)))];
+    const spokenWords = initial.unresolvedWords.filter((word) => !word.startsWith('letter:'));
+    const phonemized = await phonemizeWords(spokenWords, signal, letterNames);
     if (signal?.aborted) throw new DOMException('The audio render was cancelled.', 'AbortError');
     const resolved = createWordPlan(text, bank, undefined, catalog, phonemized, true);
     return { plan: resolved.plan, warnings: resolved.warnings, tokens: resolved.tokens };

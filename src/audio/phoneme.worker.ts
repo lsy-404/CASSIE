@@ -1,4 +1,4 @@
-type RequestMessage = { words: string[] };
+type RequestMessage = { words: string[]; letterNames?: string[] };
 type ResponseMessage = { phones: Record<string, string> } | { error: string };
 
 const scope = self as unknown as {
@@ -8,7 +8,8 @@ const scope = self as unknown as {
 
 scope.onmessage = async ({ data }) => {
   try {
-    if (!Array.isArray(data.words) || data.words.length > 512 || data.words.some((word) => typeof word !== 'string' || word.length > 256)) {
+    if (!Array.isArray(data.words) || data.words.length > 512 || data.words.some((word) => typeof word !== 'string' || word.length > 256) ||
+        (data.letterNames !== undefined && (!Array.isArray(data.letterNames) || data.letterNames.length > 26 || data.letterNames.some((letter) => !/^[A-Z]$/u.test(letter))))) {
       throw new Error('English phonemizer input is invalid.');
     }
     const { phonemize } = await import('phonemizer');
@@ -17,6 +18,11 @@ scope.onmessage = async ({ data }) => {
       const result = await phonemize(word, 'en-us');
       const phonetic = result.find((item) => item.trim());
       if (phonetic) phones[word.toLocaleLowerCase('en-US')] = word.toLocaleLowerCase('en-US') === 'a' ? 'ə' : phonetic;
+    }
+    for (const letter of data.letterNames ?? []) {
+      const result = await phonemize(letter, 'en-us');
+      const phonetic = result.find((item) => item.trim());
+      if (phonetic) phones[`letter:${letter}`] = phonetic;
     }
     scope.postMessage({ phones });
   } catch (error) {
