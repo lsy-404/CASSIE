@@ -37,13 +37,13 @@ for (const file of files) {
   const hash = createHash('sha256').update(bytes.toString('base64') + extension).digest('hex').slice(0, 32);
   manifest[`/${file}`] = { hash, size: bytes.length };
 }
-if (assetBytes > 16 * 1024 * 1024) throw new Error(`Overture static assets exceed 16 MiB: ${assetBytes}`);
+if (assetBytes > 64 * 1024 * 1024) throw new Error(`Overture static assets exceed 64 MiB: ${assetBytes}`);
 await writeFile(path.join(stage, 'assets-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 await mkdir(output, { recursive: true });
 const artifact = path.join(output, 'overture.tar.gz');
 execFileSync('tar', ['-czf', artifact, '-C', stage, 'recipe.js', 'worker', 'assets-manifest.json', 'assets']);
 const entries = execFileSync('tar', ['-tf', artifact], { encoding: 'utf8' }).trim().split(/\r?\n/);
-if (entries.length > 1000) throw new Error(`Overture tar archive exceeds 1000 entries: ${entries.length}`);
+if (entries.length > 20_000) throw new Error(`Overture tar archive exceeds 20,000 entries: ${entries.length}`);
 const archive = await readFile(artifact);
 if (archive.length > 24 * 1024 * 1024) throw new Error('Overture artifact exceeds 24 MiB.');
 const sha256 = createHash('sha256').update(archive).digest('hex');

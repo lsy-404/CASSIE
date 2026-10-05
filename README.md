@@ -53,7 +53,7 @@ The Release includes `overture.json`, `overture.tar.gz` and `SHA256SUMS`, follow
 
 Open your Overture deployment with `?src=lsy-404/CASSIE`, select a release and your Cloudflare account, then choose a Worker name and optional custom domain. The package declares no storage resources or app secrets. Its small deployment entry only forwards to the static assets binding. Ordinary Wrangler deployment uses assets alone.
 
-Build the package with `npm run package:overture`. The packager checks Overture's 16 MiB asset budget, 24 MiB archive budget and 1000-entry archive budget. FFmpeg remains compressed inside the package and is decompressed only in the visitor's browser.
+Build the package with `npm run package:overture`. The packager checks the supported Overture version's 64 MiB asset budget, 24 MiB archive budget and 20,000-entry archive budget. FFmpeg remains compressed inside the package and is decompressed only in the visitor's browser.
 
 ## Licensing and sources
 
