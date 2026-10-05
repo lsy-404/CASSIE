@@ -25,3 +25,6 @@
 
 /bank.json
   Cache-Control: no-cache
+
+/phonemes.json
+  Cache-Control: no-cache
