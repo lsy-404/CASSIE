@@ -51,7 +51,7 @@ Speech rate defaults to 1×. The global control and scoped rate each accept 0.5�
 
 Voice post-processing uses [WORLD](https://github.com/mmorise/World) compiled to WebAssembly in the audio worker. Pitch is a semitone offset from −12 to +12; breathiness accepts 0–1; formant is a resonance offset from −6 to +6 semitones. Scoped attributes override the corresponding global or enclosing voice setting, and closing the tag restores it. Omitted attributes inherit. `<pitch>` remains the game's combined speed/pitch effect; `<voice pitch="3">` raises pitch while keeping speech duration fixed.
 
-All three voice settings default to zero and bypass analysis/resynthesis, preserving the original audio. Active settings resynthesize speech from its fundamental frequency, spectral envelope and aperiodicity. Breathiness increases nonperiodic energy in voiced frames; it is a vocoder effect, not a trained DiffSinger model. Gaps, pauses and special clips retain their original samples. Extreme settings and very short phoneme fragments can sound less natural.
+All three voice settings default to zero and bypass analysis/resynthesis, preserving the original audio. Active settings resynthesize speech from its fundamental frequency, spectral envelope and aperiodicity. Breathiness increases nonperiodic energy in voiced frames; it is a vocoder effect, not a trained DiffSinger model. Gaps, pauses and special clips retain their original samples. Each processed speech block is limited to 20 seconds before speech-rate stretching. Extreme settings and very short phoneme fragments can sound less natural.
 
 Exact phrase recordings take priority. Article variants use the following written initial, so pronunciation exceptions may differ from the game.
 
