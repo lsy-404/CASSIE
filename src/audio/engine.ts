@@ -1,5 +1,5 @@
 import { createWordPlan } from './parser';
-import type { Bank, BankClip, RenderOptions, RenderResult } from './types';
+import type { AnalysisToken, Bank, BankClip, RenderOptions, RenderResult } from './types';
 import { hasDirectPhonemeInput, loadPhonemeCatalog, phonemizeWords } from './phonemes';
 
 const BANK_URL = '/bank.json';
@@ -41,9 +41,9 @@ export function loadBank(): Promise<Bank> {
   return cachedBank;
 }
 
-async function preparePlan(text: string, bank: Bank, phonemesEnabled: boolean, signal?: AbortSignal): Promise<{ plan: ReturnType<typeof createWordPlan>['plan']; warnings: string[] }> {
+async function preparePlan(text: string, bank: Bank, phonemesEnabled: boolean, signal?: AbortSignal): Promise<{ plan: ReturnType<typeof createWordPlan>['plan']; warnings: string[]; tokens: AnalysisToken[] }> {
   if (signal?.aborted) throw new DOMException('The audio render was cancelled.', 'AbortError');
-  if (!text.trim()) return { plan: [], warnings: [] };
+  if (!text.trim()) return { plan: [], warnings: [], tokens: [] };
   const needsCatalog = phonemesEnabled || hasDirectPhonemeInput(text);
   let catalog;
   if (needsCatalog) {
@@ -59,36 +59,37 @@ async function preparePlan(text: string, bank: Bank, phonemesEnabled: boolean, s
   if (!phonemesEnabled || !catalog || !initial.unresolvedWords.length) {
     const warnings = [...initial.warnings];
     if (phonemesEnabled && !catalog && initial.unresolvedWords.length) warnings.push('The phoneme catalog is unavailable; unrecorded words were skipped.');
-    return { plan: initial.plan, warnings };
+    return { plan: initial.plan, warnings, tokens: initial.tokens };
   }
 
   try {
     const phonemized = await phonemizeWords(initial.unresolvedWords, signal);
     if (signal?.aborted) throw new DOMException('The audio render was cancelled.', 'AbortError');
     const resolved = createWordPlan(text, bank, undefined, catalog, phonemized, true);
-    return { plan: resolved.plan, warnings: resolved.warnings };
+    return { plan: resolved.plan, warnings: resolved.warnings, tokens: resolved.tokens };
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
-    return { plan: initial.plan, warnings: [...initial.warnings, 'English phonemizer could not run; unmatched words were skipped.'] };
+    return { plan: initial.plan, warnings: [...initial.warnings, 'English phonemizer could not run; unmatched words were skipped.'], tokens: initial.tokens };
   }
 }
 
 export async function analyzeAnnouncement(
   text: string,
   bank: Bank,
-  phonemesEnabled = false,
+  phonemesEnabled = true,
   signal?: AbortSignal,
-): Promise<{ words: string[]; warnings: string[]; ipa: string[] }> {
+): Promise<{ words: string[]; warnings: string[]; ipa: string[]; tokens: AnalysisToken[] }> {
   try {
-    const { plan, warnings } = await preparePlan(text, bank, phonemesEnabled, signal);
+    const { plan, warnings, tokens } = await preparePlan(text, bank, phonemesEnabled, signal);
     return {
       words: plan.map((word) => word.display),
       warnings,
       ipa: plan.map((word) => word.phonemeUnits?.map((unit) => unit.ipa).join(' ') ?? '').filter(Boolean),
+      tokens,
     };
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
-    return { words: [], warnings: [error instanceof Error ? error.message : 'Could not analyze announcement.'], ipa: [] };
+    return { words: [], warnings: [error instanceof Error ? error.message : 'Could not analyze announcement.'], ipa: [], tokens: [] };
   }
 }
 
@@ -105,7 +106,7 @@ export async function renderAnnouncement(
     volume: Number.isFinite(options.volume) ? Math.min(1, Math.max(0, options.volume)) : 1,
     gap: Number.isFinite(options.gap) ? Math.min(0.8, Math.max(0, options.gap)) : 0.24,
     background: options.background === true,
-    phonemes: options.phonemes === true,
+    phonemes: options.phonemes !== false,
   };
   const { plan, warnings } = await preparePlan(text, bank, safeOptions.phonemes === true, signal);
   if (signal?.aborted) throw new DOMException('The audio render was cancelled.', 'AbortError');
@@ -150,7 +151,7 @@ export async function renderAnnouncement(
         finished = true;
         cleanup();
         onProgress?.(1);
-        resolve({ samples: data.samples, sampleRate: data.sampleRate, duration: data.duration, words: [...words], warnings: [...warnings, ...data.warnings] });
+        resolve({ samples: data.samples, sampleRate: data.sampleRate, duration: data.duration, words: [...words], warnings: [...warnings, ...data.warnings], timeline: [...data.timeline] });
       }
     };
     try {
@@ -162,4 +163,4 @@ export async function renderAnnouncement(
 }
 
 export { encodeWav } from './dsp';
-export type { Bank, BankClip, RenderOptions, RenderResult } from './types';
+export type { AnalysisToken, Bank, BankClip, RenderOptions, RenderResult, TimelineEntry } from './types';
