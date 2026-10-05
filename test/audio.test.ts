@@ -2,7 +2,7 @@ import { reactive } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import { analyzeText, createWordPlan } from '../src/audio/parser';
 import { analyzeAnnouncement, renderAnnouncement } from '../src/audio/engine';
-import { applyStutter, encodeWav, mixLayers, monoFromChannels, nextClipStart, splicePhonemeWindows, stretchVowelLoop, transformWord } from '../src/audio/dsp';
+import { applyStutter, encodeWav, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, splicePhonemeWindows, stretchVowelLoop, transformWord } from '../src/audio/dsp';
 import type { Bank } from '../src/audio/types';
 import type { PhonemeCatalog } from '../src/audio/phonemes';
 import { parseGeneratedPhones, resolvePhoneUnits } from '../src/audio/phonemes';
@@ -116,7 +116,7 @@ describe('CASSIE announcement parser', () => {
         { clipId: 'phone-e', ipa: 'ɛ', stretchFactor: 1.7 },
       ],
     });
-    expect(result.warnings).toEqual([]);
+    expect(result.warnings).toEqual(['Approximate phoneme match: /ɛː/ was stretched from /ɛ/.']);
   });
 
   it('skips a direct IPA segment when any phone lacks a verified source window', () => {
@@ -132,7 +132,7 @@ describe('CASSIE announcement parser', () => {
     expect(affricate.warnings).toEqual(['No verified audio window for /dʒ/; the complete segment was skipped.']);
   });
 
-  it('canonicalizes measured-inventory variants in generated English IPA', () => {
+  it('segments known generated allophone variants without discarding their exact pronunciation', () => {
     const inventory: PhonemeCatalog = {
       ...phoneCatalog,
       phones: {
@@ -141,11 +141,74 @@ describe('CASSIE announcement parser', () => {
         w: [], k: [], s: [], p: [], l: [], n: [], ʃ: [], t: [],
       },
     };
-    expect(parseGeneratedPhones('ɛksploːɹ', inventory)).toMatchObject({ phones: ['ɛ', 'k', 's', 'p', 'l', 'ɔːɹ'], warnings: [] });
+    expect(parseGeneratedPhones('ɛksploːɹ', inventory)).toMatchObject({ phones: ['ɛ', 'k', 's', 'p', 'l', 'oːɹ'], warnings: [] });
     expect(parseGeneratedPhones('wˈɜːkʃiːt', inventory)).toMatchObject({ phones: ['w', 'ɜː', 'k', 'ʃ', 'iː', 't'], warnings: [] });
-    expect(parseGeneratedPhones('ʌnsəpˈoːɹt', inventory)).toMatchObject({ phones: ['ʌ', 'n', 's', 'ə', 'p', 'ɔːɹ', 't'], warnings: [] });
+    expect(parseGeneratedPhones('ʌnsəpˈoːɹt', inventory)).toMatchObject({ phones: ['ʌ', 'n', 's', 'ə', 'p', 'oːɹ', 't'], warnings: [] });
     expect(parseGeneratedPhones('ˈaɪ', inventory)).toMatchObject({ phones: ['aɪ'], warnings: [] });
     expect(parseGeneratedPhones('ə', inventory)).toMatchObject({ phones: ['ə'], warnings: [] });
+  });
+
+  it('keeps exact rhotic vowels ahead of aliases and marks audible vowel stretch as approximate', () => {
+    const exactBank: Bank = {
+      ...phoneBank,
+      clips: [...phoneBank.clips,
+        { id: 'phone-exact-r', file: '/audio/phone-exact-r.opus', duration: 0.2, kind: 'word', sha256: 'f'.repeat(64) },
+        { id: 'phone-approx-r', file: '/audio/phone-approx-r.opus', duration: 0.2, kind: 'word', sha256: 'e'.repeat(64) },
+      ],
+    };
+    const window = (clipId: string, sha: string) => ({
+      clipId, ipa: 'oːɹ', startSeconds: 0.01, endSeconds: 0.18, sourceDurationSeconds: 0.2, sourceSha256: sha, position: 'final' as const,
+    });
+    const catalog: PhonemeCatalog = {
+      ...phoneCatalog,
+      phones: {
+        ...phoneCatalog.phones,
+        'ɔːɹ': [window('phone-approx-r', 'e'.repeat(64))],
+        'oːɹ': [window('phone-exact-r', 'f'.repeat(64))],
+      },
+    };
+    const exact = resolvePhoneUnits(['oːɹ'], catalog, exactBank);
+    expect(exact.units[0]).toMatchObject({ clipId: 'phone-exact-r', ipa: 'oːɹ' });
+    expect(exact.warnings).toEqual([]);
+
+    const approximateCatalog = { ...catalog, phones: { ...catalog.phones, 'oːɹ': [] } };
+    const approximate = resolvePhoneUnits(['oːɹ'], approximateCatalog, exactBank);
+    expect(approximate.units[0]).toMatchObject({ clipId: 'phone-approx-r', ipa: 'ɔːɹ', approximate: true });
+    expect(approximate.warnings).toHaveLength(1);
+
+    const stretched = createWordPlan('/ e: /', phoneBank, undefined, phoneCatalog);
+    expect(stretched.plan[0].phonemeUnits?.[0]).toMatchObject({ ipa: 'ɛ', stretchFactor: 1.7, approximate: true });
+    expect(stretched.tokens[0].kind).toBe('error');
+    expect(stretched.warnings[0]).toMatch(/stretched from/);
+  });
+
+  it('phonemizes explore, worksheet, and unsupport against measured inventory without silent plans', () => {
+    const pronunciations = {
+      explore: 'ɛksploːɹ',
+      worksheet: 'wˈɜːkʃiːt',
+      unsupport: 'ʌnsəpˈoːɹt',
+    };
+    const inventory = [...new Set(['ɛ', 'k', 's', 'p', 'l', 'ɔːɹ', 'w', 'ɜː', 'ʃ', 'iː', 't', 'ʌ', 'n', 'ə'])];
+    const clips = inventory.map((_, index) => ({
+      id: `phone-${index}`,
+      file: `/audio/phone-${index}.opus`,
+      duration: 0.2,
+      kind: 'word' as const,
+      sha256: index.toString(16).padStart(64, '0'),
+    }));
+    const catalog: PhonemeCatalog = {
+      schemaVersion: 2,
+      sourceBank: { version: bank.version, sha256: 'e'.repeat(64) },
+      phones: Object.fromEntries(inventory.map((phone, index) => [phone, [{
+        clipId: `phone-${index}`, ipa: phone, startSeconds: 0.01, endSeconds: 0.18, sourceDurationSeconds: 0.2,
+        sourceSha256: index.toString(16).padStart(64, '0'), position: 'single', previousIpa: null, nextIpa: null,
+      }]])),
+    };
+    const result = createWordPlan(Object.keys(pronunciations).join(' '), { ...bank, clips: [...bank.clips, ...clips] }, undefined, catalog, new Map(Object.entries(pronunciations)), true);
+    expect(result.plan).toHaveLength(3);
+    expect(result.plan.every((item) => item.phonemeUnits?.length)).toBe(true);
+    expect(result.tokens.map((token) => token.kind)).toEqual(['error', 'synthesized', 'error']);
+    expect(result.warnings.filter((warning) => warning.includes('Approximate phoneme match'))).toHaveLength(2);
   });
 
   it('selects source-position and neighboring-phone matches, then merges adjacent windows', () => {
@@ -172,7 +235,7 @@ describe('CASSIE announcement parser', () => {
       schemaVersion: 2,
       sourceBank: { version: bank.version, sha256: 'e'.repeat(64) },
       phones: {
-        b: [source('medial', 1, 0.01, 0.11, 'medial', 'ɛ', 't'), source('initial', 0, 0.01, 0.16, 'initial', null, 'ɛ')],
+        b: [source('medial', 1, 0.01, 0.11, 'medial', 'ɛ', 't'), source('initial', 0, 0.01, 0.21, 'initial', null, 'ɛ')],
         ɛ: [source('adjacent', 4, 0.11, 0.2, 'final', 'b', null)],
         t: [
           { ...source('final', 2, 0.01, 0.09, 'medial', 'b', 'ɛ'), ipa: 't' },
@@ -193,7 +256,7 @@ describe('CASSIE announcement parser', () => {
     };
     const contiguous = resolvePhoneUnits(['b', 'ɛ'], adjacentCatalog, selectionBank);
     expect(contiguous.units).toHaveLength(1);
-    expect(contiguous.units[0]).toMatchObject({ clipId: 'adjacent', startSeconds: 0.11, endSeconds: 0.2, ipa: 'bɛ' });
+    expect(contiguous.units[0]).toMatchObject({ clipId: 'adjacent', startSeconds: 0.11, endSeconds: 0.2, ipa: 'b ɛ' });
   });
 
   it.each(['constructor', '__proto__'])('treats inherited catalog key %s as an unsupported phone', (phone) => {
@@ -316,6 +379,24 @@ describe('audio DSP', () => {
     expect(nextClipStart(1, 'word', 'effect', 0.24)).toBe(1);
     expect(nextClipStart(1.2, 'effect', 'word', 0.24)).toBe(1.2);
     expect(nextClipStart(0, undefined, 'effect', 0.24, 0.5)).toBe(0.5);
+  });
+
+  it('maps phrase word and whitespace spans through crop, noninteger stutter points, repeats, and pitch', () => {
+    const timeline = mapSourceTimeline([
+      { startSample: 10, endSample: 25, sourceStart: 0, sourceEnd: 3, kind: 'word' },
+      { startSample: 25, endSample: 35, sourceStart: 3, sourceEnd: 4, kind: 'gap' },
+      { startSample: 35, endSample: 90, sourceStart: 5, sourceEnd: 11, kind: 'word' },
+    ], 100, {
+      startAt: 0.1,
+      maxDuration: 0.8,
+      pitch: 1,
+      stutter: { position: 0.257, length: 0.1, repeats: 2 },
+    }, 1.25, 100, 2, 80);
+    const repeatedWord = timeline.filter((entry) => entry.kind === 'word' && entry.sourceStart === 5);
+    const repeatedGap = timeline.filter((entry) => entry.kind === 'gap' && entry.sourceStart === 3);
+    expect(repeatedWord).toHaveLength(3);
+    expect(repeatedGap).toHaveLength(4);
+    expect(timeline.every((entry) => entry.startSeconds >= 2 && entry.endSeconds <= 2.8 && entry.endSeconds > entry.startSeconds)).toBe(true);
   });
 
   it('lengthens vowel centers without changing pitch and fades phone sequence boundaries', () => {

@@ -77,4 +77,5 @@ export interface PhonemeUnit {
   sourceDurationSeconds: number;
   sourceSha256: string;
   stretchFactor?: number;
+  approximate?: boolean;
 }
