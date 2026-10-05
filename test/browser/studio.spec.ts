@@ -6,18 +6,66 @@ test('default announcement exposes the complete editable markup example', async 
   await page.goto('/');
   const editor = page.locator('textarea');
   const value = await editor.inputValue();
-  expect(value.split('\n')).toHaveLength(10);
+  expect(value.split('\n')).toHaveLength(11);
   for (const sample of [
     '<start>', '<end>', '<br>', '<pause seconds="0.5"/>',
     '<pitch value="1.2">', '</pitch>', '<volume value="0.7">', '</volume>',
     '<stutter repeats="1">', '</stutter>', '<offset seconds="0.1">', '</offset>',
     '<duration seconds="0.3">', '</duration>', '<spacing seconds="0.2">', '</spacing>', '<rate value="1.1">', '</rate>',
+    '<voice pitch="3" breathiness="0.3" formant="-2">', '</voice>',
     'me<pitch value="1.1">tri</pitch>cs', 'ROC AUC I a A', '<clip id="cassie"/>', '/ a e: /',
   ]) expect(value).toContain(sample);
   await expect(editor).toHaveCSS('min-height', '250px');
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 90_000 });
   await expect(page.locator('.announcement-player')).toBeVisible();
   await expect(page.locator('.annotated-editor .token-error').filter({ hasText: /^</ })).toHaveCount(0);
+});
+
+test('voice post-processing controls default neutral and scope insertion stays local to speech', async ({ page }) => {
+  await page.goto('/');
+  const editor = page.locator('textarea');
+  await page.locator('.settings details.voice-processing summary').click();
+  const pitchShift = page.getByRole('slider', { name: '音调偏移（半音）' });
+  const breathiness = page.getByRole('slider', { name: '气声' });
+  const formant = page.getByRole('slider', { name: '共振峰偏移（半音）' });
+  for (const slider of [pitchShift, breathiness, formant]) await expect(slider).toHaveValue('0');
+  await expect(pitchShift).toHaveAttribute('min', '-12');
+  await expect(pitchShift).toHaveAttribute('max', '12');
+  await expect(pitchShift).toHaveAttribute('step', '0.5');
+  await expect(breathiness).toHaveAttribute('min', '0');
+  await expect(breathiness).toHaveAttribute('max', '1');
+  await expect(breathiness).toHaveAttribute('step', '0.05');
+  await expect(formant).toHaveAttribute('min', '-6');
+  await expect(formant).toHaveAttribute('max', '6');
+  await expect(formant).toHaveAttribute('step', '0.5');
+  await expect(page.getByText(/WORLD DSP/)).toBeVisible();
+
+  await page.locator('.advanced-tools summary').click();
+  await editor.fill('attention');
+  await editor.evaluate((field: HTMLTextAreaElement) => field.setSelectionRange(0, field.value.length));
+  await page.getByRole('button', { name: '语音作用范围', exact: true }).click();
+  await expect(editor).toHaveValue('<voice pitch="3" breathiness="0.3" formant="-2">attention</voice>');
+});
+
+test('deferred cursor restoration does not override newer editor input', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('textarea').fill('metrics');
+  await page.evaluate(() => {
+    const button = [...document.querySelectorAll('.advanced-tools button')].find((item) => item.textContent?.trim() === '素材片段');
+    const field = document.querySelector<HTMLTextAreaElement>('.annotated-editor textarea');
+    if (!button || !field) throw new Error('Editor controls were not ready');
+    field.setSelectionRange(2, 2);
+    button.click();
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+    valueSetter?.call(field, 'subsequent edit');
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.focus();
+    field.setSelectionRange(field.value.length, field.value.length);
+  });
+  const field = page.locator('textarea');
+  await expect(field).toHaveValue('subsequent edit');
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await expect.poll(() => field.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe('subsequent edit'.length);
 });
 
 async function waitForReady(page: import('@playwright/test').Page, timeout = 90000) {
@@ -168,7 +216,7 @@ test('markup help and insertion preserve exact inline text and selections', asyn
 
   await field.fill('metrics');
   await field.evaluate((element: HTMLTextAreaElement) => { element.focus(); element.setSelectionRange(2, 5); });
-  await page.getByRole('button', { name: '音高', exact: true }).click();
+  await page.getByRole('button', { name: '游戏音高', exact: true }).click();
   await expect(field).toHaveValue('me<pitch value="1.2">tri</pitch>cs');
   await expect.poll(() => field.evaluate((element: HTMLTextAreaElement) => element.value.slice(element.selectionStart, element.selectionEnd))).toBe('tri');
 

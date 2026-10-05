@@ -26,11 +26,15 @@ const text = ref([
   '<offset seconds="0.1">Lockdown</offset> <duration seconds="0.3">ends</duration> <spacing seconds="0.2">now</spacing>.',
   '<clip id="cassie"/>',
   "/ a e: / <end>",
+  '<voice pitch="3" breathiness="0.3" formant="-2">Attention</voice>',
 ].join("\n"));
 const pitch = ref(1);
 const volume = ref(1);
 const gap = ref(0.24);
 const rate = ref(1);
+const voicePitchSemitones = ref(0);
+const breathiness = ref(0);
+const formantSemitones = ref(0);
 const liveRender = ref(true);
 const primaryInsertions = [
   { label: "start", kind: "marker", value: "<start>" },
@@ -45,6 +49,7 @@ const scopedInsertions = [
   { label: "duration", open: '<duration seconds="0.3">', close: "</duration>" },
   { label: "spacing", open: '<spacing seconds="0.2">', close: "</spacing>" },
   { label: "rate", open: '<rate value="1.2">', close: "</rate>" },
+  { label: "voice", open: '<voice pitch="3" breathiness="0.3" formant="-2">', close: "</voice>" },
 ] as const;
 const progress = ref(0);
 const rendering = ref(false);
@@ -102,8 +107,10 @@ function replaceEditorRange(value: string, selection?: { start: number; end: num
   const end = field?.selectionEnd ?? start;
   const before = text.value.slice(0, start);
   const after = text.value.slice(end);
-  text.value = before + value + after;
-  requestAnimationFrame(() => {
+  const expectedContent = before + value + after;
+  text.value = expectedContent;
+  void nextTick(() => {
+    if (text.value !== expectedContent || field?.value !== expectedContent) return;
     field?.focus();
     const selectionStart = start + (selection?.start ?? value.length);
     const selectionEnd = start + (selection?.end ?? value.length);
@@ -117,8 +124,10 @@ function insertMarker(value: string) {
   const selected = text.value.slice(start, end);
   const before = text.value.slice(0, start);
   const after = text.value.slice(end);
-  text.value = before + value + selected + after;
-  requestAnimationFrame(() => {
+  const expectedContent = before + value + selected + after;
+  text.value = expectedContent;
+  void nextTick(() => {
+    if (text.value !== expectedContent || field?.value !== expectedContent) return;
     field?.focus();
     field?.setSelectionRange(start + value.length, start + value.length);
   });
@@ -201,7 +210,8 @@ async function compose() {
   renderController = controller;
   try {
     const result = await renderAnnouncement(text.value, bank.value,
-      { pitch: pitch.value, volume: volume.value, gap: gap.value, rate: rate.value, phonemes: true },
+      { pitch: pitch.value, volume: volume.value, gap: gap.value, rate: rate.value, phonemes: true,
+        voice: { pitchSemitones: voicePitchSemitones.value, breathiness: breathiness.value, formantSemitones: formantSemitones.value } },
       (value) => { progress.value = Math.max(0, Math.min(100, value * 100)); }, controller.signal,
       (snapshot) => {
         if (controller.signal.aborted) return;
@@ -281,7 +291,7 @@ function invalidateRendered() {
   previewUrl.value = "";
   previewResult.value = null;
 }
-watch([text, pitch, volume, gap, rate, bank], () => {
+watch([text, pitch, volume, gap, rate, voicePitchSemitones, breathiness, formantSemitones, bank], () => {
   invalidateRendered();
   if (renderController) cancelRender();
   if (!liveRender.value || !bank.value || !text.value.trim()) return;
@@ -347,6 +357,7 @@ onBeforeUnmount(() => {
                     <p>{{ t('pauseHelp') }} <code>&lt;pause seconds="0.5"&gt;</code> {{ t('orWord') }} <code>&lt;pause seconds="0.5"/&gt;</code>{{ t('listSeparator') }} {{ t('clipHelp') }} <code>&lt;clip id="cassie"&gt;</code> {{ t('orWord') }} <code>&lt;clip id="cassie"/&gt;</code>{{ t('comma') }} {{ t('replaceClipId') }}</p>
                     <p>{{ t('phonemeHelp') }} <code>/ a e: /</code>{{ t('fullStop') }} {{ t('caseHelp') }}</p>
                     <p>{{ t('rateExample') }} <code>&lt;rate value="1.2"&gt;attention&lt;/rate&gt;</code>{{ t('fullStop') }} {{ t('rateHelp') }}</p>
+                    <p>{{ t('voiceExample') }} <code>&lt;voice pitch="3" breathiness="0.3" formant="-2"&gt;attention&lt;/voice&gt;</code>{{ t('fullStop') }} {{ t('voiceTagHelp') }}</p>
                   </div>
                 </details>
               </div>
@@ -380,6 +391,13 @@ onBeforeUnmount(() => {
                 <label><span>{{ t('volumeLabel', { value: Math.round(volume * 100) }) }}</span><FluentSlider v-model="volume" :min="0.1" :max="1" :step="0.01" :aria-label="t('volume')" /></label>
                 <label><span>{{ t('gapLabelSetting', { value: gap.toFixed(2) }) }}</span><FluentSlider v-model="gap" :min="0" :max="0.8" :step="0.01" :aria-label="t('wordGap')" /></label>
                 <label><span>{{ t('rateLabel', { value: rate.toFixed(2) }) }}<small>{{ t('rateHelp') }}</small></span><FluentSlider v-model="rate" :min="0.5" :max="2" :step="0.05" :aria-label="t('rate')" /></label>
+                <details class="voice-processing">
+                  <summary>{{ t('voiceProcessing') }}</summary>
+                  <p>{{ t('voiceHelp') }}</p>
+                  <label><span>{{ t('voicePitchLabel', { value: voicePitchSemitones.toFixed(1) }) }}</span><FluentSlider v-model="voicePitchSemitones" :min="-12" :max="12" :step="0.5" :aria-label="t('voicePitch')" /></label>
+                  <label><span>{{ t('breathinessLabel', { value: breathiness.toFixed(2) }) }}</span><FluentSlider v-model="breathiness" :min="0" :max="1" :step="0.05" :aria-label="t('breathiness')" /></label>
+                  <label><span>{{ t('formantLabel', { value: formantSemitones.toFixed(1) }) }}</span><FluentSlider v-model="formantSemitones" :min="-6" :max="6" :step="0.5" :aria-label="t('formant')" /></label>
+                </details>
                 <div class="phoneme-setting"><span>{{ t('missingWords') }}<small>{{ t('missingHelp') }}</small></span><span class="setting-state">{{ t('enabled') }}</span></div>
                 <details class="phone-inventory"><summary>{{ t('inventory', { count: phoneKeys.length }) }}</summary><span v-if="phoneIndexError">{{ phoneIndexError }}</span><div v-else class="phone-list"><FluentButton v-for="phone in phoneKeys" :key="phone" tone="subtle" :aria-label="t('insertPhone', { phone })" :title="t('phoneTitle', { phone })" @click="replaceEditorRange(`/ ${phone} /`)">{{ phone }}</FluentButton></div></details>
               </div>

@@ -1,0 +1,3 @@
+[submodule "src/audio/world/vendor"]
+	path = src/audio/world/vendor
+	url = https://github.com/mmorise/World.git
