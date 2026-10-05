@@ -122,14 +122,61 @@ test('command authoring and editor remain compact at mobile widths with system F
   await page.goto('/');
   await expect(page.getByRole('button', { name: '停顿', exact: true })).toBeEnabled();
   await expect(page.getByRole('button', { name: '卡顿', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '开始', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '结束', exact: true })).toBeVisible();
+  await expect(page.getByRole('switch', { name: '环境底噪' })).toHaveCount(0);
   await page.getByRole('button', { name: '停顿', exact: true }).click();
-  await expect(page.locator('textarea')).toHaveValue(/\/pause:0\.5/);
+  await expect(page.locator('textarea')).toHaveValue(/<pause seconds="0\.5"\/>/);
   await expect(page.getByRole('heading', { name: '素材目录' })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.emulateMedia({ colorScheme: 'dark' });
   await expect(page.locator('.fluent-theme')).toHaveAttribute('data-fluent-theme', 'dark');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath('mobile.png'), fullPage: true });
+});
+
+test('markup help and insertion preserve exact inline text and selections', async ({ page }) => {
+  await page.goto('/');
+  const field = page.locator('textarea');
+  await expect(field).toBeEnabled();
+  await expect(page.getByText(/me<pitch value="1.2">tri<\/pitch>cs/)).toBeVisible();
+  await page.locator('.advanced-tools summary').click();
+
+  await field.fill('attention');
+  await field.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(element.value.length, element.value.length));
+  await page.getByRole('button', { name: '音量', exact: true }).click();
+  await expect(field).toHaveValue('attention<volume value="0.7">word</volume>');
+  await expect.poll(() => field.evaluate((element: HTMLTextAreaElement) => element.value.slice(element.selectionStart, element.selectionEnd))).toBe('word');
+
+  await field.fill('metrics');
+  await field.evaluate((element: HTMLTextAreaElement) => { element.focus(); element.setSelectionRange(2, 5); });
+  await page.getByRole('button', { name: '音高', exact: true }).click();
+  await expect(field).toHaveValue('me<pitch value="1.2">tri</pitch>cs');
+  await expect.poll(() => field.evaluate((element: HTMLTextAreaElement) => element.value.slice(element.selectionStart, element.selectionEnd))).toBe('tri');
+
+  await field.fill('metrics');
+  await field.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(2, 2));
+  await page.getByRole('button', { name: '素材片段', exact: true }).click();
+  await expect(field).toHaveValue('me<clip id="a"/>trics');
+  await expect.poll(() => field.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe('me<clip id="a"/>'.length);
+
+  await field.fill('metrics');
+  await field.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(2, 2));
+  await page.getByRole('button', { name: '插入音素', exact: true }).click();
+  await expect(field).toHaveValue('me/ a e: /trics');
+
+  await field.fill('me<pitch value="1.2">tri</pitch>cs');
+  await expect(page.getByText('公告已就绪', { exact: true })).toBeVisible({ timeout: 90_000 });
+  await expect(page.locator('.highlight-layer')).toHaveText('me<pitch value="1.2">tri</pitch>cs');
+  await expect(page.locator('.annotated-editor .token-gap')).toHaveCount(0);
+  await expect(page.locator('.annotated-editor .token-marker')).toHaveCount(2);
+  await expect(page.locator('.annotated-editor .token-error')).toHaveCount(0);
+
+  await field.fill('<pitch value="1.2">attention</pitch> <volume value="0.7">personnel</volume> <pause seconds="0.5"/>');
+  await expect(page.getByText('公告已就绪', { exact: true })).toBeVisible({ timeout: 90_000 });
+  await expect(page.locator('.annotated-editor .token-marker')).toHaveCount(5);
+  await expect(page.locator('.annotated-editor .token-error')).toHaveCount(0);
+  expect(await page.locator('.highlight-layer').textContent()).toBe('<pitch value="1.2">attention</pitch> <volume value="0.7">personnel</volume> <pause seconds="0.5"/>');
 });
 
 test('direct phonemes and unknown English words synthesize locally by default', async ({ page }, info) => {

@@ -2,13 +2,13 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   FluentButton, FluentCheckbox, FluentField, FluentNotice, FluentProgressBar,
-  FluentSlider, FluentSwitch, FluentTheme,
+  FluentSlider, FluentTheme,
 } from "@platform-kit/fluent/vue";
 import { analyzeAnnouncement, encodeWav, loadBank, renderAnnouncement, type AnalysisToken as EngineAnalysisToken, type TimelineEntry } from "./audio/engine";
 import { checkEnglishSpelling } from "./spelling";
 
 type Bank = Awaited<ReturnType<typeof loadBank>>;
-type AnalysisToken = EngineAnalysisToken & { spellingMissing?: boolean };
+type AnalysisToken = EngineAnalysisToken & { spellingMissing?: boolean; spellingWord?: string };
 type RenderedAnnouncement = Omit<Awaited<ReturnType<typeof renderAnnouncement>>, "samples"> & { samples: Float32Array<ArrayBuffer>; timeline: TimelineEntry[] };
 const bank = ref<Bank | null>(null);
 const loading = ref(true);
@@ -17,8 +17,20 @@ const text = ref("Attention all personnel. The facility is now under lockdown.")
 const pitch = ref(1);
 const volume = ref(1);
 const gap = ref(0.24);
-const background = ref(false);
 const liveRender = ref(true);
+const primaryInsertions = [
+  { label: "开始", kind: "marker", value: "<start/>" },
+  { label: "结束", kind: "marker", value: "<end/>" },
+  { label: "停顿", kind: "marker", value: '<pause seconds="0.5"/>' },
+  { label: "卡顿", kind: "scope", open: '<stutter repeats="3">', close: "</stutter>" },
+] as const;
+const scopedInsertions = [
+  { label: "音高", open: '<pitch value="1.2">', close: "</pitch>" },
+  { label: "音量", open: '<volume value="0.7">', close: "</volume>" },
+  { label: "偏移", open: '<offset seconds="0.1">', close: "</offset>" },
+  { label: "时长", open: '<duration seconds="0.3">', close: "</duration>" },
+  { label: "间隔", open: '<spacing seconds="0.2">', close: "</spacing>" },
+] as const;
 const progress = ref(0);
 const rendering = ref(false);
 const renderMessage = ref("");
@@ -59,20 +71,42 @@ const editorParts = computed(() => {
   });
 });
 
-function insertText(value: string) {
+function replaceEditorRange(value: string, selection?: { start: number; end: number }) {
   const field = shellElement.value?.querySelector("textarea") ?? null;
   const start = field?.selectionStart ?? text.value.length;
   const end = field?.selectionEnd ?? start;
   const before = text.value.slice(0, start);
   const after = text.value.slice(end);
-  const leading = before.length && !/\s$/.test(before) ? " " : "";
-  const trailing = after.length && !/^\s/.test(after) ? " " : "";
-  text.value = before + leading + value + trailing + after;
+  text.value = before + value + after;
   requestAnimationFrame(() => {
     field?.focus();
-    const caret = start + leading.length + value.length + trailing.length;
-    field?.setSelectionRange(caret, caret);
+    const selectionStart = start + (selection?.start ?? value.length);
+    const selectionEnd = start + (selection?.end ?? value.length);
+    field?.setSelectionRange(selectionStart, selectionEnd);
   });
+}
+function insertMarker(value: string) {
+  const field = shellElement.value?.querySelector("textarea") ?? null;
+  const start = field?.selectionStart ?? text.value.length;
+  const end = field?.selectionEnd ?? start;
+  const selected = text.value.slice(start, end);
+  const before = text.value.slice(0, start);
+  const after = text.value.slice(end);
+  text.value = before + value + selected + after;
+  requestAnimationFrame(() => {
+    field?.focus();
+    field?.setSelectionRange(start + value.length, start + value.length);
+  });
+}
+function insertClip() { insertMarker('<clip id="a"/>'); }
+function insertScope(open: string, close: string, placeholder = "word") {
+  const field = shellElement.value?.querySelector("textarea") ?? null;
+  const start = field?.selectionStart ?? text.value.length;
+  const end = field?.selectionEnd ?? start;
+  const selected = text.value.slice(start, end);
+  const body = selected || placeholder;
+  const insertion = open + body + close;
+  replaceEditorRange(insertion, { start: open.length, end: open.length + body.length });
 }
 function scheduleAnalysis() {
   const revision = ++analysisRevision;
@@ -87,23 +121,21 @@ function scheduleAnalysis() {
     analysisController = controller;
     try {
       const result = await analyzeAnnouncement(text.value, currentBank, true, controller.signal);
-      const candidates: { word: string; tokenIndex: number }[] = [];
-      for (const match of text.value.matchAll(/[A-Za-z]+(?:['’\-][A-Za-z]+)*/g)) {
-        const sourceStart = match.index ?? 0;
-        const sourceEnd = sourceStart + match[0].length;
-        const tokenIndex = result.tokens.findIndex((token) => (token.kind === "synthesized" || token.kind === "error") && sourceStart >= token.sourceStart && sourceEnd <= token.sourceEnd);
-        if (tokenIndex >= 0 && !result.tokens[tokenIndex].text.includes("/")) candidates.push({ word: match[0], tokenIndex });
-      }
-      if (candidates.length) {
+      let tokens = result.tokens as AnalysisToken[];
+      const spellingWords = [...new Set(tokens
+        .filter((token) => (token.kind === "synthesized" || token.kind === "error") && token.spellingWord)
+        .map((token) => token.spellingWord!))];
+      if (spellingWords.length) {
         try {
-          const missing = await checkEnglishSpelling(candidates.map(({ word }) => word), controller.signal);
-          const missingTokens = new Set(candidates.filter(({ word }) => missing.has(word.toLocaleLowerCase("en-US"))).map(({ tokenIndex }) => tokenIndex));
-          result.tokens = result.tokens.map((token, index) => missingTokens.has(index) ? { ...token, spellingMissing: true } : token);
+          const missing = await checkEnglishSpelling(spellingWords, controller.signal);
+          tokens = tokens.map((token) => token.spellingWord && missing.has(token.spellingWord.toLocaleLowerCase("en-US"))
+            ? { ...token, spellingMissing: true }
+            : token);
         } catch (error) {
           if (controller.signal.aborted) throw error;
         }
       }
-      if (!controller.signal.aborted && revision === analysisRevision) analysis.value = result;
+      if (!controller.signal.aborted && revision === analysisRevision) analysis.value = { ...result, tokens };
     } catch (error) {
       if (!controller.signal.aborted && revision === analysisRevision) analysis.value = { words: [], warnings: [error instanceof Error ? error.message : "无法分析公告文本"], ipa: [], tokens: [] };
     } finally {
@@ -140,7 +172,7 @@ async function compose() {
   renderController = controller;
   try {
     const result = await renderAnnouncement(text.value, bank.value,
-      { pitch: pitch.value, volume: volume.value, gap: gap.value, background: background.value, phonemes: true },
+      { pitch: pitch.value, volume: volume.value, gap: gap.value, phonemes: true },
       (value) => { progress.value = Math.max(0, Math.min(100, value * 100)); }, controller.signal);
     if (controller.signal.aborted) return;
     const samples = result.samples as Float32Array<ArrayBuffer>;
@@ -206,7 +238,7 @@ function invalidateRendered() {
   if (downloadUrl) URL.revokeObjectURL(downloadUrl);
   downloadUrl = "";
 }
-watch([text, pitch, volume, gap, background, bank], () => {
+watch([text, pitch, volume, gap, bank], () => {
   invalidateRendered();
   if (renderController) cancelRender();
   if (!liveRender.value || !bank.value || !text.value.trim()) return;
@@ -256,12 +288,22 @@ onBeforeUnmount(() => {
         <div class="studio-grid">
           <section class="main-column" aria-label="公告编辑">
             <section class="panel">
-              <div class="panel-heading"><div><h2>公告内容</h2><p>编辑内容后自动更新音频；关闭实时渲染后可手动生成。</p></div><span>{{ text.length }} 字符</span></div>
+              <div class="panel-heading"><div><h2>公告内容</h2><p>直接输入英文单词，也可手敲语音标签或 / 音素 /。</p></div><span>{{ text.length }} 字符</span></div>
               <div class="authoring-tools">
-                <div class="tool-group"><strong>游戏修饰符</strong>
-                  <FluentButton v-for="command in [{label:'开始',value:'/start'},{label:'结束',value:'/end'},{label:'停顿',value:'/pause:0.5'},{label:'卡顿',value:'/stutter:0.1:0.1:3'}]" :key="command.value" tone="secondary" :disabled="!bank || encodingOpus" @click="insertText(command.value)">{{ command.label }}</FluentButton>
+                <div class="tool-group"><strong>插入语音标签</strong>
+                  <FluentButton v-for="command in primaryInsertions" :key="command.label" tone="secondary" :disabled="!bank || encodingOpus" @click="command.kind === 'scope' ? insertScope(command.open, command.close) : insertMarker(command.value)">{{ command.label }}</FluentButton>
                 </div>
-                <details class="advanced-tools"><summary>音高、音量与更多命令</summary><div class="tool-group"><FluentButton v-for="command in [{label:'音高',value:'/pitch:1.1'},{label:'音量',value:'/volume:0.8'},{label:'音素',value:'/ a e: /'},{label:'素材片段',value:'/clip:id'},{label:'偏移',value:'/offset:0.1'},{label:'时长',value:'/duration:0.3'},{label:'间隔',value:'/spacing:0.2'}]" :key="command.value" tone="subtle" :disabled="!bank || encodingOpus" @click="insertText(command.value)">{{ command.label }}</FluentButton></div><p class="help-text">开始与结束会插入游戏背景录音中对应的边界提示片段。斜线间内容按音素片段拼接，音质实验性；<code>a</code> 映射到 <code>ɑː</code>，<code>e</code> 映射到 <code>ɛ</code>，冒号表示长音。可编辑高级标记的参数。</p></details>
+                <p class="markup-inline-note">词内效果示例：<code>me&lt;pitch value="1.2"&gt;tri&lt;/pitch&gt;cs</code></p>
+                <details class="advanced-tools"><summary>音效标签与用法</summary>
+                  <div class="tool-group"><FluentButton v-for="command in scopedInsertions" :key="command.label" tone="subtle" :disabled="!bank || encodingOpus" @click="insertScope(command.open, command.close)">{{ command.label }}</FluentButton><FluentButton tone="subtle" :disabled="!bank || encodingOpus" @click="insertClip">素材片段</FluentButton><FluentButton tone="subtle" :disabled="!bank || encodingOpus" @click="replaceEditorRange('/ a e: /')">插入音素</FluentButton></div>
+                  <div class="help-examples">
+                    <p>整词效果：<code>&lt;pitch value="1.2"&gt;attention&lt;/pitch&gt;</code></p>
+                    <p>可把插入点放在词中；标签不会自动添加空格。选择文字后点效果按钮会包住选区；没有选区时会插入并选中英文单词 <code>word</code>，可直接替换。闭合标签也可手动输入。</p>
+                    <p>停顿：<code>&lt;pause seconds="0.5"/&gt;</code>；换行：<code>&lt;br&gt;</code> 或 <code>&lt;br/&gt;</code>（均停顿 0.5 秒）。</p>
+                    <p>素材片段：<code>&lt;clip id="a"/&gt;</code>；将 <code>a</code> 改为素材 ID。</p>
+                    <p>直接音素：<code>/ a e: /</code>。已收录英文按大小写不敏感匹配；未收录的全大写词按英文字母名朗读，单独的 <code>I</code> 仍读作代词。</p>
+                  </div>
+                </details>
               </div>
               <div class="phrase-field annotated-editor"><FluentField v-model="text" label="公告内容" multiline wrap="soft" :disabled="!bank || encodingOpus" placeholder="输入公告内容…" @scroll="onEditorScroll" @input="onEditorInput" /><div class="highlight-clip" :style="{ '--editor-scroll': `${editorScrollTop}px`, '--editor-scroll-left': `${editorScrollLeft}px`, '--editor-scrollbar-width': `${editorScrollbarWidth}px` }" aria-hidden="true"><pre class="highlight-layer"><span v-for="part in editorParts" :key="part.key" :class="[`token-${part.kind}`, { active: part.active, 'spell-missing': part.spellingMissing }]" :title="part.label">{{ part.text }}</span></pre></div></div>
               <div class="token-legend" aria-label="文本标记说明"><span class="token-recorded">原始录音</span><span class="token-synthesized">合成音频</span><span class="spell-legend">拼写提示（仍尝试合成）</span><span class="token-marker">识别命令</span><span class="token-error">近似或错误</span></div>
@@ -277,9 +319,8 @@ onBeforeUnmount(() => {
                 <label><span>音高 <b>{{ pitch.toFixed(2) }}×</b></span><FluentSlider v-model="pitch" :min="0.65" :max="1.35" :step="0.01" aria-label="音高" /></label>
                 <label><span>音量 <b>{{ Math.round(volume * 100) }}%</b></span><FluentSlider v-model="volume" :min="0.1" :max="1" :step="0.01" aria-label="音量" /></label>
                 <label><span>词间间隔 <b>{{ gap.toFixed(2) }}s</b></span><FluentSlider v-model="gap" :min="0" :max="0.8" :step="0.01" aria-label="词间间隔" /></label>
-                <div class="ambient-row"><span>环境底噪<small>加入轻微设施环境声</small></span><FluentSwitch v-model="background" aria-label="环境底噪" /></div>
                 <div class="phoneme-setting"><span>未收录词合成<small>优先使用录音，缺少时尝试音素拼合</small></span><span class="setting-state">已开启</span></div>
-                <details class="phone-inventory"><summary>可用音素（{{ phoneKeys.length }}）</summary><span v-if="phoneIndexError">{{ phoneIndexError }}</span><div v-else class="phone-list"><FluentButton v-for="phone in phoneKeys" :key="phone" tone="subtle" :aria-label="`插入音素 ${phone}`" :title="`插入 / ${phone} /`" @click="insertText(`/ ${phone} /`)">{{ phone }}</FluentButton></div></details>
+                <details class="phone-inventory"><summary>可用音素（{{ phoneKeys.length }}）</summary><span v-if="phoneIndexError">{{ phoneIndexError }}</span><div v-else class="phone-list"><FluentButton v-for="phone in phoneKeys" :key="phone" tone="subtle" :aria-label="`插入音素 ${phone}`" :title="`插入 / ${phone} /`" @click="replaceEditorRange(`/ ${phone} /`)">{{ phone }}</FluentButton></div></details>
               </div>
             </section>
             <section class="panel output-panel">
