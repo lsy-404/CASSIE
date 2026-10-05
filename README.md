@@ -30,6 +30,7 @@ Type complete English words directly. Numbers expand into speech units where ava
 | --- | --- |
 | `<pitch value="1.2">text</pitch>` | Set speed and pitch for enclosed speech |
 | `<rate value="1.2">text</rate>` | Set speech rate without changing pitch, gaps or cues |
+| `<voice pitch="3" breathiness="0.3" formant="-2">text</voice>` | Adjust independent pitch, breathiness and resonance for enclosed speech |
 | `<volume value="0.7">text</volume>` | Set volume for enclosed speech |
 | `<stutter repeats="3">text</stutter>` | Play enclosed speech, then repeat it three more times |
 | `<offset seconds="0.1">text</offset>` | Skip the start of enclosed speech |
@@ -47,6 +48,10 @@ Effects end at their closing tag. Tags can nest; closing an inner tag restores t
 The effects simplify the [documented modern CASSIE behavior](https://en.scpslgame.com/index.php?title=Updates/14.2.3). Slash pairs are reserved for direct phonemes. Invalid, unknown, mismatched, or unclosed tags produce red error marks and a warning. The renderer has bounded duration and token counts and does not reproduce the game's announcement queue. Ambient facility mixing has been removed.
 
 Speech rate defaults to 1×. The global control and scoped rate each accept 0.5–2× and multiply when combined. Speech uses pitch-preserving time stretching; word gaps, measured gaps inside phrase recordings, explicit pauses, and effect clips including announcement boundary cues keep their duration.
+
+Voice post-processing uses [WORLD](https://github.com/mmorise/World) compiled to WebAssembly in the audio worker. Pitch is a semitone offset from −12 to +12; breathiness accepts 0–1; formant is a resonance offset from −6 to +6 semitones. Scoped attributes override the corresponding global or enclosing voice setting, and closing the tag restores it. Omitted attributes inherit. `<pitch>` remains the game's combined speed/pitch effect; `<voice pitch="3">` raises pitch while keeping speech duration fixed.
+
+All three voice settings default to zero and bypass analysis/resynthesis, preserving the original audio. Active settings resynthesize speech from its fundamental frequency, spectral envelope and aperiodicity. Breathiness increases nonperiodic energy in voiced frames; it is a vocoder effect, not a trained DiffSinger model. Gaps, pauses and special clips retain their original samples. Extreme settings and very short phoneme fragments can sound less natural.
 
 Exact phrase recordings take priority. Article variants use the following written initial, so pronunciation exceptions may differ from the game.
 
