@@ -35,6 +35,19 @@ function peakFrequency(samples: Int16Array): number {
   return frequency;
 }
 
+function periodicCorrelation(samples: Int16Array): number {
+  const core = samples.subarray(4_800, samples.length - 4_800);
+  let cross = 0;
+  let leftPower = 0;
+  let rightPower = 0;
+  for (let index = 300; index < core.length; index += 1) {
+    cross += core[index] * core[index - 300];
+    leftPower += core[index] ** 2;
+    rightPower += core[index - 300] ** 2;
+  }
+  return cross / Math.sqrt(leftPower * rightPower);
+}
+
 test('WASM post-processing raises and lowers a known fundamental without changing duration', async ({ page }, info) => {
   const tone = await readFile(new URL('../fixtures/voice-tone.opus', import.meta.url));
   await page.route('**/audio/cassie.opus', (route) => route.fulfill({ body: tone, contentType: 'audio/ogg' }));
@@ -61,6 +74,10 @@ test('WASM post-processing raises and lowers a known fundamental without changin
   expect(Math.abs(peakFrequency(globalRaised) - 160 * 2 ** (3 / 12))).toBeLessThan(4);
   const override = await wav(page, '<voice pitch="0">cassie</voice>', info.outputPath('known-tone-neutral-override.wav'));
   expect(bytes(override)).toEqual(bytes(neutral));
+  const breathy = await wav(page, '<voice pitch="0" breathiness="0.8">cassie</voice>', info.outputPath('known-tone-breathy.wav'));
+  expect(breathy.length).toBe(neutral.length);
+  expect(periodicCorrelation(neutral)).toBeGreaterThan(0.95);
+  expect(periodicCorrelation(breathy)).toBeLessThan(periodicCorrelation(neutral) - 0.05);
 });
 
 test('neutral voice bypasses processing and scoped voice restores original speech', async ({ page }, info) => {

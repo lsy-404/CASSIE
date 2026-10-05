@@ -216,7 +216,7 @@ test('markup help and insertion preserve exact inline text and selections', asyn
 
   await field.fill('metrics');
   await field.evaluate((element: HTMLTextAreaElement) => { element.focus(); element.setSelectionRange(2, 5); });
-  await page.getByRole('button', { name: '音高', exact: true }).click();
+  await page.getByRole('button', { name: '游戏音高', exact: true }).click();
   await expect(field).toHaveValue('me<pitch value="1.2">tri</pitch>cs');
   await expect.poll(() => field.evaluate((element: HTMLTextAreaElement) => element.value.slice(element.selectionStart, element.selectionEnd))).toBe('tri');
 
