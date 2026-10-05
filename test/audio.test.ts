@@ -8,7 +8,7 @@ import type { Bank } from '../src/audio/types';
 const bank: Bank = {
   version: '1',
   source: 'test fixture',
-  clips: ['negative', 'zero', 'one', 'two', 'three', 'point', 'five', 'hundred', 'thousand', 'run', 'city', 'box', 'walk', 'good', 'cassie', 'word', 'apple', 'facility', 'the_vowel', 'the_consonant', 'all-remaining-personnel']
+  clips: ['negative', 'zero', 'one', 'two', 'three', 'point', 'five', 'hundred', 'thousand', 'run', 'city', 'box', 'walk', 'good', 'cassie', 'word', 'apple', 'facility', 'the_vowel', 'the_consonant', 'all-remaining-personnel', 'green', 'human', 'personnel', 'safe']
     .map((id) => ({ id, file: `/audio/${id}.opus`, duration: 0.5, kind: 'word' as const })),
 };
 
@@ -72,6 +72,34 @@ describe('CASSIE announcement parser', () => {
       ['walk', ['_suffix_past_t']],
     ]);
     expect(result.warnings).toEqual(['No audio clip for “unknown”.']);
+  });
+
+  it('composes source-backed prefixes and derivational suffixes around exact base clips', () => {
+    const affixes = ['-ish', '-like', 'anti-', 'post-', 'pre-', 'pro-', 'un-'];
+    const affixBank = {
+      ...bank,
+      clips: [...bank.clips, ...affixes.map((id) => ({ id, file: `/audio/${id}.opus`, duration: 0.1, kind: 'word' as const }))],
+    };
+    const result = createWordPlan('greenish human-like anti-personnel posthuman prehuman prohuman unsafe', affixBank);
+    expect(result.plan.map((item) => [item.prefixClipIds, item.clipId, item.suffixClipIds])).toEqual([
+      [undefined, 'green', ['-ish']],
+      [undefined, 'human', ['-like']],
+      [['anti-'], 'personnel', undefined],
+      [['post-'], 'human', undefined],
+      [['pre-'], 'human', undefined],
+      [['pro-'], 'human', undefined],
+      [['un-'], 'safe', undefined],
+    ]);
+  });
+
+  it('keeps complete word recordings ahead of affix construction and warns when an affix is unavailable', () => {
+    const suffixBank = { ...bank, clips: [...bank.clips, { id: '-ish', file: '/audio/-ish.opus', duration: 0.1, kind: 'word' as const }] };
+    expect(createWordPlan('greenish', suffixBank).plan[0]).toMatchObject({ clipId: 'green', suffixClipIds: ['-ish'] });
+    const exactBank = { ...suffixBank, clips: [...suffixBank.clips, { id: 'greenish', file: '/audio/greenish.opus', duration: 0.5, kind: 'word' as const }] };
+    const exact = createWordPlan('greenish', exactBank).plan[0];
+    expect(exact.clipId).toBe('greenish');
+    expect(exact).not.toHaveProperty('suffixClipIds');
+    expect(analyzeText('greenish', bank).warnings).toContain('No audio clip for “greenish”.');
   });
 
   it('does not claim inflections when the sound bank lacks suffix audio', () => {
