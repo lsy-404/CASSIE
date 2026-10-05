@@ -1,6 +1,8 @@
 import { OggOpusDecoder } from 'ogg-opus-decoder';
 import { advancePlaybackCursorAfterRepeat, appendTimelineEntry, clipTimelineToDuration, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchSpeechPreservingGaps, stretchSpeechRate, stretchVowelLoop, transformWord } from './dsp';
 import { applyVoiceLoudness, blendVoiceEdges, editWorldFeatures, hasWorldVoiceEffects, isNeutralVoice, processVoicePreservingGaps } from './voice-dsp';
+import { fitGroupsOf, fitWarning, solveFitRates } from './fit';
+import type { FitItem } from './fit';
 import { createWorldVocoder } from './world';
 import { checkAudioCapability } from '../startup/check-audio';
 import type { WorldVocoder } from './world';
@@ -108,6 +110,94 @@ scope.onmessage = async ({ data }) => {
       }
     };
 
+    const prepareWord = async (word: WordPlan) => {
+      for (const id of [...(word.prefixClipIds ?? []), word.clipId, ...(word.suffixClipIds ?? []), ...(word.phonemeUnits ?? []).map((unit) => unit.clipId)]) {
+        if (id && !decodedById.has(id)) await getDecoded(id);
+      }
+      const sourceClip = clipById.get(word.clipId);
+      if (!sourceClip) throw new Error(`Audio bank is missing ${word.clipId}.`);
+      const decoded = decodedById.get(word.clipId);
+      if (!decoded) throw new Error(`Could not decode ${word.clipId}.`);
+      const wordParts = [
+        ...(word.prefixClipIds ?? []).map((id) => {
+          const prefix = decodedById.get(id);
+          if (!prefix) throw new Error(`Could not decode prefix ${id}.`);
+          return prefix;
+        }),
+        decoded,
+        ...(word.suffixClipIds ?? []).map((id) => {
+          const suffix = decodedById.get(id);
+          if (!suffix) throw new Error(`Could not decode suffix ${id}.`);
+          return suffix;
+        }),
+      ];
+      const sourceLength = wordParts.reduce((sum, samples) => sum + samples.length, 0);
+      if (sourceLength > OUTPUT_SAMPLE_RATE * 120) throw new Error(`Audio clip ${word.display} exceeds rendering limits.`);
+      let source: Float32Array;
+      if (word.phonemeUnits?.length) {
+        if (word.phonemeUnits.length > 128) throw new Error(`Phoneme sequence for ${word.display} exceeds rendering limits.`);
+        const estimatedSamples = word.phonemeUnits.reduce((sum, unit) => {
+          const factor = unit.stretchFactor ? Math.min(2, unit.stretchFactor) : 1;
+          return sum + Math.ceil((unit.endSeconds - unit.startSeconds) * OUTPUT_SAMPLE_RATE * factor);
+        }, 0);
+        if (estimatedSamples > OUTPUT_SAMPLE_RATE * 120) throw new Error(`Phoneme sequence for ${word.display} exceeds the 120-second limit.`);
+        const segments = word.phonemeUnits.map((unit) => {
+          const clip = clipById.get(unit.clipId);
+          const clipSamples = decodedById.get(unit.clipId);
+          if (!clip || !clipSamples || clip.kind !== 'word' || clip.sha256?.toLowerCase() !== unit.sourceSha256.toLowerCase() ||
+              !Number.isFinite(unit.startSeconds) || !Number.isFinite(unit.endSeconds) ||
+              unit.startSeconds < 0 || unit.endSeconds - unit.startSeconds < 0.02 ||
+              unit.endSeconds > unit.sourceDurationSeconds || Math.abs(unit.sourceDurationSeconds - clip.duration) > 0.02 ||
+              Math.abs(unit.sourceDurationSeconds - clipSamples.length / OUTPUT_SAMPLE_RATE) > 0.03) {
+            throw new Error(`Phoneme source window for ${unit.ipa} failed validation.`);
+          }
+          const start = Math.floor(unit.startSeconds * OUTPUT_SAMPLE_RATE);
+          const end = Math.ceil(unit.endSeconds * OUTPUT_SAMPLE_RATE);
+          if (end > clipSamples.length || end <= start) throw new Error(`Phoneme source window for ${unit.ipa} is outside its clip.`);
+          const samples = clipSamples.subarray(start, end);
+          return unit.stretchFactor ? stretchVowelLoop(samples, OUTPUT_SAMPLE_RATE, unit.stretchFactor) : samples;
+        });
+        if (segments.reduce((sum, segment) => sum + segment.length, 0) > OUTPUT_SAMPLE_RATE * 120) {
+          throw new Error(`Phoneme sequence for ${word.display} exceeds the 120-second limit.`);
+        }
+        source = splicePhonemeWindows(segments, OUTPUT_SAMPLE_RATE);
+      } else {
+        source = wordParts.length === 1 ? decoded : new Float32Array(sourceLength);
+        if (wordParts.length > 1) {
+          let offset = 0;
+          for (const part of wordParts) {
+            source.set(part, offset);
+            offset += part.length;
+          }
+        }
+      }
+      const pitched = transformWord(source, OUTPUT_SAMPLE_RATE, word, data.options.pitch, data.options.volume);
+      let phraseTimeline: TimelineEntry[] | undefined;
+      if (word.sourceWordTimings?.length && !word.phonemeUnits?.length) {
+        const sourceDuration = decoded.length / OUTPUT_SAMPLE_RATE;
+        const spans: Array<{ startSample: number; endSample: number; sourceStart: number; sourceEnd: number; kind: 'word' | 'gap' }> = [];
+        const validTimings = word.sourceWordTimings.filter((timing) => Number.isFinite(timing.startSeconds) && Number.isFinite(timing.endSeconds) &&
+          timing.startSeconds >= 0 && timing.endSeconds > timing.startSeconds && timing.endSeconds <= sourceDuration + 0.001)
+          .sort((left, right) => left.startSeconds - right.startSeconds);
+        for (let wordIndex = 0; wordIndex < validTimings.length; wordIndex += 1) {
+          const timing = validTimings[wordIndex];
+          const startSample = Math.max(0, Math.floor(timing.startSeconds * OUTPUT_SAMPLE_RATE));
+          const endSample = Math.min(decoded.length, Math.ceil(timing.endSeconds * OUTPUT_SAMPLE_RATE));
+          if (endSample <= startSample) continue;
+          spans.push({ startSample, endSample, sourceStart: timing.sourceStart, sourceEnd: timing.sourceEnd, kind: 'word' });
+          const next = validTimings[wordIndex + 1];
+          const sourceStart = timing.sourceEnd;
+          const sourceEnd = next?.sourceStart ?? sourceStart;
+          const gapStart = Math.min(decoded.length, Math.ceil(timing.endSeconds * OUTPUT_SAMPLE_RATE));
+          const gapEnd = next ? Math.max(0, Math.floor(next.startSeconds * OUTPUT_SAMPLE_RATE)) : gapStart;
+          if (next && next.startSeconds > timing.endSeconds && sourceEnd > sourceStart && gapEnd > gapStart) {
+            spans.push({ startSample: gapStart, endSample: gapEnd, sourceStart, sourceEnd, kind: 'gap' });
+          }
+        }
+        phraseTimeline = mapSourceTimeline(spans, decoded.length, { ...word, rate: 1 }, data.options.pitch, OUTPUT_SAMPLE_RATE, 0, pitched.length);
+      }
+      return { sourceClip, decoded, source, pitched, phraseTimeline };
+    };
     const layers: Array<{ samples: Float32Array; start: number; gain?: number }> = [];
     let audioSampleCount = 0;
     const maxLayerSamples = OUTPUT_SAMPLE_RATE * 300;
@@ -178,6 +268,39 @@ scope.onmessage = async ({ data }) => {
         stutterGroups.delete(id);
       }
     };
+    const prepared = new Map<number, Awaited<ReturnType<typeof prepareWord>>>();
+    const fitRates = new Map<number, number>();
+    const fitGroups = fitGroupsOf(plan);
+    if (fitGroups.size) {
+      const items: FitItem[] = [];
+      for (let index = 0; index < plan.length; index += 1) {
+        const word = plan[index];
+        const base = {
+          rate: (word.rate ?? 1) * (data.options.rate ?? 1),
+          ...(word.fit ? { fit: word.fit.id } : {}),
+          ...(word.sleep !== undefined ? { sleep: word.sleep } : {}),
+          ...(word.spacing !== undefined ? { spacing: word.spacing } : {}),
+          ...(word.joinPrevious ? { joinPrevious: true } : {}),
+        };
+        if (word.pauseDuration !== undefined) {
+          items.push({ ...base, kind: 'pause', speech: 0, fixed: Number.isFinite(word.pauseDuration) ? word.pauseDuration : 0 });
+          continue;
+        }
+        const item = await prepareWord(word);
+        prepared.set(index, item);
+        const total = item.pitched.length / OUTPUT_SAMPLE_RATE;
+        if (item.sourceClip.kind !== 'word') {
+          items.push({ ...base, kind: 'effect', speech: 0, fixed: total });
+          continue;
+        }
+        const gaps = (item.phraseTimeline ?? []).filter((entry) => entry.kind === 'gap').reduce((sum, entry) => sum + entry.endSeconds - entry.startSeconds, 0);
+        items.push({ ...base, kind: 'word', speech: Math.max(0, total - gaps), fixed: Math.min(total, gaps) });
+      }
+      for (const result of solveFitRates(items, fitGroups, data.options.gap)) {
+        fitRates.set(result.id, result.rate);
+        if (result.clamped) warnings.push(fitWarning(result));
+      }
+    }
     for (let index = 0; index < plan.length; index += 1) {
       const word = plan[index];
       if (word.pauseDuration !== undefined) {
@@ -215,92 +338,10 @@ scope.onmessage = async ({ data }) => {
         reportProgress();
         continue;
       }
-      for (const id of [...(word.prefixClipIds ?? []), word.clipId, ...(word.suffixClipIds ?? []), ...(word.phonemeUnits ?? []).map((unit) => unit.clipId)]) {
-        if (id && !decodedById.has(id)) await getDecoded(id);
-      }
-      const sourceClip = clipById.get(word.clipId);
-      if (!sourceClip) throw new Error(`Audio bank is missing ${word.clipId}.`);
-      const decoded = decodedById.get(word.clipId);
-      if (!decoded) throw new Error(`Could not decode ${word.clipId}.`);
-      const wordParts = [
-        ...(word.prefixClipIds ?? []).map((id) => {
-          const prefix = decodedById.get(id);
-          if (!prefix) throw new Error(`Could not decode prefix ${id}.`);
-          return prefix;
-        }),
-        decoded,
-        ...(word.suffixClipIds ?? []).map((id) => {
-          const suffix = decodedById.get(id);
-          if (!suffix) throw new Error(`Could not decode suffix ${id}.`);
-          return suffix;
-        }),
-      ];
-      const sourceLength = wordParts.reduce((sum, samples) => sum + samples.length, 0);
-      if (sourceLength > OUTPUT_SAMPLE_RATE * 120) throw new Error(`Audio clip ${word.display} exceeds rendering limits.`);
-      let source: Float32Array;
-      if (word.phonemeUnits?.length) {
-        if (word.phonemeUnits.length > 128) throw new Error(`Phoneme sequence for ${word.display} exceeds rendering limits.`);
-        const estimatedSamples = word.phonemeUnits.reduce((sum, unit) => {
-          const factor = unit.stretchFactor ? Math.min(2, unit.stretchFactor) : 1;
-          return sum + Math.ceil((unit.endSeconds - unit.startSeconds) * OUTPUT_SAMPLE_RATE * factor);
-        }, 0);
-        if (estimatedSamples > OUTPUT_SAMPLE_RATE * 120) throw new Error(`Phoneme sequence for ${word.display} exceeds the 120-second limit.`);
-        const segments = word.phonemeUnits.map((unit) => {
-          const clip = clipById.get(unit.clipId);
-          const clipSamples = decodedById.get(unit.clipId);
-          if (!clip || !clipSamples || clip.kind !== 'word' || clip.sha256?.toLowerCase() !== unit.sourceSha256.toLowerCase() ||
-              !Number.isFinite(unit.startSeconds) || !Number.isFinite(unit.endSeconds) ||
-              unit.startSeconds < 0 || unit.endSeconds - unit.startSeconds < 0.02 ||
-              unit.endSeconds > unit.sourceDurationSeconds || Math.abs(unit.sourceDurationSeconds - clip.duration) > 0.02 ||
-              Math.abs(unit.sourceDurationSeconds - clipSamples.length / OUTPUT_SAMPLE_RATE) > 0.03) {
-            throw new Error(`Phoneme source window for ${unit.ipa} failed validation.`);
-          }
-          const start = Math.floor(unit.startSeconds * OUTPUT_SAMPLE_RATE);
-          const end = Math.ceil(unit.endSeconds * OUTPUT_SAMPLE_RATE);
-          if (end > clipSamples.length || end <= start) throw new Error(`Phoneme source window for ${unit.ipa} is outside its clip.`);
-          const samples = clipSamples.subarray(start, end);
-          return unit.stretchFactor ? stretchVowelLoop(samples, OUTPUT_SAMPLE_RATE, unit.stretchFactor) : samples;
-        });
-        if (segments.reduce((sum, segment) => sum + segment.length, 0) > OUTPUT_SAMPLE_RATE * 120) {
-          throw new Error(`Phoneme sequence for ${word.display} exceeds the 120-second limit.`);
-        }
-        source = splicePhonemeWindows(segments, OUTPUT_SAMPLE_RATE);
-      } else {
-        source = wordParts.length === 1 ? decoded : new Float32Array(sourceLength);
-        if (wordParts.length > 1) {
-          let offset = 0;
-          for (const part of wordParts) {
-            source.set(part, offset);
-            offset += part.length;
-          }
-        }
-      }
-      const pitched = transformWord(source, OUTPUT_SAMPLE_RATE, word, data.options.pitch, data.options.volume);
-      const rate = (word.rate ?? 1) * (data.options.rate ?? 1);
-      let phraseTimeline: TimelineEntry[] | undefined;
-      if (word.sourceWordTimings?.length && !word.phonemeUnits?.length) {
-        const sourceDuration = decoded.length / OUTPUT_SAMPLE_RATE;
-        const spans: Array<{ startSample: number; endSample: number; sourceStart: number; sourceEnd: number; kind: 'word' | 'gap' }> = [];
-        const validTimings = word.sourceWordTimings.filter((timing) => Number.isFinite(timing.startSeconds) && Number.isFinite(timing.endSeconds) &&
-          timing.startSeconds >= 0 && timing.endSeconds > timing.startSeconds && timing.endSeconds <= sourceDuration + 0.001)
-          .sort((left, right) => left.startSeconds - right.startSeconds);
-        for (let wordIndex = 0; wordIndex < validTimings.length; wordIndex += 1) {
-          const timing = validTimings[wordIndex];
-          const startSample = Math.max(0, Math.floor(timing.startSeconds * OUTPUT_SAMPLE_RATE));
-          const endSample = Math.min(decoded.length, Math.ceil(timing.endSeconds * OUTPUT_SAMPLE_RATE));
-          if (endSample <= startSample) continue;
-          spans.push({ startSample, endSample, sourceStart: timing.sourceStart, sourceEnd: timing.sourceEnd, kind: 'word' });
-          const next = validTimings[wordIndex + 1];
-          const sourceStart = timing.sourceEnd;
-          const sourceEnd = next?.sourceStart ?? sourceStart;
-          const gapStart = Math.min(decoded.length, Math.ceil(timing.endSeconds * OUTPUT_SAMPLE_RATE));
-          const gapEnd = next ? Math.max(0, Math.floor(next.startSeconds * OUTPUT_SAMPLE_RATE)) : gapStart;
-          if (next && next.startSeconds > timing.endSeconds && sourceEnd > sourceStart && gapEnd > gapStart) {
-            spans.push({ startSample: gapStart, endSample: gapEnd, sourceStart, sourceEnd, kind: 'gap' });
-          }
-        }
-        phraseTimeline = mapSourceTimeline(spans, decoded.length, { ...word, rate: 1 }, data.options.pitch, OUTPUT_SAMPLE_RATE, 0, pitched.length);
-      }
+      const { sourceClip, decoded, source, pitched, phraseTimeline: preparedTimeline } = prepared.get(index) ?? await prepareWord(word);
+      prepared.delete(index);
+      let phraseTimeline = preparedTimeline;
+      const rate = fitRates.get(word.fit?.id ?? 0) ?? (word.rate ?? 1) * (data.options.rate ?? 1);
       const voice: VoiceOptions = {
         pitchSemitones: word.voice?.pitchSemitones ?? data.options.voice?.pitchSemitones ?? 0,
         breathiness: word.voice?.breathiness ?? data.options.voice?.breathiness ?? 0,
