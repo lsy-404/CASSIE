@@ -2,6 +2,21 @@ import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { OggOpusDecoder } from 'ogg-opus-decoder';
 
+test('default announcement exposes the complete editable markup example', async ({ page }) => {
+  await page.goto('/');
+  const editor = page.locator('textarea');
+  const value = await editor.inputValue();
+  expect(value.split('\n')).toHaveLength(10);
+  for (const sample of [
+    '<start>', '<end>', '<br>', '<pause seconds="0.5"/>',
+    '<pitch value="1.2">', '</pitch>', '<volume value="0.7">', '</volume>',
+    '<stutter repeats="1">', '</stutter>', '<offset seconds="0.1">', '</offset>',
+    '<duration seconds="0.3">', '</duration>', '<spacing seconds="0.2">', '</spacing>',
+    'me<pitch value="1.1">tri</pitch>cs', 'ROC AUC I a A', '<clip id="cassie"/>', '/ a e: /',
+  ]) expect(value).toContain(sample);
+  await expect(editor).toHaveCSS('min-height', '250px');
+});
+
 async function waitForReady(page: import('@playwright/test').Page, timeout = 90000) {
   await expect(page.getByText('公告已就绪', { exact: true })).toBeVisible({ timeout });
 }

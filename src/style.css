@@ -29,7 +29,7 @@ h1 { margin: 0 0 5px; font-size: clamp(27px, 4vw, 36px); font-weight: 600; }
 .help-examples { display: grid; gap: 4px; }
 .help-examples p { margin: 0; }
 .help-examples code { overflow-wrap: anywhere; font-family: ui-monospace, monospace; }
-.phrase-field .fluent-field__input { min-height: 150px; resize: vertical; }
+.phrase-field .fluent-field__input { min-height: 250px; resize: vertical; }
 .annotated-editor { position: relative; }
 .annotated-editor .fluent-field__input { position: relative; z-index: 1; color: transparent; caret-color: var(--fluent-text); }
 .annotated-editor .fluent-field__input::selection { color: transparent; background: var(--fluent-selection); }
