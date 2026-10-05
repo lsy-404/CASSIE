@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { analyzeText, createWordPlan } from '../src/audio/parser';
 import { getClipUsage } from '../src/audio/catalog';
 import { analyzeAnnouncement, renderAnnouncement } from '../src/audio/engine';
-import { advancePlaybackCursorAfterRepeat, appendTimelineEntry, applyStutter, clipTimelineToDuration, encodeWav, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, splicePhonemeWindows, stretchVowelLoop, transformWord } from '../src/audio/dsp';
+import { advancePlaybackCursorAfterRepeat, appendTimelineEntry, applyStutter, clipTimelineToDuration, encodeWav, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, splicePhonemeWindows, stretchSpeechPreservingGaps, stretchSpeechRate, stretchVowelLoop, transformWord } from '../src/audio/dsp';
 import type { Bank } from '../src/audio/types';
 import type { PhonemeCatalog } from '../src/audio/phonemes';
 import { parseGeneratedPhones, resolvePhoneUnits } from '../src/audio/phonemes';
@@ -423,6 +423,12 @@ describe('CASSIE announcement parser', () => {
     expect(analyzeText('cassie '.repeat(513), bank).words).toEqual([]);
   });
 
+  it('applies bounded scoped speech rate and restores the parent rate after the closing tag', () => {
+    const result = createWordPlan('cassie <rate value="1.4">word</rate> apple', bank);
+    expect(result.plan.map((item) => item.rate)).toEqual([1, 1.4, 1]);
+    expect(analyzeText('<rate value="0.49">cassie</rate>', bank).tokens[0].kind).toBe('error');
+  });
+
   it('rejects announcements without a playable word and bounds token count', () => {
     expect(analyzeText('not-in-bank', bank)).toMatchObject({ words: [] });
     expect(() => createWordPlan('not-in-bank', bank)).toThrow(/No playable words/);
@@ -452,6 +458,44 @@ describe('audio DSP', () => {
     expect(transformWord(samples, 4, word('x'), 2)).toHaveLength(2);
     expect(transformWord(samples, 4, word('x'), 0.5)).toHaveLength(8);
     expect([...transformWord(samples, 4, word('x', { volume: 0.5 }), 1, 0.5)]).toEqual([0, 0.125, 0.25, 0.125]);
+  });
+
+  it('changes speech duration without changing its fundamental frequency', () => {
+    const sampleRate = 48_000;
+    const frequency = 440;
+    const input = Float32Array.from({ length: sampleRate * 2 }, (_, index) => Math.sin(2 * Math.PI * frequency * index / sampleRate));
+    const output = stretchSpeechRate(input, sampleRate, 1.25);
+    expect(output.length).toBe(Math.ceil(input.length / 1.25));
+    let crossings = 0;
+    const start = Math.floor(sampleRate * 0.2);
+    const end = output.length - start;
+    for (let index = start; index < end - 1; index += 1) if (output[index] <= 0 && output[index + 1] > 0) crossings += 1;
+    expect(crossings / ((end - start) / sampleRate)).toBeCloseTo(frequency, -1);
+  });
+
+  it('preserves annotated phrase gaps while stretching each speech span', () => {
+    const sampleRate = 48_000;
+    const input = Float32Array.from({ length: sampleRate }, (_, index) => Math.sin(2 * Math.PI * 220 * index / sampleRate));
+    const result = stretchSpeechPreservingGaps(input, sampleRate, 1.25, [
+      { startSeconds: 0.1, endSeconds: 0.4, sourceStart: 0, sourceEnd: 3, kind: 'word' },
+      { startSeconds: 0.4, endSeconds: 0.6, sourceStart: 3, sourceEnd: 4, kind: 'gap' },
+      { startSeconds: 0.6, endSeconds: 0.9, sourceStart: 5, sourceEnd: 8, kind: 'word' },
+    ]);
+    expect(result.samples.length).toBe(40_320);
+    expect(result.timeline).toEqual([
+      { startSeconds: 0.08, endSeconds: 0.32, sourceStart: 0, sourceEnd: 3, kind: 'word' },
+      { startSeconds: 0.32, endSeconds: 0.52, sourceStart: 3, sourceEnd: 4, kind: 'gap' },
+      { startSeconds: 0.52, endSeconds: 0.76, sourceStart: 5, sourceEnd: 8, kind: 'word' },
+    ]);
+  });
+
+  it.each([0.5, 2])('keeps a short speech fragment audible at rate %s', (rate) => {
+    const sampleRate = 48_000;
+    const input = Float32Array.from({ length: 1_440 }, (_, index) => Math.sin(2 * Math.PI * 440 * index / sampleRate));
+    const output = stretchSpeechRate(input, sampleRate, rate);
+    const rms = Math.sqrt(output.reduce((sum, sample) => sum + sample * sample, 0) / output.length);
+    expect(output.length).toBe(Math.ceil(input.length / rate));
+    expect(rms).toBeGreaterThan(0.2);
   });
 
   it('inserts bounded stutter segments and mixes overlap with peak clamping', () => {
@@ -488,6 +532,19 @@ describe('audio DSP', () => {
     expect(repeatedWord).toHaveLength(3);
     expect(repeatedGap).toHaveLength(4);
     expect(timeline.every((entry) => entry.startSeconds >= 2 && entry.endSeconds <= 2.8 && entry.endSeconds > entry.startSeconds)).toBe(true);
+  });
+
+  it('maps speech highlighting through rate changes while leaving source gaps outside the word span', () => {
+    const entries = mapSourceTimeline(
+      [{ startSample: 0, endSample: 48_000, sourceStart: 0, sourceEnd: 4, kind: 'word' }],
+      48_000,
+      { pitch: 1, rate: 2 },
+      1,
+      48_000,
+      2,
+      24_000,
+    );
+    expect(entries).toEqual([{ startSeconds: 2, endSeconds: 2.5, sourceStart: 0, sourceEnd: 4, kind: 'word' }]);
   });
 
   it('omits zero-length pause and fully cropped audio spans from the timeline', () => {
