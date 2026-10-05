@@ -8,7 +8,7 @@ import type { Bank } from '../src/audio/types';
 const bank: Bank = {
   version: '1',
   source: 'test fixture',
-  clips: ['negative', 'zero', 'one', 'two', 'three', 'point', 'five', 'hundred', 'thousand', 'run', 'city', 'box', 'walk', 'good', 'cassie', 'word']
+  clips: ['negative', 'zero', 'one', 'two', 'three', 'point', 'five', 'hundred', 'thousand', 'run', 'city', 'box', 'walk', 'good', 'cassie', 'word', 'apple', 'facility', 'the_vowel', 'the_consonant', 'all-remaining-personnel']
     .map((id) => ({ id, file: `/audio/${id}.opus`, duration: 0.5, kind: 'word' as const })),
 };
 
@@ -24,6 +24,32 @@ describe('CASSIE announcement parser', () => {
   it('spells oversized integer digits once and preserves the decimal part', () => {
     const words = analyzeText('1000000000000.5', bank).words;
     expect(words).toEqual(['one', ...Array(12).fill('zero'), 'point', 'five']);
+  });
+
+  it('maps spoken number names to the numeric clip ids in the source bank', () => {
+    const digitIds = ['0', '1', '2', '5', '11'];
+    const numericBank = {
+      ...bank,
+      clips: [
+        ...bank.clips.filter((clip) => !['zero', 'one', 'two', 'five'].includes(clip.id)),
+        ...digitIds.map((id) => ({ id, file: `/audio/${id}.opus`, duration: 0.4, kind: 'word' as const })),
+      ],
+    };
+    expect(createWordPlan('11.02', numericBank).plan.map((item) => item.clipId)).toEqual(['11', 'point', '0', '2']);
+    expect(createWordPlan('1000000000000.5', numericBank).plan.map((item) => item.clipId)).toEqual([
+      '1', ...Array(12).fill('0'), 'point', '5',
+    ]);
+  });
+
+  it('selects the vowel or consonant form of the article from the following word', () => {
+    expect(createWordPlan('the apple', bank).plan.map((item) => item.clipId)).toEqual(['the_vowel', 'apple']);
+    expect(createWordPlan('the facility', bank).plan.map((item) => item.clipId)).toEqual(['the_consonant', 'facility']);
+  });
+
+  it('prefers an exact recorded multiword phrase when it is present in the bank', () => {
+    const result = createWordPlan('All remaining personnel', bank);
+    expect(result.plan).toHaveLength(1);
+    expect(result.plan[0]).toMatchObject({ clipId: 'all-remaining-personnel', display: 'all remaining personnel' });
   });
 
   it('applies persistent and one-word modifiers to the following bank clips', () => {
