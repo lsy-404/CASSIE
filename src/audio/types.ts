@@ -28,6 +28,8 @@ export interface VoiceOptions {
   pitchSemitones: number;
   breathiness: number;
   formantSemitones: number;
+  loudnessDb: number;
+  tension: number;
 }
 
 export interface RenderResult {

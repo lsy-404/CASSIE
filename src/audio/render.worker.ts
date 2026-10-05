@@ -1,6 +1,6 @@
 import { OggOpusDecoder } from 'ogg-opus-decoder';
 import { advancePlaybackCursorAfterRepeat, appendTimelineEntry, clipTimelineToDuration, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchSpeechPreservingGaps, stretchSpeechRate, stretchVowelLoop, transformWord } from './dsp';
-import { blendVoiceEdges, editWorldFeatures, isNeutralVoice, processVoicePreservingGaps } from './voice-dsp';
+import { applyVoiceLoudness, blendVoiceEdges, editWorldFeatures, hasWorldVoiceEffects, isNeutralVoice, processVoicePreservingGaps } from './voice-dsp';
 import { createWorldVocoder } from './world';
 import type { WorldVocoder } from './world';
 import type { Bank, BankClip, RenderOptions, TimelineEntry, VoiceOptions, WordPlan } from './types';
@@ -64,7 +64,8 @@ scope.onmessage = async ({ data }) => {
       return decoded;
     };
     const processVoice = async (samples: Float32Array, voice: VoiceOptions): Promise<Float32Array> => {
-      if (isNeutralVoice(voice) || !samples.length) return samples;
+      if (!samples.length) return samples;
+      if (!hasWorldVoiceEffects(voice)) return applyVoiceLoudness(samples, voice.loudnessDb ?? 0);
       if (samples.length > OUTPUT_SAMPLE_RATE * 20) throw new Error('WORLD voice processing supports speech blocks up to 20 seconds.');
       let peak = 0;
       for (const sample of samples) {
@@ -89,7 +90,7 @@ scope.onmessage = async ({ data }) => {
         if (synthesized.length !== paddedLength) throw new Error('WORLD changed the speech block duration.');
         const restored = new Float32Array(samples.length);
         for (let index = 0; index < restored.length; index += 1) restored[index] = synthesized[padding + index] / normalizedGain;
-        return blendVoiceEdges(samples, restored, OUTPUT_SAMPLE_RATE);
+        return applyVoiceLoudness(blendVoiceEdges(samples, restored, OUTPUT_SAMPLE_RATE), voice.loudnessDb ?? 0);
       } finally {
         if (features) world.dispose(features);
       }
@@ -292,6 +293,8 @@ scope.onmessage = async ({ data }) => {
         pitchSemitones: word.voice?.pitchSemitones ?? data.options.voice?.pitchSemitones ?? 0,
         breathiness: word.voice?.breathiness ?? data.options.voice?.breathiness ?? 0,
         formantSemitones: word.voice?.formantSemitones ?? data.options.voice?.formantSemitones ?? 0,
+        loudnessDb: word.voice?.loudnessDb ?? data.options.voice?.loudnessDb ?? 0,
+        tension: word.voice?.tension ?? data.options.voice?.tension ?? 0,
       };
       let voiceProcessed = pitched;
       if (sourceClip.kind === 'word' && word.timelineKind !== 'cue' && !isNeutralVoice(voice)) {

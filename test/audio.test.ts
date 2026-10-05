@@ -7,7 +7,7 @@ import { advancePlaybackCursorAfterRepeat, appendTimelineEntry, applyStutter, cl
 import type { Bank } from '../src/audio/types';
 import type { PhonemeCatalog } from '../src/audio/phonemes';
 import { parseGeneratedPhones, resolvePhoneUnits } from '../src/audio/phonemes';
-import { blendVoiceEdges, editWorldFeatures, isNeutralVoice, processVoicePreservingGaps } from '../src/audio/voice-dsp';
+import { applyVoiceLoudness, blendVoiceEdges, editWorldFeatures, isNeutralVoice, processVoicePreservingGaps } from '../src/audio/voice-dsp';
 
 const bank: Bank = {
   version: '1',
@@ -112,18 +112,18 @@ describe('CASSIE announcement parser', () => {
 
   it('applies nested voice scopes, inherits omitted fields, and restores parent values', () => {
     const result = createWordPlan(
-      '<voice pitch="3" breathiness="0.3" formant="-2">cassie <voice pitch="-1">word</voice> apple</voice> cassie',
+      '<voice pitch="3" breathiness="0.3" formant="-2" loudness="4" tension="0.5">cassie <voice pitch="-1" loudness="-3">word</voice> apple</voice> cassie',
       bank,
     );
     expect(result.plan.map((item) => item.voice)).toEqual([
-      { pitchSemitones: 3, breathiness: 0.3, formantSemitones: -2 },
-      { pitchSemitones: -1, breathiness: 0.3, formantSemitones: -2 },
-      { pitchSemitones: 3, breathiness: 0.3, formantSemitones: -2 },
+      { pitchSemitones: 3, breathiness: 0.3, formantSemitones: -2, loudnessDb: 4, tension: 0.5 },
+      { pitchSemitones: -1, breathiness: 0.3, formantSemitones: -2, loudnessDb: -3, tension: 0.5 },
+      { pitchSemitones: 3, breathiness: 0.3, formantSemitones: -2, loudnessDb: 4, tension: 0.5 },
       undefined,
     ]);
-    const invalid = analyzeText('<voice pitch="13">cassie</voice> <voice gain="0.5">word</voice>', bank);
+    const invalid = analyzeText('<voice pitch="13">cassie</voice> <voice gain="0.5">word</voice> <voice loudness="13">apple</voice> <voice tension="-2">box</voice>', bank);
     expect(invalid.tokens.filter((token) => token.text.startsWith('<')).every((token) => token.kind === 'error')).toBe(true);
-    expect(invalid.warnings.filter((warning) => warning.includes('Invalid markup tag'))).toHaveLength(2);
+    expect(invalid.warnings.filter((warning) => warning.includes('Invalid markup tag'))).toHaveLength(4);
   });
 
   it('retains the game timing and clip-selection modifiers', () => {
@@ -480,7 +480,7 @@ describe('audio DSP', () => {
       spectral: new Float64Array([1, 2, 4, 2, 4, 8]),
       aperiodicity: new Float64Array([0.2, 0.2, 0.2, 0.2, 0.2, 0.2]),
     };
-    const edited = editWorldFeatures(features, { pitchSemitones: 12, breathiness: 1, formantSemitones: 6 });
+    const edited = editWorldFeatures(features, { pitchSemitones: 12, breathiness: 1, formantSemitones: 6, loudnessDb: 0, tension: 0 });
     expect(edited.f0).toEqual(new Float64Array([200, 0]));
     expect(edited.aperiodicity[0]).toBeCloseTo(Math.sqrt(0.2 ** 2 + 0.75 * (1 - 0.2 ** 2)));
     expect(edited.aperiodicity[3]).toBe(0.2);
@@ -491,7 +491,31 @@ describe('audio DSP', () => {
     expect(edited.spectral[4]).toBeCloseTo(3.4142);
     expect(edited.spectral[5]).toBeCloseTo(5.6569);
     expect(edited.spectral).toHaveLength(features.spectral.length);
-    expect(isNeutralVoice({ pitchSemitones: 0, breathiness: 0, formantSemitones: 0 })).toBe(true);
+    expect(isNeutralVoice({ pitchSemitones: 0, breathiness: 0, formantSemitones: 0, loudnessDb: 0, tension: 0 })).toBe(true);
+  });
+
+  it('tilts voiced WORLD spectral envelopes for bounded negative and positive tension', () => {
+    const features = {
+      frameCount: 2, fftSize: 8, binCount: 5, framePeriodMs: 5, sampleCount: 240,
+      f0: new Float64Array([100, 0]),
+      spectral: new Float64Array([10, 10, 10, 10, 10, 10, 10, 10, 10, 10]),
+      aperiodicity: new Float64Array(10).fill(0.2),
+    };
+    const bright = editWorldFeatures(features, { pitchSemitones: 0, breathiness: 0, formantSemitones: 0, loudnessDb: 0, tension: 1 });
+    const soft = editWorldFeatures(features, { pitchSemitones: 0, breathiness: 0, formantSemitones: 0, loudnessDb: 0, tension: -1 });
+    expect(bright.spectral[3]).toBeGreaterThan(bright.spectral[1]);
+    expect(soft.spectral[3]).toBeLessThan(soft.spectral[1]);
+    expect([...bright.spectral.slice(5)]).toEqual([...features.spectral.slice(5)]);
+    expect(bright.spectral.every((value) => Number.isFinite(value) && value <= 1e12)).toBe(true);
+  });
+
+  it('applies loudness after normalization with a peak-safe ceiling', () => {
+    const quiet = Float32Array.from({ length: 8 }, (_, index) => Math.sin(index) * 0.1);
+    const louder = applyVoiceLoudness(quiet, 6);
+    expect(louder[1] / quiet[1]).toBeCloseTo(10 ** (6 / 20), 5);
+    expect(applyVoiceLoudness(quiet, -6)[1] / quiet[1]).toBeCloseTo(10 ** (-6 / 20), 5);
+    expect(Math.max(...applyVoiceLoudness(new Float32Array([0.9, -0.8]), 12).map(Math.abs))).toBeLessThanOrEqual(0.98);
+    expect(applyVoiceLoudness(quiet, 0)).toBe(quiet);
   });
 
   it('blends the WORLD result back at clip edges while preserving short-fragment duration', () => {
@@ -683,9 +707,9 @@ describe('audio worker handoff', () => {
       onerror: ((event: ErrorEvent) => void) | null = null;
       onmessageerror: (() => void) | null = null;
       onmessage: ((event: MessageEvent) => void) | null = null;
-      postMessage(message: { options?: { voice?: { pitchSemitones: number; breathiness: number; formantSemitones: number } } }) {
+      postMessage(message: { options?: { voice?: { pitchSemitones: number; breathiness: number; formantSemitones: number; loudnessDb: number; tension: number } } }) {
         expect(() => structuredClone(message)).not.toThrow();
-        expect(message.options?.voice).toEqual({ pitchSemitones: 12, breathiness: 0, formantSemitones: -6 });
+        expect(message.options?.voice).toEqual({ pitchSemitones: 12, breathiness: 0, formantSemitones: -6, loudnessDb: 0, tension: 0 });
         queueMicrotask(() => this.onmessage?.({ data: {
           type: 'done',
           samples: new Float32Array([0.25]),
