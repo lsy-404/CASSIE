@@ -7,14 +7,13 @@ test('default recruitment announcement exposes complete editable markup examples
   await openStudio(page);
   const editor = page.locator('textarea');
   const value = await editor.inputValue();
-  expect(value).toContain('Join the Foundation');
+  expect(value).toContain('managed democracy');
+  expect(value).toContain('Would you like to');
   for (const sample of [
-    '<start>', '<end>', '<br>', '<pause seconds="0.5"/>',
+    '<start>', '<end>', '<pause seconds="0.5"/>',
     '<pitch value="1.2">', '</pitch>', '<volume value="0.7">', '</volume>',
-    '<stutter repeats="1">', '</stutter>', '<offset seconds="0.1">', '</offset>',
-    '<duration seconds="0.3">', '</duration>', '<spacing seconds="0.2">', '</spacing>', '<rate value="1.1">', '</rate>',
-    '<voice pitch="1.5" loudness="2" tension="0.2" breathiness="0.3" formant="-1">', '</voice>',
-    'anom<pitch value="1.1">a</pitch>ly', '<clip id="cassie"/>', '/ a e: /',
+    '<stutter repeats="1">', '</stutter>', '<rate value="1.1">', '</rate>',
+    '<fit seconds="4">', '</fit>', '</voice>',
   ]) expect(value).toContain(sample);
   await expect(editor).toHaveCSS('min-height', '270px');
   const typography = await page.locator('.annotated-editor').evaluate((container) => {

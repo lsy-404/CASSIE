@@ -5,6 +5,15 @@ export interface CapabilityReport {
   phonemizer: true;
 }
 
+export type StartupStepId = 'workers' | 'wasm' | 'webaudio' | 'core' | 'streams' | 'crypto' | 'blob' | 'engine' | 'phonemizer';
+
+export interface StartupProgress {
+  id: StartupStepId;
+  state: 'run' | 'ok' | 'fail';
+}
+
+export const startupStepIds: readonly StartupStepId[] = ['workers', 'wasm', 'webaudio', 'core', 'streams', 'crypto', 'blob', 'engine', 'phonemizer'];
+
 const CHECK_TIMEOUT_MS = 20_000;
 
 type WorkerReply = { type?: string; proof?: Float32Array; error?: string };
@@ -51,13 +60,22 @@ function requestWorker(worker: Worker, message: unknown, valid: (reply: WorkerRe
   });
 }
 
-export async function checkStartupCapabilities(signal?: AbortSignal): Promise<CapabilityReport> {
-  if (typeof Worker !== 'function' || typeof WebAssembly !== 'object' ||
-      typeof AudioContext !== 'function' || typeof Float32Array !== 'function' ||
-      typeof TextEncoder !== 'function' || typeof TextDecoder !== 'function' ||
-      typeof structuredClone !== 'function' || typeof DecompressionStream !== 'function' ||
-      typeof URL.createObjectURL !== 'function' || typeof globalThis.crypto?.subtle?.digest !== 'function') {
-    throw new Error('Required browser capabilities are unavailable.');
+export async function checkStartupCapabilities(signal?: AbortSignal, onProgress?: (progress: StartupProgress) => void): Promise<CapabilityReport> {
+  const platformChecks: Array<[StartupStepId, () => boolean]> = [
+    ['workers', () => typeof Worker === 'function'],
+    ['wasm', () => typeof WebAssembly === 'object'],
+    ['webaudio', () => typeof AudioContext === 'function'],
+    ['core', () => typeof Float32Array === 'function' && typeof TextEncoder === 'function' && typeof TextDecoder === 'function' && typeof structuredClone === 'function'],
+    ['streams', () => typeof DecompressionStream === 'function'],
+    ['crypto', () => typeof globalThis.crypto?.subtle?.digest === 'function'],
+    ['blob', () => typeof URL.createObjectURL === 'function'],
+  ];
+  for (const [id, supported] of platformChecks) {
+    if (!supported()) {
+      onProgress?.({ id, state: 'fail' });
+      throw new Error('Required browser capabilities are unavailable.');
+    }
+    onProgress?.({ id, state: 'ok' });
   }
   if (signal?.aborted) throw new DOMException('Startup check cancelled.', 'AbortError');
 
@@ -75,15 +93,25 @@ export async function checkStartupCapabilities(signal?: AbortSignal): Promise<Ca
   try {
     opusWorldWorker = new Worker(new URL('../audio/render.worker.ts', import.meta.url), { type: 'module' });
     phonemeWorker = new Worker(new URL('../audio/phoneme.worker.ts', import.meta.url), { type: 'module' });
+    const tracked = (id: StartupStepId, task: Promise<void>) => {
+      onProgress?.({ id, state: 'run' });
+      return task.then(
+        () => onProgress?.({ id, state: 'ok' }),
+        (error: unknown) => {
+          onProgress?.({ id, state: 'fail' });
+          throw error;
+        },
+      );
+    };
     await Promise.all([
-      requestWorker(opusWorldWorker, { type: 'check', samples }, (reply) => {
+      tracked('engine', requestWorker(opusWorldWorker, { type: 'check', samples }, (reply) => {
         if (reply.type !== 'ready' || !(reply.proof instanceof Float32Array) || !reply.proof.length) return false;
         return reply.proof.every(Number.isFinite) && reply.proof.some((sample) => Math.abs(sample) > 1e-8);
-      }, checks.signal, [samples.buffer]),
-      requestWorker(phonemeWorker, { words: ['hello'] }, (reply) => {
+      }, checks.signal, [samples.buffer])),
+      tracked('phonemizer', requestWorker(phonemeWorker, { words: ['hello'] }, (reply) => {
         const phones = (reply as WorkerReply & { phones?: Record<string, unknown> }).phones;
         return typeof phones?.hello === 'string' && /^h(?:ə|ɛ|e)l(?:oʊ|əʊ|oː)$/u.test(phones.hello.replace(/[ˈˌ\s]/gu, ''));
-      }, checks.signal),
+      }, checks.signal)),
     ]);
     if (signal?.aborted) throw new DOMException('Startup check cancelled.', 'AbortError');
     return { audio: true, opus: true, world: true, phonemizer: true };
