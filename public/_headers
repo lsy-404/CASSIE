@@ -9,6 +9,13 @@
 
 /audio/*
   Cache-Control: public, max-age=86400
+  Content-Type: audio/ogg
+
+/ffmpeg/ffmpeg-core.js
+  Content-Type: text/javascript
+
+/ffmpeg/*
+  Cache-Control: public, max-age=86400
 
 /bank.json
   Cache-Control: no-cache

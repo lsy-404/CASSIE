@@ -3,6 +3,8 @@ import { encodeWav } from './engine';
 
 type CoreManifest = {
   bytes: number;
+  compression: 'gzip';
+  compressedBytes: number;
   sha256: string;
   parts: { file: string; bytes: number; sha256: string }[];
 };
@@ -30,13 +32,15 @@ export async function encodeOpus(
     if (!response.ok) throw new Error('Could not load the Opus encoder. Please retry.');
     const manifest = await response.json() as CoreManifest;
     if (!Number.isInteger(manifest.bytes) || manifest.bytes <= 0 || manifest.bytes > 64 * 1024 * 1024
+      || manifest.compression !== 'gzip' || !Number.isInteger(manifest.compressedBytes)
+      || manifest.compressedBytes < 1 || manifest.compressedBytes > 24 * 1024 * 1024
       || !Array.isArray(manifest.parts) || manifest.parts.length < 1 || manifest.parts.length > 8) {
       throw new Error('Invalid Opus encoder manifest.');
     }
     const parts: Uint8Array<ArrayBuffer>[] = [];
     let bytes = 0;
     for (const [index, part] of manifest.parts.entries()) {
-      if (!/^ffmpeg-core\.wasm\.\d{2}$/.test(part.file)) throw new Error('Invalid encoder chunk path.');
+      if (!/^ffmpeg-core\.wasm\.gz\.\d{2}$/.test(part.file)) throw new Error('Invalid encoder chunk path.');
       const chunkResponse = await fetch(`/ffmpeg/${part.file}`, { signal });
       if (!chunkResponse.ok) throw new Error('Could not load an Opus encoder chunk. Please retry.');
       const chunk = new Uint8Array(await chunkResponse.arrayBuffer());
@@ -47,10 +51,10 @@ export async function encodeOpus(
       bytes += chunk.byteLength;
       progress(0.4 * (index + 1) / manifest.parts.length);
     }
-    if (bytes !== manifest.bytes) throw new Error('Incomplete Opus encoder.');
-    const wasm = new Uint8Array(bytes);
-    let offset = 0;
-    for (const part of parts) { wasm.set(part, offset); offset += part.byteLength; }
+    if (bytes !== manifest.compressedBytes) throw new Error('Incomplete Opus encoder.');
+    const stream = new Blob(parts).stream().pipeThrough(new DecompressionStream('gzip'));
+    const wasm = new Uint8Array(await new Response(stream).arrayBuffer());
+    if (wasm.byteLength !== manifest.bytes) throw new Error('Invalid decompressed Opus encoder.');
     if (await sha256(wasm) !== manifest.sha256) throw new Error('Opus encoder integrity check failed.');
     signal?.throwIfAborted();
     wasmURL = URL.createObjectURL(new Blob([wasm], { type: 'application/wasm' }));

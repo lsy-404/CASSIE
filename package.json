@@ -12,7 +12,8 @@
     "test:browser": "playwright test",
     "preview": "vite preview --host 127.0.0.1",
     "deploy:check": "npm run build && wrangler deploy --dry-run",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy",
+    "package:overture": "npm run build && node scripts/package-overture.mjs"
   },
   "dependencies": {
     "@ffmpeg/core": "0.12.10",

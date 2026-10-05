@@ -45,7 +45,15 @@ npm run deploy
 
 `wrangler.jsonc` deploys **Workers Static Assets** to the configured account and custom domain. There is no server script, database, runtime API, or server-side audio processing. For your own deployment, change the account ID and domain first. Missing assets return 404.
 
-FFmpeg's single-thread core is larger than Cloudflare's per-asset limit. `scripts/prepare-ffmpeg.mjs` splits the pinned npm core into 8 MiB pieces during installation/build. The browser verifies SHA-256 hashes and reconstructs the module locally. Generated core assets are ignored by Git and included in deployment output. A Release deployment archive can be extracted and served without rebuilding; its checksums accompany the archive.
+FFmpeg's single-thread core is larger than Cloudflare's per-asset limit. `scripts/prepare-ffmpeg.mjs` compresses the pinned npm core with gzip and splits it into pieces no larger than 8 MiB during installation/build. The browser verifies SHA-256 hashes and decompresses the module locally with `DecompressionStream`; use a modern browser. Generated core assets are ignored by Git and included in deployment output. Release archives and checksums accompany the deployment package.
+
+## Overture
+
+The Release includes `overture.json`, `overture.tar.gz` and `SHA256SUMS`, following the current [Overture schema](https://github.com/lsy-404/overture/blob/main/docs/RECIPE.md).
+
+Open your Overture deployment with `?src=lsy-404/CASSIE`, select a release and your Cloudflare account, then choose a Worker name and optional custom domain. The package declares no storage resources or app secrets. Its small deployment entry only forwards to the static assets binding. Ordinary Wrangler deployment uses assets alone.
+
+Build the package with `npm run package:overture`. The packager checks Overture's 16 MiB asset budget, 24 MiB archive budget and 1000-entry archive budget. FFmpeg remains compressed inside the package and is decompressed only in the visitor's browser.
 
 ## Licensing and sources
 
