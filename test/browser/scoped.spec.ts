@@ -85,3 +85,35 @@ test('nested stutters repeat their full scopes and advance past overlapping spee
   await expect(page.locator('.annotated-editor .active')).toHaveText('cassie');
   expect(errors).toEqual([]);
 });
+
+test('speech rate changes only speech while gaps, pauses and boundary cue PCM stay fixed', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/');
+  await expect(page.locator('textarea')).toBeEnabled();
+  await page.locator('.live-controls label').click();
+  const slider = page.getByRole('slider', { name: '语速', exact: true });
+  await expect(slider).toHaveValue('1');
+  const word = await renderWav(page, 'cassie', info.outputPath('rate-one-word.wav'));
+  const start = await renderWav(page, '<start>', info.outputPath('rate-start.wav'));
+  const end = await renderWav(page, '<end>', info.outputPath('rate-end.wav'));
+  const text = '<start>cassie cassie<br>cassie<end>';
+  const normal = await renderWav(page, text, info.outputPath('rate-normal.wav'));
+  await slider.evaluate((element: HTMLInputElement) => {
+    element.value = '1.5';
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect(slider).toHaveValue('1.5');
+  const fastWord = await renderWav(page, 'cassie', info.outputPath('rate-fast-word.wav'));
+  expect(Math.abs(fastWord.length - word.length / 1.5)).toBeLessThan(3);
+  const fast = await renderWav(page, text, info.outputPath('rate-fast.wav'));
+  expect(Math.abs(fast.length - (normal.length - word.length * 3 + fastWord.length * 3))).toBeLessThan(5);
+  expect(Buffer.from(fast.slice(0, start.length).buffer)).toEqual(Buffer.from(start.buffer));
+  expect(Buffer.from(fast.slice(-end.length).buffer)).toEqual(Buffer.from(end.buffer));
+  await page.locator('audio').evaluate((element: HTMLAudioElement, time) => {
+    element.currentTime = time;
+    element.dispatchEvent(new Event('seeking'));
+  }, (start.length + fastWord.length) / 48_000 + 0.12);
+  await expect(page.locator('.annotated-editor .active')).toHaveText(' ');
+  expect(errors).toEqual([]);
+});
