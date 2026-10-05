@@ -1,4 +1,4 @@
-import { openStudio } from './helpers';
+import { openPanel, openRibbon, openSideView, openStudio, wavLink } from './helpers';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { OggOpusDecoder } from 'ogg-opus-decoder';
@@ -16,7 +16,6 @@ test('default recruitment announcement exposes complete editable markup examples
     '<voice pitch="1.5" loudness="2" tension="0.2" breathiness="0.3" formant="-1">', '</voice>',
     'anom<pitch value="1.1">a</pitch>ly', '<clip id="cassie"/>', '/ a e: /',
   ]) expect(value).toContain(sample);
-  await expect(editor).toHaveCSS('min-height', '270px');
   const typography = await page.locator('.annotated-editor').evaluate((container) => {
     const field = getComputedStyle(container.querySelector('textarea')!);
     const overlay = getComputedStyle(container.querySelector('.highlight-layer')!);
@@ -31,6 +30,7 @@ test('default recruitment announcement exposes complete editable markup examples
 test('voice post-processing controls default neutral and scope insertion stays local to speech', async ({ page }) => {
   await openStudio(page);
   const editor = page.locator('textarea');
+  await openSideView(page, '声音设置');
   await expect(page.locator('.voice-processing')).toBeVisible();
   const pitchShift = page.getByRole('slider', { name: '音调偏移（半音）' });
   const breathiness = page.getByRole('slider', { name: '气声' });
@@ -47,7 +47,7 @@ test('voice post-processing controls default neutral and scope insertion stays l
   await expect(formant).toHaveAttribute('step', '0.1');
   await expect(page.getByText(/WORLD DSP/)).toBeVisible();
 
-  await page.locator('.advanced-tools summary').click();
+  await openRibbon(page, '插入');
   await editor.fill('attention');
   await editor.evaluate((field: HTMLTextAreaElement) => field.setSelectionRange(0, field.value.length));
   await page.getByRole('button', { name: '语音作用范围', exact: true }).click();
@@ -56,9 +56,10 @@ test('voice post-processing controls default neutral and scope insertion stays l
 
 test('deferred cursor restoration does not override newer editor input', async ({ page }) => {
   await openStudio(page);
+  await openRibbon(page, '插入');
   await page.locator('textarea').fill('metrics');
   await page.evaluate(() => {
-    const button = [...document.querySelectorAll('.advanced-tools button')].find((item) => item.textContent?.trim() === '素材片段');
+    const button = document.querySelector('[data-command="marker.clip"]');
     const field = document.querySelector<HTMLTextAreaElement>('.annotated-editor textarea');
     if (!button || !field) throw new Error('Editor controls were not ready');
     field.setSelectionRange(2, 2);
@@ -81,7 +82,7 @@ async function waitForReady(page: import('@playwright/test').Page, timeout = 900
 
 async function saveWav(page: import('@playwright/test').Page, path: string) {
   const download = page.waitForEvent('download');
-  await page.getByRole('link', { name: '下载 WAV' }).click();
+  await (await wavLink(page, '下载 WAV')).click();
   const item = await download;
   await item.saveAs(path);
   return readFile(path);
@@ -146,6 +147,7 @@ test('live render creates local WAV, custom player tracks words and gaps, and Op
   const pcm = new Int16Array(bytes.buffer.slice(bytes.byteOffset + 44, bytes.byteOffset + bytes.length));
   const rms = Math.sqrt(pcm.reduce((sum, value) => sum + (value / 32768) ** 2, 0) / pcm.length);
   expect(rms).toBeGreaterThan(0.005);
+  await openPanel(page, '导出');
   await page.getByRole('button', { name: '导出 Opus', exact: true }).click();
   await expect(page.getByRole('link', { name: '下载 Opus' })).toBeVisible({ timeout: 90000 });
   const opusDownload = page.waitForEvent('download');
@@ -212,8 +214,9 @@ test('markup help and insertion preserve exact inline text and selections', asyn
   await openStudio(page);
   const field = page.locator('textarea');
   await expect(field).toBeEnabled();
+  await openSideView(page, '帮助');
   await expect(page.getByText(/me<pitch value="1.2">tri<\/pitch>cs/)).toBeVisible();
-  await page.locator('.advanced-tools summary').click();
+  await openRibbon(page, '插入');
 
   await field.fill('attention');
   await field.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(element.value.length, element.value.length));
@@ -266,9 +269,11 @@ test('direct phonemes and unknown English words synthesize locally by default', 
   });
   await openStudio(page);
   await page.locator('textarea').fill('/ a e: /');
-  await expect(page.locator('.analysis-details summary')).toBeVisible();
   await waitForReady(page, 90000);
+  await openPanel(page, '分析');
+  await expect(page.locator('.analysis-details')).toContainText('语音片段');
   await expect(page.locator('.annotated-editor .token-error')).toHaveText('/ a e: /');
+  await openPanel(page, /^问题/);
   await expect(page.locator('.warning-item').filter({ hasText: /was stretched from/ })).toBeVisible();
   const phonemePath = info.outputPath('phonemes.wav');
   const bytes = await saveWav(page, phonemePath);
@@ -277,7 +282,6 @@ test('direct phonemes and unknown English words synthesize locally by default', 
   expect((bytes.length - 44) / 96_000).toBeLessThan(0.6);
 
   await page.locator('textarea').fill('robot');
-  await expect(page.locator('.analysis-details summary')).toBeVisible({ timeout: 30000 });
   await waitForReady(page, 90000);
   const robotPath = info.outputPath('robot-phonemes.wav');
   const robotBytes = await saveWav(page, robotPath);
