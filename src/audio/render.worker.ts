@@ -52,6 +52,47 @@ scope.onmessage = async ({ data }) => {
     let previousEnd = 0;
     let timelineEnd = 0;
     const timeline: TimelineEntry[] = [];
+    const stutterGroups = new Map<number, { start: number; end: number; repeats: number }>();
+    const finishStutterScopes = (word: WordPlan) => {
+      for (const id of word.stutterScopeEnds ?? []) {
+        const group = stutterGroups.get(id);
+        if (!group) continue;
+        const start = Math.floor(group.start * OUTPUT_SAMPLE_RATE);
+        const end = Math.ceil(group.end * OUTPUT_SAMPLE_RATE);
+        const length = Math.max(0, end - start);
+        const added = length * group.repeats;
+        if (!length || added + audioSampleCount > maxLayerSamples) {
+          stutterGroups.delete(id);
+          if (length) throw new Error('Scoped stutter exceeds the five-minute processing limit.');
+          continue;
+        }
+        if (end + added > OUTPUT_SAMPLE_RATE * 120) throw new Error('Scoped stutter exceeds the 120-second render limit.');
+        const groupLayers = layers.filter((layer) => layer.start >= start && layer.start + layer.samples.length <= end)
+          .map((layer) => ({ samples: layer.samples, start: layer.start - start, gain: layer.gain }));
+        const segment = mixLayers(groupLayers);
+        if (!segment.length) {
+          stutterGroups.delete(id);
+          continue;
+        }
+        for (let repeat = 0; repeat < group.repeats; repeat += 1) {
+          layers.push({ samples: segment, start: end + repeat * length });
+        }
+        const originals = timeline.filter((entry) => entry.startSeconds >= group.start && entry.endSeconds <= group.end);
+        for (let repeat = 0; repeat < group.repeats; repeat += 1) {
+          const shift = (group.end - group.start) * (repeat + 1);
+          for (const entry of originals) appendTimelineEntry(timeline, { ...entry, startSeconds: entry.startSeconds + shift, endSeconds: entry.endSeconds + shift });
+        }
+        audioSampleCount += added;
+        previousEnd += added / OUTPUT_SAMPLE_RATE;
+        previousStart += added / OUTPUT_SAMPLE_RATE;
+        timelineEnd += added / OUTPUT_SAMPLE_RATE;
+        for (const active of word.stutterScopes ?? []) {
+          const outer = stutterGroups.get(active.id);
+          if (outer && active.id !== id) outer.end += added / OUTPUT_SAMPLE_RATE;
+        }
+        stutterGroups.delete(id);
+      }
+    };
     for (let index = 0; index < plan.length; index += 1) {
       const word = plan[index];
       if (word.pauseDuration !== undefined) {
@@ -64,6 +105,7 @@ scope.onmessage = async ({ data }) => {
         const start = Math.max(0, word.spacing !== undefined
           ? previousStart + word.spacing + (word.sleep ?? 0)
           : nextClipStart(previousEnd, previousKind, 'pause', data.options.gap, word.sleep ?? 0));
+        for (const scope of word.stutterScopes ?? []) if (!stutterGroups.has(scope.id)) stutterGroups.set(scope.id, { start, end: start, repeats: scope.repeats });
         const samples = new Float32Array(Math.ceil(word.pauseDuration * OUTPUT_SAMPLE_RATE));
         if (start > previousEnd && word.gapSourceStart !== undefined && word.gapSourceEnd !== undefined) {
           appendTimelineEntry(timeline, { startSeconds: previousEnd, endSeconds: start, sourceStart: word.gapSourceStart, sourceEnd: word.gapSourceEnd, kind: 'gap' });
@@ -77,6 +119,11 @@ scope.onmessage = async ({ data }) => {
         previousEnd = start + samples.length / OUTPUT_SAMPLE_RATE;
         previousStart = start;
         timelineEnd = Math.max(timelineEnd, previousEnd);
+        for (const scope of word.stutterScopes ?? []) {
+          const group = stutterGroups.get(scope.id);
+          if (group) group.end = Math.max(group.end, previousEnd);
+        }
+        finishStutterScopes(word);
         if (timelineEnd > 120) throw new Error('Rendered audio exceeds the 120-second limit.');
         scope.postMessage({ type: 'progress', value: 0.6 + 0.35 * (index + 1) / plan.length });
         continue;
@@ -145,12 +192,15 @@ scope.onmessage = async ({ data }) => {
       const previousPlan = index > 0 ? plan[index - 1] : undefined;
       const previousClip = previousPlan?.clipId ? clipById.get(previousPlan.clipId) : undefined;
       const previousKind = previousPlan?.pauseDuration !== undefined ? 'pause' : previousClip?.kind;
-      const start = Math.max(0, word.spacing !== undefined
+      const start = Math.max(0, word.joinPrevious
+        ? previousEnd
+        : word.spacing !== undefined
         ? previousStart + word.spacing + (word.sleep ?? 0)
         : nextClipStart(previousEnd, previousKind, sourceClip.kind, data.options.gap, word.sleep ?? 0));
       const frameStart = Math.floor(start * OUTPUT_SAMPLE_RATE);
       const actualStart = frameStart / OUTPUT_SAMPLE_RATE;
       const actualEnd = actualStart + samples.length / OUTPUT_SAMPLE_RATE;
+      for (const scope of word.stutterScopes ?? []) if (!stutterGroups.has(scope.id)) stutterGroups.set(scope.id, { start: actualStart, end: actualStart, repeats: scope.repeats });
       if (actualStart > previousEnd && word.gapSourceStart !== undefined && word.gapSourceEnd !== undefined) {
         appendTimelineEntry(timeline, { startSeconds: previousEnd, endSeconds: actualStart, sourceStart: word.gapSourceStart, sourceEnd: word.gapSourceEnd, kind: 'gap' });
       }
@@ -187,6 +237,11 @@ scope.onmessage = async ({ data }) => {
       previousEnd = start + samples.length / OUTPUT_SAMPLE_RATE;
       previousStart = start;
       timelineEnd = Math.max(timelineEnd, previousEnd);
+      for (const scope of word.stutterScopes ?? []) {
+        const group = stutterGroups.get(scope.id);
+        if (group) group.end = Math.max(group.end, previousEnd);
+      }
+      finishStutterScopes(word);
       if (timelineEnd > 120) throw new Error('Rendered audio exceeds the 120-second limit.');
       scope.postMessage({ type: 'progress', value: 0.6 + 0.35 * (index + 1) / plan.length });
     }

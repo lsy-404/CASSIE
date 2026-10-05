@@ -255,7 +255,7 @@ export function resolvePhoneUnits(phones: string[], catalog: PhonemeCatalog, ban
   return { units, warnings };
 }
 
-export async function phonemizeWords(words: string[], signal?: AbortSignal): Promise<Map<string, string>> {
+export async function phonemizeWords(words: string[], signal?: AbortSignal, letterNames: string[] = []): Promise<Map<string, string>> {
   if (signal?.aborted) throw new DOMException('The audio render was cancelled.', 'AbortError');
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./phoneme.worker.ts', import.meta.url), { type: 'module' });
@@ -285,7 +285,7 @@ export async function phonemizeWords(words: string[], signal?: AbortSignal): Pro
       resolve(new Map(Object.entries(data.phones)));
     };
     try {
-      worker.postMessage({ words });
+      worker.postMessage({ words, letterNames });
     } catch (error) {
       fail(error instanceof Error ? error : new Error('Could not start English phonemizer worker.'));
     }

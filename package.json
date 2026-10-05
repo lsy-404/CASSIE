@@ -21,6 +21,7 @@
     "@platform-kit/fluent": "https://github.com/lsy-404/platform-kit/releases/download/fluent-v0.2.6/platform-kit-fluent-0.2.6.tgz",
     "dictionary-en": "4.0.0",
     "dictionary-en-gb": "3.0.0",
+    "htmlparser2": "12.0.0",
     "nspell": "2.1.5",
     "ogg-opus-decoder": "1.7.5",
     "phonemizer": "1.2.1",
