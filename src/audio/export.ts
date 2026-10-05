@@ -23,7 +23,6 @@ export async function encodeOpus(
   signal?.throwIfAborted();
   const ffmpeg = new FFmpeg();
   let wasmURL: string | undefined;
-  let coreURL: string | undefined;
   const abort = () => ffmpeg.terminate();
   signal?.addEventListener('abort', abort, { once: true });
   const progress = (value: number) => onProgress?.(Math.min(1, Math.max(0, value)));
@@ -59,11 +58,7 @@ export async function encodeOpus(
     if (await sha256(wasm) !== manifest.sha256) throw new Error('Opus encoder integrity check failed.');
     signal?.throwIfAborted();
     wasmURL = URL.createObjectURL(new Blob([wasm], { type: 'application/wasm' }));
-    const coreResponse = await fetch('/ffmpeg/ffmpeg-core.js', { signal });
-    if (!coreResponse.ok) throw new Error('Could not load the Opus encoder. Please retry.');
-    // A blob URL keeps the dev server from transforming the public core script.
-    coreURL = URL.createObjectURL(new Blob([await coreResponse.arrayBuffer()], { type: 'text/javascript' }));
-    await ffmpeg.load({ coreURL, wasmURL }, { signal });
+    await ffmpeg.load({ coreURL: '/ffmpeg/ffmpeg-core.js', wasmURL }, { signal });
     progress(0.5);
     ffmpeg.on('progress', ({ progress: value }) => progress(0.5 + value * 0.49));
     await ffmpeg.writeFile('announcement.wav', new Uint8Array(await encodeWav(samples, sampleRate).arrayBuffer()), { signal });
@@ -85,6 +80,5 @@ export async function encodeOpus(
     signal?.removeEventListener('abort', abort);
     ffmpeg.terminate();
     if (wasmURL) URL.revokeObjectURL(wasmURL);
-    if (coreURL) URL.revokeObjectURL(coreURL);
   }
 }
