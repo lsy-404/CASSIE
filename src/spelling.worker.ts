@@ -6,19 +6,22 @@ const scope = self as unknown as {
   postMessage: (message: { id: number; misspelled?: string[]; error?: string }) => void;
 };
 
-async function loadDocument(extension: string): Promise<string> {
-  const response = await fetch(new URL(`/spelling/en.${extension}`, self.location.origin));
+async function loadDocument(language: string, extension: string): Promise<string> {
+  const response = await fetch(new URL(`/spelling/${language}.${extension}`, self.location.origin));
   if (!response.ok) throw new Error('The English spelling dictionary could not be loaded.');
   return response.text();
 }
 
-const dictionary = Promise.all([loadDocument('aff'), loadDocument('dic')]).then(([aff, dic]) => nspell(aff, dic));
+const dictionaries = Promise.all(['en', 'en-gb'].map(async (language) => {
+  const [aff, dic] = await Promise.all([loadDocument(language, 'aff'), loadDocument(language, 'dic')]);
+  return nspell(aff, dic);
+}));
 scope.onmessage = async ({ data }) => {
   try {
     if (data.words.length > 512) throw new Error('The spelling request exceeds the word limit.');
-    const spell = await dictionary;
+    const spells = await dictionaries;
     const words = [...new Set(data.words)].filter((word) => /^[a-z]+(?:[-'][a-z]+)*$/i.test(word) && word.length <= 128);
-    scope.postMessage({ id: data.id, misspelled: words.filter((word) => !spell.correct(word)) });
+    scope.postMessage({ id: data.id, misspelled: words.filter((word) => !spells.some((spell) => spell.correct(word))) });
   } catch (error) {
     scope.postMessage({ id: data.id, error: error instanceof Error ? error.message : 'English spelling hints are unavailable.' });
   }

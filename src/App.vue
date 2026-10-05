@@ -42,7 +42,7 @@ let analysisTimer: ReturnType<typeof setTimeout> | undefined;
 let analysisController: AbortController | null = null;
 let downloadUrl = "";
 
-const allWarnings = computed(() => [...analysis.value.warnings, ...(rendered.value?.warnings ?? [])]);
+const allWarnings = computed(() => [...new Set([...analysis.value.warnings, ...(rendered.value?.warnings ?? [])])]);
 const activeTimelineItem = computed(() => rendered.value?.timeline?.find((item) => audioTime.value >= item.startSeconds && audioTime.value < item.endSeconds) ?? null);
 const editorParts = computed(() => {
   const timeline = rendered.value?.timeline ?? [];
@@ -265,6 +265,7 @@ onBeforeUnmount(() => {
               </div>
               <div class="phrase-field annotated-editor"><FluentField v-model="text" label="公告内容" multiline wrap="soft" :disabled="!bank || encodingOpus" placeholder="输入公告内容…" @scroll="onEditorScroll" @input="onEditorInput" /><div class="highlight-clip" :style="{ '--editor-scroll': `${editorScrollTop}px`, '--editor-scroll-left': `${editorScrollLeft}px`, '--editor-scrollbar-width': `${editorScrollbarWidth}px` }" aria-hidden="true"><pre class="highlight-layer"><span v-for="part in editorParts" :key="part.key" :class="[`token-${part.kind}`, { active: part.active, 'spell-missing': part.spellingMissing }]" :title="part.label">{{ part.text }}</span></pre></div></div>
               <div class="token-legend" aria-label="文本标记说明"><span class="token-recorded">原始录音</span><span class="token-synthesized">合成音频</span><span class="spell-legend">拼写提示（仍尝试合成）</span><span class="token-marker">识别命令</span><span class="token-error">渲染错误</span></div>
+              <audio v-if="rendered" ref="audioElement" class="audio-player" controls :src="downloadUrl" aria-label="公告音频播放器" @timeupdate="onAudioTimeUpdate" @seeking="onAudioTimeUpdate" />
               <div class="live-controls"><FluentCheckbox v-model="liveRender" aria-label="实时渲染">实时渲染</FluentCheckbox><small>更新音频但不自动播放</small></div>
               <details v-if="analysis.words.length || analysis.ipa.length || analysis.warnings.length" class="analysis-details"><summary>语音分析与提示</summary><p>识别到 {{ analysis.words.length }} 个语音片段<span v-if="analysis.ipa.length"> · 音素 {{ analysis.ipa.join(' · ') }}</span></p><FluentNotice v-if="analysis.warnings.length" tone="warning">{{ analysis.warnings[0] }}<span v-if="analysis.warnings.length > 1">（另有 {{ analysis.warnings.length - 1 }} 条提示）</span></FluentNotice></details>
             </section>
@@ -291,7 +292,6 @@ onBeforeUnmount(() => {
                 <FluentButton v-if="rendering || encodingOpus" tone="danger" @click="cancelRender">取消任务</FluentButton>
                 <FluentButton v-else-if="!liveRender" tone="primary" :disabled="!bank || !text.trim()" :busy="rendering" @click="compose">生成公告音频</FluentButton>
                 <template v-if="rendered">
-                  <audio ref="audioElement" class="audio-player" controls :src="downloadUrl" aria-label="公告音频播放器" @timeupdate="onAudioTimeUpdate" @seeking="onAudioTimeUpdate" />
                   <a v-if="downloadUrl" class="download-link" :href="downloadUrl" download="cassie-announcement.wav">下载 WAV</a>
                   <FluentButton v-if="!opusUrl" tone="secondary" :busy="encodingOpus" :disabled="encodingOpus" @click="exportOpus">导出 Opus</FluentButton>
                   <a v-else class="download-link" :href="opusUrl" download="cassie-announcement.opus">下载 Opus</a>

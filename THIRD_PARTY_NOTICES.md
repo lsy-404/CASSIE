@@ -14,6 +14,7 @@
 | Echogarden 3.4.0 offline alignment | MIT AND GPL-3.0-or-later | https://github.com/echogarden-project/echogarden |
 | nspell 2.1.5 and is-buffer | MIT | https://github.com/wooorm/nspell |
 | dictionary-en 4.0.0 Hunspell data | MIT AND BSD | https://github.com/wooorm/dictionaries/tree/main/dictionaries/en |
+| dictionary-en-gb 3.0.0 Hunspell data | MIT AND BSD | https://github.com/wooorm/dictionaries/tree/main/dictionaries/en-GB |
 
 The FFmpeg core is used unmodified from the pinned npm package. Its source, library build recipes and build configuration are maintained in the linked upstream repository. The core's constituent libraries retain their respective licenses; upstream licensing and source details: https://ffmpegwasm.netlify.app/docs/overview/ .
 
