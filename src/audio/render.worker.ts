@@ -1,5 +1,5 @@
 import { OggOpusDecoder } from 'ogg-opus-decoder';
-import { appendTimelineEntry, clipTimelineToDuration, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchVowelLoop, transformWord } from './dsp';
+import { advancePlaybackCursorAfterRepeat, appendTimelineEntry, clipTimelineToDuration, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchVowelLoop, transformWord } from './dsp';
 import type { Bank, BankClip, RenderOptions, TimelineEntry, WordPlan } from './types';
 
 type RequestMessage = { type: 'render'; bank: Bank; plan: WordPlan[]; options: RenderOptions };
@@ -83,9 +83,9 @@ scope.onmessage = async ({ data }) => {
           for (const entry of originals) appendTimelineEntry(timeline, { ...entry, startSeconds: entry.startSeconds + shift, endSeconds: entry.endSeconds + shift });
         }
         audioSampleCount += added;
-        previousEnd += added / OUTPUT_SAMPLE_RATE;
-        previousStart += added / OUTPUT_SAMPLE_RATE;
-        timelineEnd += added / OUTPUT_SAMPLE_RATE;
+        const repeatedEnd = (end + added) / OUTPUT_SAMPLE_RATE;
+        ({ previousEnd, previousStart } = advancePlaybackCursorAfterRepeat(previousEnd, previousStart, repeatedEnd));
+        timelineEnd = Math.max(timelineEnd, repeatedEnd);
         for (const active of word.stutterScopes ?? []) {
           const outer = stutterGroups.get(active.id);
           if (outer && active.id !== id) outer.end += added / OUTPUT_SAMPLE_RATE;

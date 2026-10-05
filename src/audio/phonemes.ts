@@ -187,7 +187,7 @@ export function parseGeneratedPhones(value: string, catalog: PhonemeCatalog): { 
   return { phones, warnings: [] };
 }
 
-export function resolvePhoneUnits(phones: string[], catalog: PhonemeCatalog, bank: Bank): { units: PhonemeUnit[]; warnings: string[] } {
+export function resolvePhoneUnits(phones: string[], catalog: PhonemeCatalog, bank: Bank, mergeContinuous = true): { units: PhonemeUnit[]; warnings: string[] } {
   if (!phones.length || phones.length > MAX_PHONE_UNITS) return { units: [], warnings: ['The phoneme sequence is empty or too long.'] };
   const bankById = new Map(bank.clips.map((clip) => [clip.id, clip]));
   const units: PhonemeUnit[] = [];
@@ -246,7 +246,7 @@ export function resolvePhoneUnits(phones: string[], catalog: PhonemeCatalog, ban
       ...(stretchFactor ? { stretchFactor } : {}),
     };
     const last = units.at(-1);
-    if (last && !last.stretchFactor && !unit.stretchFactor && last.clipId === unit.clipId && Math.abs(last.endSeconds - unit.startSeconds) <= 0.005) {
+    if (mergeContinuous && last && !last.stretchFactor && !unit.stretchFactor && last.clipId === unit.clipId && Math.abs(last.endSeconds - unit.startSeconds) <= 0.005) {
       last.endSeconds = unit.endSeconds;
       last.ipa += ` ${unit.ipa}`;
       last.approximate = last.approximate || unit.approximate || undefined;

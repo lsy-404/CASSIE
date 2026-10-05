@@ -15,6 +15,11 @@ export function nextClipStart(
   return Math.max(0, previousEnd + gap + sleep);
 }
 
+export function advancePlaybackCursorAfterRepeat(previousEnd: number, previousStart: number, groupEnd: number): { previousEnd: number; previousStart: number } {
+  const end = Math.max(previousEnd, groupEnd);
+  return { previousEnd: end, previousStart: Math.max(previousStart, end) };
+}
+
 function crossfadeJoin(left: Float32Array, right: Float32Array, sampleRate: number): Float32Array {
   if (!left.length) return right;
   if (!right.length) return left;
