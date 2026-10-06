@@ -148,7 +148,7 @@ Build the package with `pnpm package:overture`. The packager checks the supporte
 
 ## Licensing and sources
 
-Program code is **AGPL-3.0-only**, see [LICENSE](LICENSE). The supplied SCP:SL voice recordings and their compressed adaptations retain **CC BY-SA 3.0**, with attribution and extraction provenance in `data/` and the served license page. Third-party packages retain their own licenses. No game executable or proprietary game source is included.
+Program code is **AGPL-3.0-only**, see [LICENSE](LICENSE). The supplied SCP:SL voice recordings and their compressed adaptations retain **CC BY-SA 3.0**, with attribution and extraction provenance in `data/` and the served license page. The tab icon is the SCP Foundation emblem from Wikimedia Commons (CC BY-SA 3.0, modified); it is under its own license, separate from the AGPL-3.0 code license, and regenerated with `node scripts/build-icons.mjs`. Third-party packages retain their own licenses. No game executable or proprietary game source is included.
 
 Source code and complete build instructions are available in this repository. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for decoder and FFmpeg source locations and licenses.
 

@@ -47,3 +47,7 @@ node scripts\build-world.mjs
 ```
 
 The script rejects other upstream revisions or SDK versions and only replaces `src/audio/world/runtime` after a successful build. Vite imports those two checked-in artifacts as URL assets so production bundles emit content-hashed module and WebAssembly URLs. The runtime is prebuilt and checked in; normal installs do not need Emscripten.
+
+## Site icons
+
+`node scripts/build-icons.mjs` rasterizes `public/favicon.svg` with Playwright's Chromium into `public/favicon.ico` (16, 32 and 48 px PNG frames) and `public/apple-touch-icon.png` (180 px, opaque). Attribution for the emblem is in `data/licenses/README.md`.
