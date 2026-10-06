@@ -6,7 +6,7 @@ test.use({ locale: 'en-US' });
 test('language follows browser locale and persists the selected translation', async ({ page }) => {
   await openStudio(page);
   await expect(page.locator('.titlebar .app-title')).toHaveText('Announcement editor');
-  await expect(page.locator('.brand')).toContainText('C.A.S.S.I.E. PLUS');
+  await expect(page.locator('.brand')).toContainText('C.A.S.S.I.E.+');
   await expect(page).toHaveTitle('CASSIE PLUS · Announcement editor');
   await expect(page.getByRole('button', { name: 'Live render' })).toBeVisible();
   await expect(page.getByRole('slider', { name: /Speech rate/ })).toHaveValue('1');

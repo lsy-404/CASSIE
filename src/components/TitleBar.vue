@@ -9,7 +9,7 @@ const studio = useStudio();
 <template>
   <header class="titlebar">
     <div class="brand">
-      <strong>C.A.S.S.I.E. PLUS</strong>
+      <strong>C.A.S.S.I.E.+</strong>
       <span class="brand-full">CENTRAL AUTONOMIC SERVICE SYSTEM FOR INTERNAL EMERGENCIES</span>
     </div>
     <h1 class="doc-title"><span class="doc-name">announcement.cassie</span><span class="app-title">{{ t('appTitle') }}</span></h1>

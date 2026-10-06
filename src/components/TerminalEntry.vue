@@ -128,11 +128,11 @@ onBeforeUnmount(() => {
       CASSIE PLUS could not load on this device. CASSIE PLUS requires a standard Chromium browser with full support for the required capabilities.
     </section>
     <section v-else class="terminal-entry__card" aria-label="CASSIE PLUS Terminal">
-      <h1 class="terminal-entry__wordmark" aria-label="C.A.S.S.I.E. PLUS">
+      <h1 class="terminal-entry__wordmark" aria-label="C.A.S.S.I.E.+">
         <svg :viewBox="`0 0 ${GRID_WIDE} ${GRID_HIGH}`" shape-rendering="crispEdges" aria-hidden="true" focusable="false">
           <path :d="wordmarkPath" fill="currentColor" />
         </svg>
-        <span class="terminal-entry__plus" aria-hidden="true">PLUS</span>
+        <span class="terminal-entry__plus" aria-hidden="true">+</span>
       </h1>
       <p class="terminal-entry__subtitle">CENTRAL AUTONOMIC SERVICE SYSTEM FOR INTERNAL EMERGENCIES</p>
       <div ref="log" class="terminal-entry__log" data-testid="terminal-log">

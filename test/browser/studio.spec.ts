@@ -24,7 +24,7 @@ test('default recruitment announcement exposes complete editable markup examples
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 90_000 });
   await expect(page.locator('.announcement-player')).toBeVisible();
   await expect(page.locator('.annotated-editor .token-error')).toHaveCount(0);
-  await expect(page.locator('.annotated-editor .token-synthesized').filter({ hasText: /^(Become|Class-D)$/ })).toHaveCount(2);
+  await expect(page.locator('.annotated-editor .token-synthesized').filter({ hasText: /^(Become|Class-D|legend)$/ })).toHaveCount(4);
 });
 
 test('voice post-processing controls default neutral and scope insertion stays local to speech', async ({ page }) => {
