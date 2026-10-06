@@ -52,5 +52,6 @@ export function phonemeInsertion(text: string, start: number, end: number, phone
     cursor = blockEnd;
   }
   const insertion = `/ ${validPhone} /`;
-  return { value: insertion, selectionStart: insertion.length, selectionEnd: insertion.length };
+  const inner = insertion.length - 2;
+  return { value: insertion, selectionStart: inner, selectionEnd: inner };
 }

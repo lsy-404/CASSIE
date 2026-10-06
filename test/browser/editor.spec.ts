@@ -18,6 +18,9 @@ test('phoneme insertion reuses slash blocks and preserves selections and tag sla
   await field.evaluate((input: HTMLTextAreaElement) => input.setSelectionRange(input.value.length, input.value.length));
   await phone.click();
   await expect(field).toHaveValue('<clip id="cassie"/>/ ə /');
+  await expect.poll(() => field.evaluate((input: HTMLTextAreaElement) => input.selectionStart)).toBe('<clip id="cassie"/>/ ə'.length);
+  await phone.click();
+  await expect(field).toHaveValue('<clip id="cassie"/>/ ə ə /');
 });
 
 test('fine numeric fields stay stable when cleared and accept signed decimal voice controls', async ({ page }) => {

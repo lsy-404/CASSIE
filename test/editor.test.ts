@@ -8,7 +8,7 @@ describe("phoneme insertion", () => {
   });
 
   it("creates delimiters outside a phoneme block", () => {
-    expect(phonemeInsertion("say this", 4, 8, "e:").value).toBe("/ e: /");
+    expect(phonemeInsertion("say this", 4, 8, "e:")).toEqual({ value: "/ e: /", selectionStart: 4, selectionEnd: 4 });
   });
 
   it("ignores slash characters in closing tags and quoted attributes", () => {
