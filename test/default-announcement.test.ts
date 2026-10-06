@@ -10,7 +10,7 @@ describe('default announcement', () => {
   const result = createWordPlan(defaultAnnouncement, bank);
 
   it('parses against the real voice bank with no markup errors', () => {
-    expect(result.warnings.filter((warning) => !warning.startsWith('No audio clip for'))).toEqual([]);
+    expect(result.notices.filter((notice) => !notice.text.startsWith('No audio clip for'))).toEqual([]);
     expect(result.plan.length).toBeGreaterThan(20);
   });
 

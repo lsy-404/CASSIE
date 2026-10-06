@@ -30,10 +30,6 @@ const GENERATED_ALLOPHONES: Record<string, string> = { 'oːɹ': 'ɔːɹ', 'oː':
 
 let catalogRequest: Promise<PhonemeCatalog> | undefined;
 
-export function hasDirectPhonemeInput(text: string): boolean {
-  return /\/\s*[^/\r\n]{1,256}?\s*\//u.test(text);
-}
-
 function stressless(phone: string): string {
   return phone.normalize('NFC').replace(STRESS, '');
 }

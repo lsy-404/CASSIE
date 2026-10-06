@@ -38,6 +38,9 @@ const phoneCatalog: PhonemeCatalog = {
   },
 };
 
+const analysisOptions = { phonemes: true, gap: 0.24, pitch: 1, rate: 1 };
+const warningsOf = (result: { notices: Array<{ severity: string; text: string }> }) => result.notices.filter((notice) => notice.severity !== 'info').map((notice) => notice.text);
+
 function word(id: string, extra: Partial<Parameters<typeof transformWord>[2]> = {}) {
   return { clipId: id, display: id, pitch: 1, volume: 1, ...extra };
 }
@@ -107,7 +110,7 @@ describe('CASSIE announcement parser', () => {
     expect(result.plan[0]).toMatchObject({ pitch: 1.25, volume: 0.4 });
     expect(result.plan[1]).toMatchObject({ pauseDuration: 0.6 });
     expect(result.plan[2]).toMatchObject({ stutterScopes: [{ id: expect.any(Number), repeats: 3 }], stutterScopeEnds: [expect.any(Number)] });
-    expect(result.warnings).toEqual([]);
+    expect(warningsOf(result)).toEqual([]);
   });
 
   it('applies nested voice scopes, inherits omitted fields, and restores parent values', () => {
@@ -123,14 +126,14 @@ describe('CASSIE announcement parser', () => {
     ]);
     const invalid = analyzeText('<voice pitch="13">cassie</voice> <voice gain="0.5">word</voice> <voice loudness="13">apple</voice> <voice tension="-2">box</voice>', bank);
     expect(invalid.tokens.filter((token) => token.text.startsWith('<')).every((token) => token.kind === 'error')).toBe(true);
-    expect(invalid.warnings.filter((warning) => warning.includes('Invalid markup tag'))).toHaveLength(4);
+    expect(warningsOf(invalid).filter((warning) => warning.includes('Invalid markup tag'))).toHaveLength(4);
   });
 
   it('retains the game timing and clip-selection modifiers', () => {
     const result = createWordPlan('<offset seconds="0.1"><duration seconds="0.3">cassie</duration></offset> <spacing seconds="0.8">word</spacing>', bank);
     expect(result.plan[0]).toMatchObject({ startAt: 0.1, maxDuration: 0.3 });
     expect(result.plan[1]).toMatchObject({ spacing: 0.8 });
-    expect(result.warnings).toEqual([]);
+    expect(warningsOf(result)).toEqual([]);
   });
 
   it('splices direct IPA, applies ASCII vowel aliases, and carries scoped modifiers onto the segment', () => {
@@ -143,20 +146,20 @@ describe('CASSIE announcement parser', () => {
         { clipId: 'phone-e', ipa: 'ɛ', stretchFactor: 1.7 },
       ],
     });
-    expect(result.warnings).toEqual(['Approximate phoneme match: /ɛː/ was stretched from /ɛ/.']);
+    expect(warningsOf(result)).toEqual(['Approximate phoneme match: /ɛː/ was stretched from /ɛ/.']);
   });
 
   it('skips a direct IPA segment when any phone lacks a verified source window', () => {
     const result = createWordPlan('cassie / θ /', phoneBank, undefined, phoneCatalog);
     expect(result.plan.map((item) => item.clipId)).toEqual(['cassie']);
-    expect(result.warnings).toEqual(['No verified audio window for /θ/; the complete segment was skipped.']);
+    expect(warningsOf(result)).toEqual(['No verified audio window for /θ/; the complete segment was skipped.']);
   });
 
   it('keeps generated IPA /j/ distinct from the direct ASCII affricate alias /jh/', () => {
     const glide = createWordPlan('unknown', phoneBank, undefined, phoneCatalog, new Map([['unknown', 'j']]), true);
     const affricate = createWordPlan('/ jh /', phoneBank, undefined, phoneCatalog, new Map(), true);
     expect(glide.plan[0].phonemeUnits?.[0]).toMatchObject({ clipId: 'phone-j', ipa: 'j' });
-    expect(affricate.warnings).toEqual(['No verified audio window for /dʒ/; the complete segment was skipped.']);
+    expect(warningsOf(affricate)).toEqual(['No verified audio window for /dʒ/; the complete segment was skipped.']);
   });
 
   it('segments known generated allophone variants without discarding their exact pronunciation', () => {
@@ -205,8 +208,8 @@ describe('CASSIE announcement parser', () => {
 
     const stretched = createWordPlan('/ e: /', phoneBank, undefined, phoneCatalog);
     expect(stretched.plan[0].phonemeUnits?.[0]).toMatchObject({ ipa: 'ɛ', stretchFactor: 1.7, approximate: true });
-    expect(stretched.tokens[0].kind).toBe('error');
-    expect(stretched.warnings[0]).toMatch(/stretched from/);
+    expect(stretched.tokens[0].kind).toBe('synthesized');
+    expect(warningsOf(stretched)[0]).toMatch(/stretched from/);
 
     const generatedCatalog: PhonemeCatalog = {
       ...phoneCatalog,
@@ -220,7 +223,7 @@ describe('CASSIE announcement parser', () => {
     const generated = createWordPlan('longword', phoneBank, undefined, generatedCatalog, new Map([['longword', 'ɛːt']]), true);
     expect(generated.plan[0].phonemeUnits).toHaveLength(2);
     expect(generated.plan[0].phonemeUnits?.[0]).toMatchObject({ stretchFactor: 1.7, approximate: true });
-    expect(generated.tokens[0].kind).toBe('error');
+    expect(generated.tokens[0].kind).toBe('synthesized');
   });
 
   it('phonemizes explore, worksheet, and unsupport against measured inventory without silent plans', () => {
@@ -248,8 +251,8 @@ describe('CASSIE announcement parser', () => {
     const result = createWordPlan(Object.keys(pronunciations).join(' '), { ...bank, clips: [...bank.clips, ...clips] }, undefined, catalog, new Map(Object.entries(pronunciations)), true);
     expect(result.plan).toHaveLength(3);
     expect(result.plan.every((item) => item.phonemeUnits?.length)).toBe(true);
-    expect(result.tokens.map((token) => token.kind)).toEqual(['error', 'synthesized', 'error']);
-    expect(result.warnings.filter((warning) => warning.includes('Approximate phoneme match'))).toHaveLength(2);
+    expect(result.tokens.map((token) => token.kind)).toEqual(['synthesized', 'synthesized', 'synthesized']);
+    expect(warningsOf(result).filter((warning) => warning.includes('Approximate phoneme match'))).toHaveLength(2);
   });
 
   it('selects source-position and neighboring-phone matches, then merges adjacent windows', () => {
@@ -310,7 +313,7 @@ describe('CASSIE announcement parser', () => {
     } as PhonemeCatalog;
     const result = createWordPlan(`cassie / ${phone} /`, phoneBank, undefined, unsafeCatalog);
     expect(result.plan.map((item) => item.clipId)).toEqual(['cassie']);
-    expect(result.warnings).toEqual([`Unsupported phoneme: ${phone}.`]);
+    expect(warningsOf(result)).toEqual([`Unsupported phoneme: ${phone}.`]);
   });
 
   it('inserts verified start/end cues at their text positions and direct bank clips', () => {
@@ -328,7 +331,7 @@ describe('CASSIE announcement parser', () => {
       ['the_vowel', 'the_vowel'],
       ['end_beep', 'end cue'],
     ]);
-    expect(result.warnings).toEqual([]);
+    expect(warningsOf(result)).toEqual([]);
   });
 
   it('recognizes br tags next to spaced IPA blocks and resumes after an unclosed block', () => {
@@ -337,7 +340,7 @@ describe('CASSIE announcement parser', () => {
     expect(direct.plan[1].phonemeUnits).toHaveLength(2);
     const incomplete = analyzeText('/ a cassie', bank);
     expect(incomplete.words).toEqual(['cassie']);
-    expect(incomplete.warnings).toContain('Unclosed IPA segment; text after the slash was parsed normally.');
+    expect(warningsOf(incomplete)).toContain('Unclosed IPA segment; text after the slash was parsed normally.');
   });
 
   it('classifies markup markers and spoken source spans, including only actual text spaces as gaps', () => {
@@ -380,7 +383,7 @@ describe('CASSIE announcement parser', () => {
     expect(result.plan.map((item) => item.pitch)).toEqual([1, 1.2, 1]);
     expect(result.plan.slice(1).every((item) => item.joinPrevious)).toBe(true);
     expect(result.tokens.filter((token) => token.kind !== 'marker').map((token) => token.spellingWord)).toEqual(['metrics', 'metrics', 'metrics']);
-    expect(result.warnings).toContain('Scoped pronunciation boundaries in “metrics” use nearest IPA-phone alignment.');
+    expect(warningsOf(result)).toContain('Scoped pronunciation boundaries in “metrics” use nearest IPA-phone alignment.');
   });
 
   it('uses English letter-name G2P for unrecorded uppercase acronyms while keeping A, I, lowercase a, and explicit clips distinct', () => {
@@ -404,7 +407,7 @@ describe('CASSIE announcement parser', () => {
     const invalid = analyzeText('cassie <img src="x"> <pitch value="1.2">word</volume>', bank);
     expect(invalid.tokens.filter((token) => token.text.startsWith('<') || token.text.startsWith('</')).map((token) => token.kind)).toEqual(['error', 'error', 'error']);
     expect(invalid.words).toContain('cassie');
-    expect(invalid.warnings.some((warning) => /Invalid markup|Mismatched closing|Unclosed markup/u.test(warning))).toBe(true);
+    expect(warningsOf(invalid).some((warning) => /Invalid markup|Mismatched closing|Unclosed markup/u.test(warning))).toBe(true);
   });
 
   it('keeps NATO letter recordings out of normal English while preserving explicit clip selection', () => {
@@ -426,7 +429,7 @@ describe('CASSIE announcement parser', () => {
     };
     const result = analyzeText('<start/><clip id="cassie-background-std"/><clip id="not-in-bank"/><end/> cassie', effectBank);
     expect(result.words).toEqual(['cassie-background-std', 'cassie']);
-    expect(result.warnings).toEqual([
+    expect(warningsOf(result)).toEqual([
       'The START cue is unavailable in this audio bank.',
       'Unknown audio clip ID: not-in-bank.',
       'The END cue is unavailable in this audio bank.',
@@ -436,7 +439,7 @@ describe('CASSIE announcement parser', () => {
   it('keeps bank ids with underscores intact and makes preview tolerant', () => {
     const suffixBank = { ...bank, clips: [...bank.clips, { id: '_suffix_plural_regular', file: '/audio/_suffix_plural_regular.opus', duration: 0.1, kind: 'word' as const }] };
     expect(analyzeText('_suffix_plural_regular', suffixBank).words).toEqual(['_suffix_plural_regular']);
-    expect(analyzeText(' '.repeat(600), bank)).toEqual({ words: [], warnings: [], tokens: [] });
+    expect(analyzeText(' '.repeat(600), bank)).toEqual({ words: [], notices: [], tokens: [] });
     expect(analyzeText('cassie '.repeat(513), bank).words).toEqual([]);
   });
 
@@ -455,7 +458,7 @@ describe('CASSIE announcement parser', () => {
 
   it('marks invalid scoped values red and continues parsing speech', () => {
     const result = analyzeText('<pitch value="99">cassie</pitch> word', bank);
-    expect(result.warnings.some((warning) => warning.includes('Invalid markup tag'))).toBe(true);
+    expect(warningsOf(result).some((warning) => warning.includes('Invalid markup tag'))).toBe(true);
     expect(result.tokens[0].kind).toBe('error');
     expect(result.words).toContain('word');
   });
@@ -463,7 +466,7 @@ describe('CASSIE announcement parser', () => {
   it('rejects legacy dollar modifiers without treating them as spoken words', () => {
     const result = analyzeText('$PITCH_1.2 cassie', bank);
     expect(result.words).toEqual(['cassie']);
-    expect(result.warnings).toContain('Dollar-prefixed syntax is unsupported: $PITCH_1.2');
+    expect(warningsOf(result)).toContain('Dollar-prefixed syntax is unsupported: $PITCH_1.2');
     expect(result.tokens[0].kind).toBe('error');
   });
 });
@@ -691,13 +694,13 @@ describe('audio DSP', () => {
 
 describe('audio worker handoff', () => {
   it('keeps unknown-only analysis tolerant and avoids launching an empty audio render', async () => {
-    await expect(analyzeAnnouncement('cassie', bank)).resolves.toMatchObject({ words: ['cassie'], ipa: [] });
-    await expect(analyzeAnnouncement('unrecordedword', bank)).resolves.toMatchObject({
+    await expect(analyzeAnnouncement('cassie', bank, analysisOptions)).resolves.toMatchObject({ words: ['cassie'], ipa: [] });
+    await expect(analyzeAnnouncement('unrecordedword', bank, analysisOptions)).resolves.toMatchObject({
       words: [],
-      warnings: expect.arrayContaining(['No audio clip for “unrecordedword”.']),
+      notices: expect.arrayContaining([expect.objectContaining({ severity: 'error', text: 'No audio clip for “unrecordedword”.' })]),
       ipa: [],
     });
-    await expect(analyzeAnnouncement('   ', bank)).resolves.toEqual({ words: [], warnings: [], ipa: [], tokens: [] });
+    await expect(analyzeAnnouncement('   ', bank, analysisOptions)).resolves.toEqual({ words: [], notices: [], ipa: [], tokens: [] });
     await expect(renderAnnouncement('unrecordedword', bank, { pitch: 1, volume: 1, gap: 0.24 }))
       .rejects.toThrow(/No audio clip|phoneme catalog is unavailable/i);
   });

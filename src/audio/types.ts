@@ -55,6 +55,31 @@ export interface AnalysisToken {
   kind: 'recorded' | 'synthesized' | 'error' | 'marker';
   text: string;
   spellingWord?: string;
+  /** Synthesizable from phonemes but skipped because unrecorded-word synthesis is off. */
+  blocked?: boolean;
+  /** Deterministic repair that replaces this token's source text. */
+  fix?: { replacement: string };
+}
+
+export interface AnalysisNotice {
+  severity: 'info' | 'warning' | 'error';
+  text: string;
+  sourceStart?: number;
+  sourceEnd?: number;
+}
+
+export interface AnalysisResult {
+  words: string[];
+  notices: AnalysisNotice[];
+  ipa: string[];
+  tokens: AnalysisToken[];
+}
+
+export interface AnalysisOptions {
+  phonemes: boolean;
+  gap: number;
+  pitch: number;
+  rate: number;
 }
 
 export interface WordPlan {
