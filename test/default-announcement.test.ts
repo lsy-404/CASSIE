@@ -17,10 +17,8 @@ describe('default announcement', () => {
     expect(result.plan.length).toBeGreaterThan(60);
   });
 
-  it('keeps unrecorded words to a minimum', () => {
-    expect(result.unresolvedWords.length).toBeLessThanOrEqual(12);
-    expect(result.unresolvedWords.sort()).toEqual(['elite', 'familiar', 'happening', 'hero', 'legend', 'letter:D', 'part', 'prove', 'scenes', 'skill', 'unless', 'become'].sort());
-    expect(result.unresolvedWords).not.toContain('class-d');
+  it('pins the unrecorded words that must be synthesised', () => {
+    expect([...result.unresolvedWords].sort()).toEqual(['become', 'class-d']);
   });
 
   it('showcases the editor tags with exactly one fit tag', () => {
@@ -30,8 +28,11 @@ describe('default announcement', () => {
     expect(defaultAnnouncement.match(/<fit\b/g)).toHaveLength(1);
   });
 
-  it('is a Foundation recruitment ad', () => {
-    expect(defaultAnnouncement).toContain('Become Class D.');
-    expect(defaultAnnouncement.toLowerCase()).not.toContain('democracy');
+  it('is an original Foundation recruitment ad', () => {
+    expect(defaultAnnouncement).toContain('Become Class-D.');
+    const lower = defaultAnnouncement.toLowerCase();
+    for (const banned of ['democracy', 'helldiver', 'super earth', 'look familiar', 'elite force', 'become a hero', 'become the legend', 'could be next', 'decision of your life']) {
+      expect(lower).not.toContain(banned);
+    }
   });
 });

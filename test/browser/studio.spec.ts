@@ -8,7 +8,7 @@ test('default recruitment announcement exposes complete editable markup examples
   const editor = page.locator('textarea');
   const value = await editor.inputValue();
   expect(value).toContain('Secure. Contain. Protect.');
-  expect(value).toContain('Become Class D.');
+  expect(value).toContain('Become Class-D.');
   for (const sample of [
     '<start>', '<end>', '<pause seconds="0.5"/>',
     '<pitch value="1.2">', '</pitch>', '<volume value="0.7">', '</volume>',
@@ -23,7 +23,8 @@ test('default recruitment announcement exposes complete editable markup examples
   expect(typography.overlay).toEqual(typography.field);
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 90_000 });
   await expect(page.locator('.announcement-player')).toBeVisible();
-  await expect(page.locator('.annotated-editor .token-error').filter({ hasText: /^</ })).toHaveCount(0);
+  await expect(page.locator('.annotated-editor .token-error')).toHaveCount(0);
+  await expect(page.locator('.annotated-editor .token-synthesized').filter({ hasText: /^(Become|Class-D)$/ })).toHaveCount(2);
 });
 
 test('voice post-processing controls default neutral and scope insertion stays local to speech', async ({ page }) => {
