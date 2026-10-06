@@ -37,10 +37,16 @@ const captionLines = CAPTION.map((text) => ({ text, path: textPath(text), cells:
 const steps = ref<StartupStep[]>([]);
 const checking = ref(true);
 const entered = ref(false);
-const failed = ref(false);
+const failure = ref<string>();
 const now = ref(performance.now());
 const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 const failedStep = computed(() => steps.value.find((step) => step.status === 'fail'));
+const errorLines = computed(() => failure.value === undefined ? [] : [
+  `step: ${failedStep.value?.label ?? 'startup'}`,
+  `reason: ${failedStep.value?.detail || failure.value}`,
+  `environment: ${navigator.userAgent}`,
+  'startup halted',
+]);
 const startedAt = new Map<string, number>();
 const frozenDots = new Map<string, number>();
 const log = ref<HTMLElement>();
@@ -82,7 +88,7 @@ function record(step: StartupStep): void {
   }
 }
 
-watch(steps, () => nextTick(() => {
+watch([steps, failure], () => nextTick(() => {
   if (log.value) log.value.scrollTop = log.value.scrollHeight;
 }), { deep: true });
 
@@ -97,10 +103,10 @@ onMounted(async () => {
   const { signal } = controller;
   try {
     await checkStartupCapabilities(signal, record);
-  } catch {
+  } catch (error) {
     if (signal.aborted) return;
     checking.value = false;
-    failed.value = true;
+    failure.value = error instanceof Error ? error.message : 'unknown error';
     stopClock();
     return;
   }
@@ -120,14 +126,7 @@ onBeforeUnmount(() => {
 <template>
   <main v-if="!entered" class="terminal-entry" lang="en">
     <div class="terminal-entry__scanlines" data-testid="terminal-scanlines" aria-hidden="true" />
-    <section v-if="failed" class="terminal-entry__message" role="alert" data-testid="terminal-error">
-      <p v-if="failedStep" class="terminal-entry__fail-line">
-        [FAIL] {{ failedStep.label }}<br>
-        <span class="terminal-entry__detail">{{ failedStep.detail }}</span>
-      </p>
-      CASSIE PLUS could not load on this device. CASSIE PLUS requires a standard Chromium browser with full support for the required capabilities.
-    </section>
-    <section v-else class="terminal-entry__card" aria-label="CASSIE PLUS Terminal">
+    <section class="terminal-entry__card" aria-label="CASSIE PLUS Terminal">
       <h1 class="terminal-entry__wordmark" aria-label="C.A.S.S.I.E.+">
         <svg :viewBox="`0 0 ${GRID_WIDE} ${GRID_HIGH}`" shape-rendering="crispEdges" aria-hidden="true" focusable="false">
           <path :d="wordmarkPath" fill="currentColor" />
@@ -144,11 +143,14 @@ onBeforeUnmount(() => {
           </div>
           <div v-if="step.detail" class="terminal-entry__detail">{{ step.detail }}</div>
         </div>
-        <span class="terminal-entry__cursor" aria-hidden="true" />
         <span ref="probe" class="terminal-entry__probe" aria-hidden="true">{{ '0'.repeat(PROBE_CHARS) }}</span>
+        <div v-if="errorLines.length" class="terminal-entry__error" role="alert" data-testid="terminal-error">
+          <div v-for="line in errorLines" :key="line">[ERROR] {{ line }}</div>
+        </div>
+        <span v-else class="terminal-entry__cursor" aria-hidden="true" />
       </div>
-      <p class="terminal-entry__status" :class="{ 'terminal-entry__status--ready': !checking }" role="status" data-testid="terminal-status">
-        {{ checking ? 'RUNNING STARTUP CHECKS' : 'SYSTEM READY' }}
+      <p class="terminal-entry__status" :class="{ 'terminal-entry__status--ready': !checking && !errorLines.length, 'terminal-entry__status--halted': errorLines.length > 0 }" role="status" data-testid="terminal-status">
+        {{ errorLines.length ? 'STARTUP HALTED' : checking ? 'RUNNING STARTUP CHECKS' : 'SYSTEM READY' }}
       </p>
     </section>
     <footer class="terminal-entry__caption" role="img" data-testid="terminal-caption" :aria-label="CAPTION.join('  ')">
@@ -306,8 +308,14 @@ onBeforeUnmount(() => {
 }
 
 [data-status='fail'] .terminal-entry__marker,
-.terminal-entry__fail-line {
+.terminal-entry__status--halted,
+.terminal-entry__error {
   color: var(--fail);
+}
+
+.terminal-entry__error {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .terminal-entry__caption {
@@ -340,18 +348,6 @@ onBeforeUnmount(() => {
 .terminal-entry__status {
   margin: 0;
   letter-spacing: 0.18em;
-}
-
-.terminal-entry__message {
-  z-index: 1;
-  margin-block: auto;
-  width: min(100%, 46rem);
-  line-height: 1.7;
-  text-align: center;
-}
-
-.terminal-entry__fail-line {
-  margin: 0 0 16px;
 }
 
 @media (prefers-reduced-motion: reduce) {

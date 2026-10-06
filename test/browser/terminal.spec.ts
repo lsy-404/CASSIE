@@ -108,29 +108,65 @@ test('dots stop growing and stay as they were when a step finishes', async ({ pa
   expect(await dots.textContent()).toBe(frozen);
 });
 
+const haltedBoot = async (page: import('@playwright/test').Page, failingStep: string) => {
+  const log = page.getByTestId('terminal-log');
+  const error = page.getByTestId('terminal-error');
+  await expect(error).toBeVisible({ timeout: 30_000 });
+  await expect(log).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'C.A.S.S.I.E.+' })).toBeVisible();
+  await expect(page.getByTestId('terminal-scanlines')).toBeVisible();
+  await expect(page.getByTestId('terminal-caption')).toBeVisible();
+  const failLine = page.locator('[data-testid="terminal-step"][data-status="fail"]');
+  await expect(failLine).toHaveCount(1);
+  await expect(failLine).toContainText('[FAIL]');
+  await expect(failLine).toContainText(failingStep);
+  await expect(failLine.locator('.terminal-entry__marker')).toHaveCSS('color', 'rgb(248, 113, 113)');
+  await expect(log.getByTestId('terminal-error')).toHaveCount(1);
+  const order = await log.evaluate((el) => [...el.children].map((child) => child.getAttribute('data-testid') ?? child.className));
+  expect(order.at(-1)).toBe('terminal-error');
+  expect(order.slice(0, -1).every((item) => item === 'terminal-step' || item === 'terminal-entry__probe')).toBe(true);
+  const lines = error.locator('div');
+  const texts = await lines.allTextContents();
+  expect(texts.every((text) => text.startsWith('[ERROR] '))).toBe(true);
+  expect(texts[0]).toContain(failingStep);
+  expect(texts.at(-1)).toBe('[ERROR] startup halted');
+  await expect(error).toHaveCSS('color', 'rgb(248, 113, 113)');
+  await expect(page.getByTestId('terminal-status')).toHaveText('STARTUP HALTED');
+  await expect(page.getByTestId('terminal-status')).toHaveCSS('color', 'rgb(248, 113, 113)');
+  await expect(page.locator('textarea')).toHaveCount(0);
+  await expect(page.getByText('could not load on this device')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(await log.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  return texts;
+};
+
 for (const api of ['Worker', 'WebAssembly'] as const) {
-  test(`missing ${api} displays centered device failure and never reaches the studio`, async ({ page }) => {
-    await page.addInitScript((name) => Object.defineProperty(globalThis, name, { configurable: true, value: undefined }), api);
-    await page.goto('/');
-    const error = page.getByTestId('terminal-error');
-    await expect(error).toBeVisible();
-    await expect(error).toContainText('CASSIE PLUS could not load on this device');
-    await expect(error).toContainText('[FAIL]');
-    await expect(error).toContainText('Chromium');
-    await expect(page.locator('textarea')).toHaveCount(0);
-    const box = await error.boundingBox();
-    const viewport = page.viewportSize()!;
-    expect(Math.abs(box!.x + box!.width / 2 - viewport.width / 2)).toBeLessThan(5);
-    expect(Math.abs(box!.y + box!.height / 2 - viewport.height / 2)).toBeLessThan(80);
-  });
+  for (const size of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`missing ${api} keeps the boot log, marks FAIL and appends ERROR lines at ${size.width}px`, async ({ page }, info) => {
+      await page.setViewportSize(size);
+      await page.addInitScript((name) => Object.defineProperty(globalThis, name, { configurable: true, value: undefined }), api);
+      await page.goto('/');
+      const texts = await haltedBoot(page, 'probe browser capabilities');
+      expect(texts[1]).toContain(`missing ${api}`);
+      await page.waitForTimeout(1500);
+      await expect(page.locator('textarea')).toHaveCount(0);
+      await page.screenshot({ path: info.outputPath(`halted-${api}-${size.width}.png`) });
+    });
+  }
 }
 
-test('a real failed WASM fetch blocks the terminal', async ({ page }) => {
+test('a real failed WASM fetch halts the boot log in place', async ({ page }) => {
   await page.route('**/assets/world-*.wasm', (route) => route.abort());
   await page.goto('/');
-  await expect(page.getByTestId('terminal-error')).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId('terminal-error')).toContainText('instantiate WORLD wasm module');
-  await expect(page.locator('textarea')).toHaveCount(0);
+  const texts = await haltedBoot(page, 'instantiate WORLD wasm module');
+  expect(texts.join('\n')).toContain('reason:');
+});
+
+test('a worker script that cannot be fetched reports the browser error detail, not a generic start failure', async ({ page }) => {
+  await page.route('**/assets/phoneme.worker-*.js', (route) => route.fulfill({ status: 404, body: 'missing' }));
+  await page.goto('/');
+  const texts = await haltedBoot(page, 'spawn phoneme worker');
+  expect(texts[1]).toMatch(/Worker script failed: /);
 });
 
 test('a phonemizer echo cannot pass the startup pronunciation check', async ({ page }) => {
@@ -149,8 +185,7 @@ test('a phonemizer echo cannot pass the startup pronunciation check', async ({ p
     };
   });
   await page.goto('/');
-  await expect(page.getByTestId('terminal-error')).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator('textarea')).toHaveCount(0);
+  await haltedBoot(page, 'spawn phoneme worker');
 });
 
 test('base64 URL preloads Unicode text, fine voice settings and locale after start', async ({ page }) => {

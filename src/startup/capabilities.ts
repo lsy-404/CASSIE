@@ -9,7 +9,8 @@ interface FfmpegManifest {
   parts: { file: string; bytes: number; sha256: string }[];
 }
 
-const CHECK_TIMEOUT_MS = 20_000;
+// The phoneme worker compiles a 1.3 MB espeak build and low-end phones on slow links need well over 20 s for it.
+const CHECK_TIMEOUT_MS = 90_000;
 const LINE_PACING_MS = 40;
 
 type WorkerReply = { type?: string; proof?: Float32Array; error?: string; message?: string; step?: StartupStep };
@@ -23,13 +24,20 @@ async function sha256(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+function describeWorkerError(event: ErrorEvent): string {
+  const where = event.filename ? ` at ${event.filename.split('/').pop()}:${event.lineno}:${event.colno}` : '';
+  return event.message ? `${event.message}${where}` : 'the browser gave no detail, the worker script was blocked or could not be fetched or parsed';
+}
+
 function requestWorker(worker: Worker, message: unknown, valid: (reply: WorkerReply) => boolean, signal: AbortSignal, onStep?: StepHandler, transfer: Transferable[] = []): Promise<void> {
   return new Promise((resolve, reject) => {
-    const timeout = globalThis.setTimeout(() => finish(new Error('Capability check timed out.')), CHECK_TIMEOUT_MS);
+    const started = performance.now();
+    const timeout = globalThis.setTimeout(() => finish(new Error(`Worker gave no reply within ${CHECK_TIMEOUT_MS / 1000} s (${elapsed(started)} elapsed).`)), CHECK_TIMEOUT_MS);
     const cleanup = () => {
       globalThis.clearTimeout(timeout);
       worker.removeEventListener('message', onMessage);
       worker.removeEventListener('error', onError);
+      worker.removeEventListener('messageerror', onMessageError);
       worker.terminate();
     };
     const onAbort = () => finish(new DOMException('Startup check cancelled.', 'AbortError'));
@@ -51,9 +59,14 @@ function requestWorker(worker: Worker, message: unknown, valid: (reply: WorkerRe
         finish(new Error('A required audio capability returned an invalid result.'));
       }
     };
-    const onError = () => finish(new Error('A required audio worker could not start.'));
+    const onError = (event: ErrorEvent) => {
+      event.preventDefault();
+      finish(new Error(`Worker script failed: ${describeWorkerError(event)}.`));
+    };
+    const onMessageError = () => finish(new Error('Worker reply could not be deserialized.'));
     worker.addEventListener('message', onMessage);
     worker.addEventListener('error', onError);
+    worker.addEventListener('messageerror', onMessageError);
     signal.addEventListener('abort', onAbort, { once: true });
     if (signal.aborted) {
       onAbort();
@@ -61,8 +74,8 @@ function requestWorker(worker: Worker, message: unknown, valid: (reply: WorkerRe
     }
     try {
       worker.postMessage(message, transfer);
-    } catch {
-      finish(new Error('A required audio worker could not be contacted.'));
+    } catch (error) {
+      finish(new Error(`Worker could not be contacted: ${error instanceof Error ? error.message : 'unknown error'}.`));
     }
   });
 }
