@@ -15,7 +15,12 @@
 
 /audio/*
   Cache-Control: public, max-age=86400
+
+/audio/*.opus
   Content-Type: audio/ogg
+
+/audio/LICENSE.txt
+  Content-Type: text/plain; charset=utf-8
 
 /ffmpeg/ffmpeg-core.js
   Content-Type: text/javascript

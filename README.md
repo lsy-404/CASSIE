@@ -10,6 +10,11 @@ The interface supports Chinese and English, initially follows the browser langua
 
 The terminal layout references the game's [official CASSIE monitor](https://en.scpslgame.com/index.php?title=File:LCZ_Screen_CASSIE_Scan_Complete.png). Its editable default is an original SCP recruitment broadcast with markup examples. One long playback bar also shows rendering progress, supports already-rendered audio and updates the current time from the media clock. The ribbon provides WAV and Opus downloads.
 
+## Deployment
+
+- **Use Overture** (default): [Overture](https://github.com/lsy-404/overture)
+- **Deploy manually**: build with pnpm and publish `dist/` to any static host or Cloudflare Static Assets. `wrangler.jsonc` names the maintainer's own worker and domain.
+
 ## Interface
 
 The studio is laid out like an editor: a title bar, a Word-style ribbon, an activity bar with a collapsible side bar, the announcement editor with a line-number gutter and token highlighting, a bottom panel (Player and Analysis) and a status bar. The theme is the Fluent dark scheme with a white accent and neutral greys; the Fluent token overrides live in `src/theme.css`, while the shared diamond slider thumb and scrollbar styling are in `src/style.css`.
@@ -35,6 +40,14 @@ pnpm test:browser
 ```
 
 Install the browser once with `pnpm exec playwright install chromium` before browser tests. Tests live in `test/`.
+
+### Cloudflare and Overture packaging
+
+`pnpm deploy:check` and `pnpm run deploy` publish **Workers Static Assets** with `wrangler.jsonc`; change its account ID and domain first. There is no server script, database or server-side audio processing, so no R2 bucket is needed. Hashed application assets cache for one year, audio and FFmpeg resources for one day, and the bank manifest revalidates.
+
+FFmpeg's single-thread core exceeds Cloudflare's per-asset limit, so `scripts/prepare-ffmpeg.mjs` gzips the pinned npm core and splits it into pieces of at most 8 MiB; the browser verifies SHA-256 hashes and decompresses locally with `DecompressionStream`.
+
+`pnpm package:overture` writes `overture.json`, `overture.tar.gz` and `SHA256SUMS` following the [Overture schema](https://github.com/lsy-404/overture/blob/main/docs/RECIPE.md). The archive holds `dist/` (including `audio/LICENSE.txt` and `licenses/`) and a small Worker that forwards to the assets binding. The packager enforces the 64 MiB asset, 24 MiB archive and 20,000-entry limits.
 
 ## Announcement syntax
 
@@ -125,33 +138,17 @@ This example uses Node.js. In browser code, encode the JSON with `TextEncoder` b
 
 Supported option keys are `pitch` (0.65–1.35), `volume` (0–1), `gap` (0–0.8 seconds), `rate` (0.5–2), and `voice`. Voice keys are `pitchSemitones`, `loudnessDb`, `tension`, `breathiness`, and `formantSemitones`, with the ranges given above. The `<voice>` tag uses `pitch`, `loudness`, and `formant` for the corresponding scoped fields.
 
-## Cloudflare deployment
-
-```sh
-pnpm deploy:check
-pnpm run deploy
-```
-
-`wrangler.jsonc` deploys **Workers Static Assets** to the configured account and custom domain. There is no server script, database, runtime API, or server-side audio processing. For your own deployment, change the account ID and domain first. Missing assets return 404.
-
-Hashed application assets cache for one year; audio and FFmpeg resources cache for one day, while the bank manifest revalidates. The current bank fits Static Assets, so this deployment needs no R2 bucket.
-
-FFmpeg's single-thread core is larger than Cloudflare's per-asset limit. `scripts/prepare-ffmpeg.mjs` compresses the pinned npm core with gzip and splits it into pieces no larger than 8 MiB during installation/build. The browser verifies SHA-256 hashes and decompresses the module locally with `DecompressionStream`; use a modern browser. Generated core assets are ignored by Git and included in deployment output. Release archives and checksums accompany the deployment package.
-
-## Overture
-
-The Release includes `overture.json`, `overture.tar.gz` and `SHA256SUMS`, following the current [Overture schema](https://github.com/lsy-404/overture/blob/main/docs/RECIPE.md).
-
-Open your Overture deployment with `?src=lsy-404/CASSIE`, select a release and your Cloudflare account, then choose a Worker name and optional custom domain. The package declares no storage resources or app secrets. Its small deployment entry only forwards to the static assets binding. Ordinary Wrangler deployment uses assets alone.
-
-Build the package with `pnpm package:overture`. The packager checks the supported Overture version's 64 MiB asset budget, 24 MiB archive budget and 20,000-entry archive budget. FFmpeg remains compressed inside the package and is decompressed only in the visitor's browser.
-
 ## Licensing and sources
 
-Program code is **AGPL-3.0-only**, see [LICENSE](LICENSE). The supplied SCP:SL voice recordings and their compressed adaptations retain **CC BY-SA 3.0**, with attribution and extraction provenance in `data/` and the served license page. The tab icon is the SCP Foundation emblem from Wikimedia Commons (CC BY-SA 3.0, modified); it is under its own license, separate from the AGPL-3.0 code license, and regenerated with `node scripts/build-icons.mjs`. Third-party packages retain their own licenses. No game executable or proprietary game source is included.
+| Material | License |
+| --- | --- |
+| Program code | AGPL-3.0-only, see [LICENSE](LICENSE) |
+| SCP: Secret Laboratory CASSIE audio and the bundled Opus adaptations (`public/audio`) | CC BY-SA 3.0, credit Northwood Studios and contributors; the files were re-encoded and some cut to excerpts, see [LICENSE-AUDIO.md](LICENSE-AUDIO.md) and `public/audio/LICENSE.txt` |
+| Tab icon (SCP Foundation emblem, modified) | CC BY-SA 3.0, from [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:SCP_Foundation_(emblem).svg) |
+| Third-party packages | Their own licenses, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) |
 
-Source code and complete build instructions are available in this repository. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for decoder and FFmpeg source locations and licenses.
+The AGPL does not relicense the audio or the icon. No game executable or proprietary game source is included. Source and build instructions are in this repository; extraction provenance is in `data/`.
 
 ## Acknowledgements
 
-Thanks to [this video](https://www.bilibili.com/video/BV1vt8G6qEeg). CASSIE PLUS is developed entirely independently: it does not reference that video, involves no cooperation with it, and has no affiliation or subordination to the video, its author or related works.
+Thanks to BlueArchive-ba for [this video](https://www.bilibili.com/video/BV1vt8G6qEeg). CASSIE PLUS is developed entirely independently: it does not reference the video, involves no cooperation with BlueArchive-ba, and has no affiliation or subordination to the video, its author or related works.

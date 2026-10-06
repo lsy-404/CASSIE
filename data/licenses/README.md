@@ -7,6 +7,10 @@ The extracted CASSIE speech and background audio is from SCP: Secret Laboratory 
 - Evidence: [scpsl-license.txt](scpsl-license.txt), copied from the installed game directory.
 - CASSIE behavior reference: [Official SCP: Secret Laboratory Wiki: C.A.S.S.I.E.](https://en.scpslgame.com/index.php?title=C.A.S.S.I.E.).
 
+- Legal code: [CC-BY-SA-3.0.txt](CC-BY-SA-3.0.txt), the plain-text legal code of CC BY-SA 3.0 Unported from https://creativecommons.org/licenses/by-sa/3.0/legalcode.txt , retrieved 2026-10-06 (sha256 `3f941b3b89cf7b8370ceb83cc76d2120d471b58735d8ca60238a751a48d7f72f`), unmodified. An identical copy is served as `public/licenses/CC-BY-SA-3.0.txt`.
+- Notice shipped with the audio: [public/audio/LICENSE.txt](../../public/audio/LICENSE.txt).
+- Caveat: the game's license file states the work is licensed under "Creative Commons Attribution-ShareAlike 3.0 International" but links the 3.0 Unported legal code, and it states that the remaining source code is all rights reserved. The exceptions list does not name the CASSIE audio, which is why CC BY-SA 3.0 is applied to it, but the file does not enumerate the audio assets explicitly.
+
 # Site icon attribution
 
 The tab icon (`public/favicon.svg`, `public/favicon.ico`, `public/apple-touch-icon.png`) is derived from the SCP Foundation emblem.
