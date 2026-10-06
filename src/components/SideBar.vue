@@ -2,8 +2,8 @@
 import { t } from "../i18n";
 import { SIDE_VIEW_LABELS, useStudio } from "../studio";
 import HelpView from "./HelpView.vue";
-import OutlineView from "./OutlineView.vue";
 import PhonemesView from "./PhonemesView.vue";
+import SettingsView from "./SettingsView.vue";
 
 const studio = useStudio();
 </script>
@@ -13,7 +13,7 @@ const studio = useStudio();
     <aside class="sidebar" :aria-label="t(SIDE_VIEW_LABELS[studio.sideView])">
       <h2 class="sidebar-title">{{ t(SIDE_VIEW_LABELS[studio.sideView]) }}</h2>
       <div class="sidebar-scroll">
-        <OutlineView v-show="studio.sideView === 'outline'" id="sidebar-outline" />
+        <SettingsView v-show="studio.sideView === 'settings'" id="sidebar-settings" />
         <PhonemesView v-show="studio.sideView === 'phonemes'" id="sidebar-phonemes" />
         <HelpView v-show="studio.sideView === 'help'" id="sidebar-help" />
       </div>

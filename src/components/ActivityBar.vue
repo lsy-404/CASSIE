@@ -8,7 +8,7 @@ import AppIcon from "./AppIcon.vue";
 const studio = useStudio();
 const list = ref<HTMLElement | null>(null);
 
-const ICON_BY_VIEW: Record<(typeof ACTIVITY_VIEWS)[number], IconName> = { outline: "outline", phonemes: "phoneme", help: "help" };
+const ICON_BY_VIEW: Record<(typeof ACTIVITY_VIEWS)[number], IconName> = { settings: "settings", phonemes: "phoneme", help: "help" };
 
 const rovingView = computed(() => ACTIVITY_VIEWS.find((view) => view === studio.sideView) ?? ACTIVITY_VIEWS[0]);
 function selected(view: (typeof ACTIVITY_VIEWS)[number]) { return studio.sideBarOpen && studio.sideView === view; }

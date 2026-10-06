@@ -60,6 +60,4 @@ function updateSlider(value: number | string): void {
 .fine-control :deep(.fluent-field) { display: block; }
 .fine-control :deep(.fluent-field__label) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .fine-control :deep(.fluent-field__input) { min-height: 30px; padding: 4px 6px; border-radius: 2px; font: 11px ui-monospace, monospace; }
-.fine-control.compact { grid-template-columns: 72px 52px; gap: 6px; }
-.fine-control.compact :deep(.fluent-field__input) { min-height: 20px; height: 20px; padding: 0 4px; }
 </style>

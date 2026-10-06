@@ -27,17 +27,17 @@ describe("ribbon configuration", () => {
     expect(SCOPES.sync).toEqual({ open: "<sync>", close: "</sync>" });
   });
 
-  it("hosts the global mix, voice processing, strict toggle and the only export commands", () => {
-    const sliders = commands.flatMap((command) => command.kind === "slider" ? [command.model] : []);
-    expect(sliders).toEqual(["pitch", "volume", "gap", "rate", "voicePitch", "loudness", "tension", "breathiness", "formant"]);
-    expect(commands.find((command) => command.id === "synthesis")).toMatchObject({ action: "toggleSynthesis" });
+  it("keeps only editing, render, export and sync commands", () => {
+    expect(RIBBON_GROUPS.map((group) => group.id)).toEqual(["render", "export", "markers", "effects", "timing", "reading", "advanced"]);
+    expect(commands.every((command) => command.kind !== "number" ? "action" in command : command.model === "fitSeconds")).toBe(true);
+    expect(RIBBON_GROUPS.find((group) => group.id === "render")?.commands.map((command) => command.id)).toEqual(["render", "cancel", "live"]);
     expect(RIBBON_GROUPS.find((group) => group.id === "export")?.commands.map((command) => command.id)).toEqual(["wav", "opus"]);
   });
 
   it("has a label and tip in every locale", async () => {
     vi.stubGlobal("document", { documentElement: {}, title: "", createElement: () => ({}) });
     const { i18n } = await import("../src/i18n");
-    const keys = RIBBON_GROUPS.flatMap((group) => [group.label, ...(group.tip ? [group.tip] : []), ...group.commands.flatMap((command) => [command.label, ...(command.tip ? [command.tip] : [])])]);
+    const keys = RIBBON_GROUPS.flatMap((group) => [group.label, ...group.commands.flatMap((command) => [command.label, ...(command.tip ? [command.tip] : [])])]);
     for (const locale of ["en", "zh"] as const) {
       const missing = keys.filter((key) => !i18n.global.te(key, locale));
       expect(missing, locale).toEqual([]);

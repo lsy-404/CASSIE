@@ -20,22 +20,18 @@ export const ICONS = {
   fit: ["M7 3h10", "M7 21h10", "M8 3c0 5 8 6 8 9s-8 4-8 9", "M16 3c0 5-8 6-8 9"],
   download: ["M12 4v11", "M7 11l5 5 5-5", "M5 20h14"],
   panel: ["M4 5h16v14H4z", "M4 14h16"],
-  outline: ["M4 6h16", "M8 12h12", "M12 18h8"],
+  settings: ["M4 7h9", "M17 7h3", "M15 5v4", "M4 17h3", "M11 17h9", "M9 15v4"],
   help: ["M4 12a8 8 0 1 0 16 0 8 8 0 0 0-16 0z", "M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7", "M12 17v.01"],
   globe: ["M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0z", "M3 12h18", "M12 3c3 3 3 15 0 18", "M12 3c-3 3-3 15 0 18"],
   external: ["M14 4h6v6", "M20 4l-9 9", "M18 14v5H5V6h5"],
   file: ["M6 3h8l4 4v14H6z", "M14 3v4h4"],
   warning: ["M12 4l9 16H3z", "M12 10v4", "M12 17v.01"],
-  tension: ["M3 12c3-8 6 8 9 0s6 8 9 0"],
-  breath: ["M4 8h10a3 3 0 1 0-3-3", "M4 12h14a3 3 0 1 1-3 3", "M4 16h6"],
-  formant: ["M3 18c3 0 3-12 6-12s3 12 6 12 3-8 6-8"],
   info: ["M4 12a8 8 0 1 0 16 0 8 8 0 0 0-16 0z", "M12 11v5", "M12 8v.01"],
   error: ["M4 12a8 8 0 1 0 16 0 8 8 0 0 0-16 0z", "M9 9l6 6", "M15 9l-6 6"],
   chevronDown: ["M6 9l6 6 6-6"],
   chevronUp: ["M6 15l6-6 6 6"],
   chevronLeft: ["M15 6l-6 6 6 6"],
   chevronRight: ["M9 6l6 6-6 6"],
-  tag: ["M4 4h8l8 8-8 8-8-8z", "M8.5 8.5v.01"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type IconName = keyof typeof ICONS;

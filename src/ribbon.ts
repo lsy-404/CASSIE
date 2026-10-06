@@ -2,10 +2,8 @@ import type { IconName } from "./icons";
 import { FIT_RANGE, type MarkerName, type ScopeName } from "./markup";
 import type { Studio } from "./studio";
 
-export type SliderModel = "pitch" | "volume" | "gap" | "rate" | "voicePitch" | "loudness" | "tension" | "breathiness" | "formant";
-
 export type ActionId =
-  | "render" | "cancel" | "toggleLive" | "toggleSynthesis" | "exportWav" | "exportOpus"
+  | "render" | "cancel" | "toggleLive" | "exportWav" | "exportOpus"
   | "scope.fit"
   | `marker.${MarkerName}` | `scope.${ScopeName}`;
 
@@ -37,16 +35,8 @@ export interface NumberCommand extends CommandBase {
   default: number;
 }
 
-export interface SliderCommand extends CommandBase {
-  kind: "slider";
-  model: SliderModel;
-  min: number;
-  max: number;
-  step: number;
-}
-
-export type RibbonCommand = ButtonCommand | NumberCommand | SliderCommand;
-export interface RibbonGroup { id: string; label: string; /** i18n key of the group tooltip */ tip?: string; commands: RibbonCommand[] }
+export type RibbonCommand = ButtonCommand | NumberCommand;
+export interface RibbonGroup { id: string; label: string; commands: RibbonCommand[] }
 
 const canEdit: Predicate = (s) => Boolean(s.bank) && !s.encodingOpus;
 const canRender: Predicate = (s) => s.hasText && !s.busy;
@@ -57,16 +47,12 @@ function marker(name: MarkerName, label: string, icon: IconName, size: "large" |
 function scope(name: ScopeName, label: string, icon: IconName, size: "large" | "small" = "small"): ButtonCommand {
   return { id: `scope.${name}`, label, icon, action: `scope.${name}`, size, enabled: canEdit };
 }
-function slider(model: SliderModel, label: string, icon: IconName, min: number, max: number, step: number, tip?: string): SliderCommand {
-  return { id: `slider.${model}`, kind: "slider", label, icon, model, min, max, step, ...(tip ? { tip } : {}) };
-}
 
 export const RIBBON_GROUPS: RibbonGroup[] = [
   { id: "render", label: "group.render", commands: [
     { id: "render", label: "cmd.render", icon: "play", action: "render", size: "large", tip: "tip.render", enabled: canRender },
     { id: "cancel", label: "cancel", icon: "stop", action: "cancel", enabled: (s) => s.busy },
     { id: "live", label: "liveRender", icon: "live", action: "toggleLive", pressed: (s) => s.liveRender, tip: "liveHelp" },
-    { id: "synthesis", label: "unrecordedWords", icon: "phoneme", action: "toggleSynthesis", pressed: (s) => s.synthesizeUnrecorded, tip: "unrecordedHelp" },
   ] },
   { id: "export", label: "group.export", commands: [
     { id: "wav", label: "wavShort", icon: "download", action: "exportWav", size: "large", tip: "tip.wav", enabled: (s) => Boolean(s.downloadUrl) },
@@ -89,18 +75,5 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
   ] },
   { id: "advanced", label: "group.advanced", commands: [
     { ...scope("sync", "sync", "sync", "large"), tip: "tip.sync" },
-  ] },
-  { id: "mix", label: "group.mix", commands: [
-    slider("pitch", "pitch", "pitch", 0.65, 1.35, 0.01),
-    slider("volume", "volume", "volume", 0, 1, 0.01),
-    slider("gap", "wordGap", "spacing", 0, 0.8, 0.01),
-    slider("rate", "rate", "rate", 0.5, 2, 0.01),
-  ] },
-  { id: "processing", label: "group.processing", tip: "voiceHelp", commands: [
-    slider("voicePitch", "voicePitch", "pitch", -12, 12, 0.1),
-    slider("loudness", "loudness", "volume", -24, 12, 0.1, "tip.loudness"),
-    slider("tension", "tension", "tension", -1, 1, 0.01, "tip.tension"),
-    slider("breathiness", "breathiness", "breath", 0, 1, 0.01),
-    slider("formant", "formant", "formant", -6, 6, 0.1),
   ] },
 ];

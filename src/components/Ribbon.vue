@@ -5,7 +5,6 @@ import { RIBBON_GROUPS, type ButtonCommand, type NumberCommand, type RibbonComma
 import { boundedNumber } from "../editor";
 import { useStudio } from "../studio";
 import AppIcon from "./AppIcon.vue";
-import FineControl from "./FineControl.vue";
 
 const studio = useStudio();
 const body = ref<HTMLElement | null>(null);
@@ -25,7 +24,7 @@ function layout(group: RibbonGroup): Item[] {
     run = [];
   };
   for (const command of group.commands) {
-    if (command.kind !== "number" && command.kind !== "slider" && command.size === "large") { flush(); items.push({ large: command }); }
+    if (command.kind !== "number" && command.size === "large") { flush(); items.push({ large: command }); }
     else run.push(command);
   }
   flush();
@@ -65,7 +64,7 @@ function commitNumber(command: NumberCommand) {
       <button :class="['rb-scroll', { idle: !overflow.left }]" type="button" tabindex="-1" :aria-label="t('ribbonScrollLeft')" @click="scrollBody(-1)"><AppIcon name="chevronLeft" /></button>
       <div id="ribbon-body" ref="body" class="ribbon-body" @scroll.passive="measure">
         <div ref="groupsEl" class="ribbon-groups">
-          <div v-for="group in RIBBON_GROUPS" :key="group.id" class="rb-group" role="group" :aria-label="t(group.label)" :title="group.tip ? t(group.tip) : undefined">
+          <div v-for="group in RIBBON_GROUPS" :key="group.id" class="rb-group" role="group" :aria-label="t(group.label)">
             <div class="rb-commands">
               <template v-for="(item, index) in layouts.get(group.id)" :key="index">
                 <button
@@ -95,11 +94,6 @@ function commitNumber(command: NumberCommand) {
                         @change="commitNumber(command)"
                       />
                     </label>
-                    <div v-else-if="command.kind === 'slider'" class="rb-slider" :data-command="command.id">
-                      <AppIcon :name="command.icon" />
-                      <span :title="tip(command)">{{ t(command.label) }}</span>
-                      <FineControl v-model="studio[command.model]" class="compact" :min="command.min" :max="command.max" :step="command.step" :label="t(command.label)" />
-                    </div>
                     <button
                       v-else
                       class="rb-btn rb-small"
@@ -145,7 +139,7 @@ function commitNumber(command: NumberCommand) {
 .rb-btn[aria-pressed="true"] { background: var(--ide-active); border-color: #8a8a8a; }
 .rb-large { flex-direction: column; justify-content: center; gap: 4px; min-width: 56px; height: 66px; padding: 4px 8px; font-size: 12px; }
 .rb-small { height: 22px; padding: 0 8px; font-size: 12px; }
-.rb-number, .rb-slider { display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; font-size: 12px; color: #d4d4d4; white-space: nowrap; }
+.rb-number { display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; font-size: 12px; color: #d4d4d4; white-space: nowrap; }
 .rb-number input { width: 64px; height: 20px; min-height: 0; padding: 0 4px; border: 1px solid var(--ide-border-strong); border-radius: 2px; background: #1e1e1e; color: #fff; font: 12px var(--ide-mono); }
 .rb-btn:focus-visible, .rb-scroll:focus-visible, .ribbon-show:focus-visible, .rb-number input:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
 .rb-scroll.idle { visibility: hidden; }

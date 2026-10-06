@@ -10,7 +10,7 @@ test('language follows browser locale and persists the selected translation', as
   await expect(page).toHaveTitle('CASSIE PLUS · Announcement editor');
   await expect(page.getByRole('button', { name: 'Live render' })).toBeVisible();
   await expect(page.getByRole('slider', { name: /Speech rate/ })).toHaveValue('1');
-  await expect(page.getByRole('group', { name: 'Voice processing' })).toHaveAttribute('title', /Uses the browser's WORLD DSP/);
+  await expect(page.locator('[data-section="processing"]')).toContainText(/Uses the browser's WORLD DSP/);
   await expect(page.getByRole('slider', { name: 'Pitch shift (semitones)' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Language' }).click();
@@ -18,7 +18,7 @@ test('language follows browser locale and persists the selected translation', as
   await expect(page.locator('.brand')).toContainText('CENTRAL AUTONOMIC SERVICE SYSTEM FOR INTERNAL EMERGENCIES');
   await expect(page.getByRole('button', { name: '实时渲染' })).toBeVisible();
   await expect(page.getByRole('slider', { name: /语速/ })).toBeVisible();
-  await expect(page.getByRole('group', { name: '语音后处理' })).toHaveAttribute('title', /使用浏览器内的 WORLD DSP/);
+  await expect(page.locator('[data-section="processing"]')).toContainText(/使用浏览器内的 WORLD DSP/);
   await expect(page.getByRole('slider', { name: '音调偏移（半音）' })).toBeVisible();
 
   await page.reload();

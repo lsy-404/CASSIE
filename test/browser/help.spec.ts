@@ -12,8 +12,8 @@ test('the help view lists every tag and hosts the colour legend, which is gone f
   await expect(help).toContainText('严格模式');
   const legend = help.getByTestId('legend');
   for (const label of ['识别命令', '原始录音', '合成音频', '无法合成', '有修复建议', '被严格模式阻止', '提示音与效果', '同步音轨']) await expect(legend).toContainText(label);
-  await openSideView(page, '大纲');
-  await expect(page.locator('.sidebar-title')).toHaveText('大纲');
+  await openSideView(page, '设置');
+  await expect(page.locator('.sidebar-title')).toHaveText('设置');
 });
 
 test('the player progress bar has exactly one marker, the shared diamond thumb', async ({ page }) => {

@@ -43,7 +43,7 @@ test('voice post-processing controls default neutral and scope insertion stays l
   await expect(formant).toHaveAttribute('min', '-6');
   await expect(formant).toHaveAttribute('max', '6');
   await expect(formant).toHaveAttribute('step', '0.1');
-  await expect(page.getByRole('group', { name: '语音后处理' })).toHaveAttribute('title', /WORLD DSP/);
+  await expect(page.locator('[data-section="processing"]')).toContainText('WORLD DSP');
   await editor.fill('attention');
   await editor.evaluate((field: HTMLTextAreaElement) => field.setSelectionRange(0, field.value.length));
   await page.getByRole('button', { name: '语音作用范围', exact: true }).click();

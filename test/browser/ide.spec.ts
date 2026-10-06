@@ -21,16 +21,16 @@ test('the ribbon is one flat page showing every group with its caption and no ta
   await openStudio(page);
   await expect(page.locator('.ribbon [role="tab"]')).toHaveCount(0);
   const captions = await page.locator('.rb-caption').allTextContents();
-  expect(captions).toEqual(['渲染', '导出', '标记', '效果', '时序', '朗读时长', '高级', '全局混音', '语音后处理']);
+  expect(captions).toEqual(['渲染', '导出', '标记', '效果', '时序', '朗读时长', '高级']);
   await expect(page.locator('.rb-group').first()).toBeVisible();
-  for (const name of ['语速', '音调偏移（半音）', '气声']) await expect(page.getByRole('slider', { name, exact: true })).toBeVisible();
+  await expect(page.locator('.ribbon input[type="range"], .ribbon [role="switch"]')).toHaveCount(0);
   await expect(page.locator('.activitybar [role="tab"]')).toHaveCount(3);
   await expect(page.locator('.rb-group[aria-label="音素"], .rb-group[aria-label="视图"]')).toHaveCount(0);
-  await expect(page.locator('.sidebar-title')).toHaveText('大纲');
+  await expect(page.locator('.sidebar-title')).toHaveText('设置');
   await expect(page.locator('.panel-tabs [role="tab"]')).toHaveText([/^播放器$/, /^分析/]);
 });
 
-test('shortcuts toggle the side bar and render, and the outline moves the cursor', async ({ page }) => {
+test('shortcuts toggle the side bar and render, ', async ({ page }) => {
   await openStudio(page);
   const sidebar = page.locator('.sidebar');
   await expect(sidebar).toBeVisible();
@@ -39,11 +39,6 @@ test('shortcuts toggle the side bar and render, and the outline moves the cursor
   await page.keyboard.press('Control+b');
   await expect(sidebar).toBeVisible();
   await page.locator('textarea').fill('cassie\n<pause seconds="0.5"/>');
-  const pauseEntry = page.locator('.outline button').filter({ hasText: '<pause' });
-  await expect(pauseEntry).toHaveCount(1);
-  await pauseEntry.click();
-  await expect.poll(() => page.locator('textarea').evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(7);
-  await expect(page.locator('.statusbar')).toContainText('2');
   await page.locator('[data-command="live"]').click();
   await page.keyboard.press('Control+Enter');
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('src', /^blob:/, { timeout: 60_000 });
@@ -106,14 +101,42 @@ test('the ribbon can be hidden and shown from the keyboard and the toggle strip'
   await expect(page.locator('.ribbon-body')).toBeVisible();
 });
 
+test('the activity bar offers settings, phonemes and help and moves between them with the arrow keys', async ({ page }) => {
+  await openStudio(page);
+  const tabs = page.locator('.activitybar [role="tab"]');
+  await expect(tabs).toHaveCount(3);
+  await expect(tabs.nth(0)).toHaveAttribute('aria-label', '设置');
+  await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await tabs.nth(0).focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(tabs.nth(1)).toBeFocused();
+  await expect(page.locator('.sidebar-title')).toHaveText('音素');
+  await page.keyboard.press('End');
+  await expect(tabs.nth(2)).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(tabs.nth(0)).toBeFocused();
+  await expect(page.locator('.sidebar-title')).toHaveText('设置');
+});
+
+test('the settings view hosts the global mix, voice processing and the strict switch exactly once', async ({ page }) => {
+  await openStudio(page);
+  const settings = page.locator('#sidebar-settings');
+  await expect(settings).toBeVisible();
+  for (const name of ['游戏音高', '音量', '词间间隔', '语速', '音调偏移（半音）', '响度（dB）', '张力', '气声', '共振峰偏移（半音）']) await expect(settings.getByRole('slider', { name, exact: true })).toHaveCount(1);
+  await expect(settings.locator('[data-section="processing"]')).toContainText('张力');
+  await expect(settings.locator('[data-section="synthesis"]').getByRole('switch')).toBeChecked();
+  await expect(page.locator('input[type="range"]')).toHaveCount(10);
+});
+
 test('the compact side bar overlay closes on Escape and returns focus to the activity bar', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openStudio(page);
-  await openSideView(page, '大纲');
+  await expect(page.locator('.sidebar')).toBeHidden();
+  await openSideView(page, '设置');
   await expect(page.locator('.sidebar')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('.sidebar')).toBeHidden();
-  await expect(page.locator('.activitybar').getByRole('tab', { name: '大纲', exact: true })).toBeFocused();
+  await expect(page.locator('.activitybar').getByRole('tab', { name: '设置', exact: true })).toBeFocused();
 });
 
 test('the narrow ribbon scrolls with edge buttons and keeps captions clear of the buttons', async ({ page }) => {
@@ -182,15 +205,15 @@ test('a fixable error is a wavy red token whose tooltip carries the fix', async 
 
 test('the unrecorded words toggle switches strict mode end to end', async ({ page }) => {
   await openStudio(page);
-  const toggle = page.locator('[data-command="synthesis"]');
+  const toggle = page.locator('[data-section="synthesis"]').getByRole('switch');
   const field = page.locator('textarea');
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(toggle).toBeChecked();
   await field.fill('cassie robot');
   await expect(page.locator('.highlight-layer .token-synthesized').filter({ hasText: 'robot' })).toBeVisible();
   await expect(page.locator('.highlight-layer .blocked')).toHaveCount(0);
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('src', /^blob:/, { timeout: 60_000 });
   await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(toggle).not.toBeChecked();
   await expect(page.locator('audio[data-complete="true"]')).toHaveCount(0);
   const blocked = page.locator('.highlight-layer .token-synthesized.blocked');
   await expect(blocked).toHaveText('robot');
@@ -204,7 +227,7 @@ test('the unrecorded words toggle switches strict mode end to end', async ({ pag
   await expect.poll(() => field.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(7);
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('src', /^blob:/, { timeout: 60_000 });
   await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(toggle).toBeChecked();
   await expect(page.locator('.highlight-layer .blocked')).toHaveCount(0);
 });
 
@@ -223,13 +246,11 @@ test('the analysis tab lists phoneme synthesis as info, filters by severity and 
   await expect(page.locator('.panel-tabs').getByRole('tab', { name: /导出|问题/ })).toHaveCount(0);
 });
 
-test('the ribbon stays one row at desktop width and no slider label is clipped', async ({ page }) => {
+test('the ribbon stays one row at desktop width', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openStudio(page);
   const height = await page.locator('.ribbon-groups').evaluate((element) => element.getBoundingClientRect().height);
   expect(height).toBeLessThanOrEqual(92);
-  const clipped = await page.locator('.rb-slider > span').evaluateAll((spans) => spans.filter((span) => span.scrollWidth > span.clientWidth).length);
-  expect(clipped).toBe(0);
 });
 
 test('the panel button toggles the panel and its label follows the state', async ({ page }) => {

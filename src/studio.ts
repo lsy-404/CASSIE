@@ -9,11 +9,11 @@ import { DEFAULT_GAP } from "./audio/fit";
 import type { ActionId } from "./ribbon";
 import type { DecodedUrlState } from "./url-state";
 
-export const ACTIVITY_VIEWS = ["outline", "phonemes", "help"] as const;
+export const ACTIVITY_VIEWS = ["settings", "phonemes", "help"] as const;
 export const PANEL_TABS = ["player", "analysis"] as const;
 export type SideView = (typeof ACTIVITY_VIEWS)[number];
 export type PanelTab = (typeof PANEL_TABS)[number];
-export const SIDE_VIEW_LABELS: Record<SideView, string> = { outline: "outline", phonemes: "phonemeList", help: "help" };
+export const SIDE_VIEW_LABELS: Record<SideView, string> = { settings: "settings", phonemes: "phonemeList", help: "help" };
 
 type Bank = Awaited<ReturnType<typeof loadBank>>;
 export type AnalysisToken = EngineAnalysisToken & { spellingMissing?: boolean };
@@ -56,7 +56,7 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
 
   const compact = ref(compactQuery.matches);
   const sideBarOpen = ref(!compact.value);
-  const sideView = ref<SideView>("outline");
+  const sideView = ref<SideView>("settings");
   const panelOpen = ref(true);
   const panelTab = ref<PanelTab>("player");
   const ribbonCollapsed = ref(false);
@@ -338,7 +338,6 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
     render: () => void compose(),
     cancel: cancelRender,
     toggleLive: () => { liveRender.value = !liveRender.value; },
-    toggleSynthesis: () => { synthesizeUnrecorded.value = !synthesizeUnrecorded.value; },
     exportWav: () => { if (downloadUrl.value) saveUrl(downloadUrl.value, "wav"); },
     exportOpus: () => void downloadOpus(),
     "scope.fit": () => {
