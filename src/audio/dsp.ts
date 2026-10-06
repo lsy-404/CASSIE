@@ -36,8 +36,8 @@ export function stretchSpeechPreservingGaps(
   samples: Float32Array,
   sampleRate: number,
   rate: number,
-  timeline: TimelineEntry[],
-): { samples: Float32Array; timeline: TimelineEntry[] } {
+  timeline: TimelineSpan[],
+): { samples: Float32Array; timeline: TimelineSpan[] } {
   if (rate === 1 || !samples.length) return { samples, timeline };
   const gaps = timeline.filter((entry) => entry.kind === 'gap')
     .map((entry) => ({ start: Math.max(0, Math.floor(entry.startSeconds * sampleRate)), end: Math.min(samples.length, Math.ceil(entry.endSeconds * sampleRate)) }))
@@ -207,6 +207,8 @@ export interface SourceTimelineSpan {
   kind: TimelineEntry['kind'];
 }
 
+export type TimelineSpan = Omit<TimelineEntry, 'track' | 'provenance'>;
+
 export function appendTimelineEntry(timeline: TimelineEntry[], entry: TimelineEntry): boolean {
   if (!Number.isFinite(entry.startSeconds) || !Number.isFinite(entry.endSeconds) || entry.endSeconds <= entry.startSeconds) return false;
   timeline.push(entry);
@@ -230,7 +232,7 @@ export function mapSourceTimeline(
   outputStartSeconds: number,
   outputLength: number,
   globalRate = 1,
-): TimelineEntry[] {
+): TimelineSpan[] {
   const cropStart = Math.min(sourceLength, Math.floor((plan.startAt ?? 0) * sampleRate));
   const cropEnd = Math.min(sourceLength, cropStart + (plan.maxDuration === undefined ? sourceLength : Math.floor(plan.maxDuration * sampleRate)));
   const croppedLength = cropEnd - cropStart;
@@ -255,7 +257,7 @@ export function mapSourceTimeline(
     ]
     : [{ sourceStart: cropStart, sourceEnd: cropEnd, outputStart: 0 }];
   const renderedLength = outputLength / sampleRate;
-  const timeline: TimelineEntry[] = [];
+  const timeline: TimelineSpan[] = [];
   for (const span of spans) {
     if (!Number.isFinite(span.startSample) || !Number.isFinite(span.endSample) || span.endSample <= span.startSample) continue;
     for (const piece of pieces) {

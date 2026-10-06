@@ -47,6 +47,10 @@ export interface TimelineEntry {
   sourceStart: number;
   sourceEnd: number;
   kind: 'word' | 'gap' | 'cue';
+  /** 0 is the main track; each `<sync>` block opens the next number. */
+  track: number;
+  /** Set on word entries only. */
+  provenance?: 'recorded' | 'synthesized';
 }
 
 export interface AnalysisToken {
@@ -91,7 +95,11 @@ export interface WordPlan {
   volume: number;
   rate?: number;
   /** Enclosing fit groups, outermost first. */
-  fits?: Array<{ id: number; seconds: number }>;
+  fits?: Array<{ id: number; seconds: number; track: number }>;
+  /** Sync track the item plays on; omitted for the main track. */
+  track?: number;
+  /** Track whose cursor anchors this item's track when it opens. */
+  parentTrack?: number;
   voice?: Partial<VoiceOptions>;
   startAt?: number;
   maxDuration?: number;

@@ -1,12 +1,13 @@
 import { OggOpusDecoder } from 'ogg-opus-decoder';
 import { advancePlaybackCursorAfterRepeat, appendTimelineEntry, clipTimelineToDuration, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchSpeechPreservingGaps, stretchSpeechRate, stretchVowelLoop, transformWord } from './dsp';
 import { applyVoiceLoudness, blendVoiceEdges, editWorldFeatures, hasWorldVoiceEffects, isNeutralVoice, processVoicePreservingGaps } from './voice-dsp';
-import { fitGroupsOf, fitItemOf, fitWarning, solveFitRates } from './fit';
+import { fitGroupsOf, fitItemOf, fitOwnersOf, fitWarning, solveFitRates } from './fit';
 import type { FitItem } from './fit';
 import { createWorldVocoder } from './world';
 import { checkAudioCapability } from '../startup/check-audio';
 import type { WorldVocoder } from './world';
-import type { Bank, BankClip, RenderOptions, TimelineEntry, VoiceOptions, WordPlan } from './types';
+import type { Bank, BankClip, ClipKind, RenderOptions, TimelineEntry, VoiceOptions, WordPlan } from './types';
+import type { TimelineSpan } from './dsp';
 
 type RequestMessage =
   | { type: 'check'; samples: Float32Array }
@@ -172,7 +173,7 @@ scope.onmessage = async ({ data }) => {
         }
       }
       const pitched = transformWord(source, OUTPUT_SAMPLE_RATE, word, data.options.pitch, data.options.volume);
-      let phraseTimeline: TimelineEntry[] | undefined;
+      let phraseTimeline: TimelineSpan[] | undefined;
       if (word.sourceWordTimings?.length && !word.phonemeUnits?.length) {
         const sourceDuration = decoded.length / OUTPUT_SAMPLE_RATE;
         const spans: Array<{ startSample: number; endSample: number; sourceStart: number; sourceEnd: number; kind: 'word' | 'gap' }> = [];
@@ -198,13 +199,27 @@ scope.onmessage = async ({ data }) => {
       }
       return { sourceClip, decoded, source, pitched, phraseTimeline };
     };
-    const layers: Array<{ samples: Float32Array; start: number; gain?: number }> = [];
+    const layers: Array<{ samples: Float32Array; start: number; gain?: number; track: number }> = [];
     let audioSampleCount = 0;
     const maxLayerSamples = OUTPUT_SAMPLE_RATE * 300;
-    let previousStart = 0;
-    let previousEnd = 0;
+    interface TrackCursor { start: number; end: number; kind?: ClipKind | 'pause'; started: boolean }
+    const cursors = new Map<number, TrackCursor>([[0, { start: 0, end: 0, started: true }]]);
+    const parentTracks = new Map(plan.flatMap((word) => word.track ? [[word.track, word.parentTrack ?? 0] as const] : []));
+    const cursorOf = (track: number): TrackCursor => {
+      let cursor = cursors.get(track);
+      if (!cursor) {
+        cursor = { ...cursorOf(parentTracks.get(track) ?? 0), started: false };
+        cursors.set(track, cursor);
+      }
+      return cursor;
+    };
     let timelineEnd = 0;
     const timeline: TimelineEntry[] = [];
+    const addEntry = (word: WordPlan, entry: TimelineSpan) => appendTimelineEntry(timeline, {
+      ...entry,
+      track: word.track ?? 0,
+      ...(entry.kind === 'word' ? { provenance: word.phonemeUnits?.length ? 'synthesized' as const : 'recorded' as const } : {}),
+    });
     let previewCount = 0;
     let lastPreviewAt = 0;
     const publishPreview = (completedIndex: number) => {
@@ -227,7 +242,7 @@ scope.onmessage = async ({ data }) => {
       previewCount += 1;
       lastPreviewAt = now;
     };
-    const stutterGroups = new Map<number, { start: number; end: number; repeats: number }>();
+    const stutterGroups = new Map<number, { start: number; end: number; repeats: number; tracks: Set<number> }>();
     const finishStutterScopes = (word: WordPlan) => {
       for (const id of word.stutterScopeEnds ?? []) {
         const group = stutterGroups.get(id);
@@ -242,7 +257,7 @@ scope.onmessage = async ({ data }) => {
           continue;
         }
         if (end + added > OUTPUT_SAMPLE_RATE * 120) throw new Error('Scoped stutter exceeds the 120-second render limit.');
-        const groupLayers = layers.filter((layer) => layer.start >= start && layer.start + layer.samples.length <= end)
+        const groupLayers = layers.filter((layer) => group.tracks.has(layer.track) && layer.start >= start && layer.start + layer.samples.length <= end)
           .map((layer) => ({ samples: layer.samples, start: layer.start - start, gain: layer.gain }));
         const segment = mixLayers(groupLayers);
         if (!segment.length) {
@@ -250,16 +265,19 @@ scope.onmessage = async ({ data }) => {
           continue;
         }
         for (let repeat = 0; repeat < group.repeats; repeat += 1) {
-          layers.push({ samples: segment, start: end + repeat * length });
+          layers.push({ samples: segment, start: end + repeat * length, track: Math.min(...group.tracks) });
         }
-        const originals = timeline.filter((entry) => entry.startSeconds >= group.start && entry.endSeconds <= group.end);
+        const originals = timeline.filter((entry) => group.tracks.has(entry.track) && entry.startSeconds >= group.start && entry.endSeconds <= group.end);
         for (let repeat = 0; repeat < group.repeats; repeat += 1) {
           const shift = (group.end - group.start) * (repeat + 1);
           for (const entry of originals) appendTimelineEntry(timeline, { ...entry, startSeconds: entry.startSeconds + shift, endSeconds: entry.endSeconds + shift });
         }
         audioSampleCount += added;
         const repeatedEnd = (end + added) / OUTPUT_SAMPLE_RATE;
-        ({ previousEnd, previousStart } = advancePlaybackCursorAfterRepeat(previousEnd, previousStart, repeatedEnd));
+        for (const track of group.tracks) {
+          const cursor = cursorOf(track);
+          ({ previousEnd: cursor.end, previousStart: cursor.start } = advancePlaybackCursorAfterRepeat(cursor.end, cursor.start, repeatedEnd));
+        }
         timelineEnd = Math.max(timelineEnd, repeatedEnd);
         for (const active of word.stutterScopes ?? []) {
           const outer = stutterGroups.get(active.id);
@@ -285,7 +303,7 @@ scope.onmessage = async ({ data }) => {
         const gaps = (item.phraseTimeline ?? []).filter((entry) => entry.kind === 'gap').reduce((sum, entry) => sum + entry.endSeconds - entry.startSeconds, 0);
         items.push(fitItemOf(word, globalRate, { kind: item.sourceClip.kind, total: item.pitched.length / OUTPUT_SAMPLE_RATE, gaps }));
       }
-      for (const result of solveFitRates(items, fitGroups, data.options.gap)) {
+      for (const result of solveFitRates(items, fitGroups, data.options.gap, fitOwnersOf(plan))) {
         fitRates.set(result.id, result.rate);
         if (result.clamped) warnings.push(fitWarning(result));
       }
@@ -296,29 +314,30 @@ scope.onmessage = async ({ data }) => {
         if (!Number.isFinite(word.pauseDuration) || word.pauseDuration < 0 || word.pauseDuration > 120) {
           throw new Error('Pause duration exceeds the 120-second limit.');
         }
-        const previousPlan = index > 0 ? plan[index - 1] : undefined;
-        const previousClip = previousPlan?.clipId ? clipById.get(previousPlan.clipId) : undefined;
-        const previousKind = previousPlan?.pauseDuration !== undefined ? 'pause' : previousClip?.kind;
+        const track = word.track ?? 0;
+        const cursor = cursorOf(track);
         const start = Math.max(0, word.spacing !== undefined
-          ? previousStart + word.spacing + (word.sleep ?? 0)
-          : nextClipStart(previousEnd, previousKind, 'pause', data.options.gap, word.sleep ?? 0));
-        for (const scope of word.stutterScopes ?? []) if (!stutterGroups.has(scope.id)) stutterGroups.set(scope.id, { start, end: start, repeats: scope.repeats });
+          ? cursor.start + word.spacing + (word.sleep ?? 0)
+          : nextClipStart(cursor.end, cursor.kind, 'pause', data.options.gap, word.sleep ?? 0));
+        for (const scope of word.stutterScopes ?? []) if (!stutterGroups.has(scope.id)) stutterGroups.set(scope.id, { start, end: start, repeats: scope.repeats, tracks: new Set() });
         const samples = new Float32Array(Math.ceil(word.pauseDuration * OUTPUT_SAMPLE_RATE));
-        if (start > previousEnd && word.gapSourceStart !== undefined && word.gapSourceEnd !== undefined) {
-          appendTimelineEntry(timeline, { startSeconds: previousEnd, endSeconds: start, sourceStart: word.gapSourceStart, sourceEnd: word.gapSourceEnd, kind: 'gap' });
+        if (cursor.started && start > cursor.end && word.gapSourceStart !== undefined && word.gapSourceEnd !== undefined) {
+          addEntry(word, { startSeconds: cursor.end, endSeconds: start, sourceStart: word.gapSourceStart, sourceEnd: word.gapSourceEnd, kind: 'gap' });
         }
-        appendTimelineEntry(timeline, { startSeconds: start, endSeconds: start + samples.length / OUTPUT_SAMPLE_RATE, sourceStart: word.sourceStart ?? 0, sourceEnd: word.sourceEnd ?? 0, kind: 'gap' });
+        addEntry(word, { startSeconds: start, endSeconds: start + samples.length / OUTPUT_SAMPLE_RATE, sourceStart: word.sourceStart ?? 0, sourceEnd: word.sourceEnd ?? 0, kind: 'gap' });
         if (samples.length) {
           audioSampleCount += samples.length;
           if (audioSampleCount > maxLayerSamples) throw new Error('Audio content exceeds the five-minute processing limit.');
-          layers.push({ samples, start: Math.floor(start * OUTPUT_SAMPLE_RATE) });
+          layers.push({ samples, start: Math.floor(start * OUTPUT_SAMPLE_RATE), track });
         }
-        previousEnd = start + samples.length / OUTPUT_SAMPLE_RATE;
-        previousStart = start;
-        timelineEnd = Math.max(timelineEnd, previousEnd);
+        Object.assign(cursor, { end: start + samples.length / OUTPUT_SAMPLE_RATE, start, kind: 'pause', started: true });
+        timelineEnd = Math.max(timelineEnd, cursor.end);
         for (const scope of word.stutterScopes ?? []) {
           const group = stutterGroups.get(scope.id);
-          if (group) group.end = Math.max(group.end, previousEnd);
+          if (group) {
+            group.end = Math.max(group.end, cursor.end);
+            group.tracks.add(track);
+          }
         }
         finishStutterScopes(word);
         if (samples.length) publishPreview(index);
@@ -354,37 +373,38 @@ scope.onmessage = async ({ data }) => {
       if (word.startAt !== undefined && word.startAt >= source.length / OUTPUT_SAMPLE_RATE) {
         warnings.push(`Start time skipped all of “${word.display}”.`);
       }
-      const previousPlan = index > 0 ? plan[index - 1] : undefined;
-      const previousClip = previousPlan?.clipId ? clipById.get(previousPlan.clipId) : undefined;
-      const previousKind = previousPlan?.pauseDuration !== undefined ? 'pause' : previousClip?.kind;
+      const track = word.track ?? 0;
+      const cursor = cursorOf(track);
       const start = Math.max(0, word.joinPrevious
-        ? previousEnd
+        ? cursor.end
         : word.spacing !== undefined
-        ? previousStart + word.spacing + (word.sleep ?? 0)
-        : nextClipStart(previousEnd, previousKind, sourceClip.kind, data.options.gap, word.sleep ?? 0));
+        ? cursor.start + word.spacing + (word.sleep ?? 0)
+        : nextClipStart(cursor.end, cursor.kind, sourceClip.kind, data.options.gap, word.sleep ?? 0));
       const frameStart = Math.floor(start * OUTPUT_SAMPLE_RATE);
       const actualStart = frameStart / OUTPUT_SAMPLE_RATE;
       const actualEnd = actualStart + samples.length / OUTPUT_SAMPLE_RATE;
-      for (const scope of word.stutterScopes ?? []) if (!stutterGroups.has(scope.id)) stutterGroups.set(scope.id, { start: actualStart, end: actualStart, repeats: scope.repeats });
-      if (actualStart > previousEnd && word.gapSourceStart !== undefined && word.gapSourceEnd !== undefined) {
-        appendTimelineEntry(timeline, { startSeconds: previousEnd, endSeconds: actualStart, sourceStart: word.gapSourceStart, sourceEnd: word.gapSourceEnd, kind: 'gap' });
+      for (const scope of word.stutterScopes ?? []) if (!stutterGroups.has(scope.id)) stutterGroups.set(scope.id, { start: actualStart, end: actualStart, repeats: scope.repeats, tracks: new Set() });
+      if (cursor.started && actualStart > cursor.end && word.gapSourceStart !== undefined && word.gapSourceEnd !== undefined) {
+        addEntry(word, { startSeconds: cursor.end, endSeconds: actualStart, sourceStart: word.gapSourceStart, sourceEnd: word.gapSourceEnd, kind: 'gap' });
       }
       if (phraseTimeline) {
-        for (const entry of phraseTimeline) appendTimelineEntry(timeline, { ...entry, startSeconds: entry.startSeconds + actualStart, endSeconds: entry.endSeconds + actualStart });
+        for (const entry of phraseTimeline) addEntry(word, { ...entry, startSeconds: entry.startSeconds + actualStart, endSeconds: entry.endSeconds + actualStart });
       } else {
-        appendTimelineEntry(timeline, { startSeconds: actualStart, endSeconds: actualEnd, sourceStart: word.sourceStart ?? 0, sourceEnd: word.sourceEnd ?? 0, kind: word.timelineKind ?? (sourceClip.kind === 'effect' ? 'cue' : 'word') });
+        addEntry(word, { startSeconds: actualStart, endSeconds: actualEnd, sourceStart: word.sourceStart ?? 0, sourceEnd: word.sourceEnd ?? 0, kind: word.timelineKind ?? (sourceClip.kind === 'effect' ? 'cue' : 'word') });
       }
       if (samples.length && frameStart + samples.length > 0) {
         audioSampleCount += samples.length;
         if (audioSampleCount > maxLayerSamples) throw new Error('Audio content exceeds the five-minute processing limit.');
-        layers.push({ samples, start: frameStart });
+        layers.push({ samples, start: frameStart, track });
       }
-      previousEnd = start + samples.length / OUTPUT_SAMPLE_RATE;
-      previousStart = start;
-      timelineEnd = Math.max(timelineEnd, previousEnd);
+      Object.assign(cursor, { end: start + samples.length / OUTPUT_SAMPLE_RATE, start, kind: sourceClip.kind, started: true });
+      timelineEnd = Math.max(timelineEnd, cursor.end);
       for (const scope of word.stutterScopes ?? []) {
         const group = stutterGroups.get(scope.id);
-        if (group) group.end = Math.max(group.end, previousEnd);
+        if (group) {
+          group.end = Math.max(group.end, cursor.end);
+          group.tracks.add(track);
+        }
       }
       finishStutterScopes(word);
       if (samples.length) publishPreview(index);

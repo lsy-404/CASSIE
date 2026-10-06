@@ -15,6 +15,8 @@ export interface FitItem {
   rate: number;
   /** Enclosing fit group ids, outermost first; the last one sets the item's rate. */
   fits?: number[];
+  /** Track the item plays on; 0 is the main track. */
+  track?: number;
   sleep?: number;
   spacing?: number;
   joinPrevious?: boolean;
@@ -34,6 +36,7 @@ export function fitItemOf(word: WordPlan, globalRate: number, measure: FitMeasur
   const base = {
     rate: (word.rate ?? 1) * globalRate,
     ...(word.fits ? { fits: word.fits.map((group) => group.id) } : {}),
+    ...(word.track ? { track: word.track } : {}),
     ...(word.sleep !== undefined ? { sleep: word.sleep } : {}),
     ...(word.spacing !== undefined ? { spacing: word.spacing } : {}),
     ...(word.joinPrevious ? { joinPrevious: true } : {}),
@@ -43,7 +46,7 @@ export function fitItemOf(word: WordPlan, globalRate: number, measure: FitMeasur
   return { ...base, kind: 'word', speech: Math.max(0, measure.total - measure.gaps), fixed: Math.min(measure.total, measure.gaps) };
 }
 
-function layoutSpan(items: FitItem[], first: number, last: number, gap: number, rateOf: (item: FitItem) => number): number {
+function layoutSpan(items: FitItem[], first: number, last: number, gap: number, rateOf: (item: FitItem) => number, track: number): number {
   let previousEnd = 0;
   let previousStart = 0;
   let previousKind: FitItem['kind'] | undefined;
@@ -51,6 +54,7 @@ function layoutSpan(items: FitItem[], first: number, last: number, gap: number, 
   let spanEnd = 0;
   for (let index = first; index <= last; index += 1) {
     const item = items[index];
+    if ((item.track ?? 0) !== track) continue;
     const sleep = item.sleep ?? 0;
     const start = Math.max(0, item.joinPrevious && item.kind !== 'pause'
       ? previousEnd
@@ -66,11 +70,11 @@ function layoutSpan(items: FitItem[], first: number, last: number, gap: number, 
   return spanEnd - spanStart;
 }
 
-/** Solves each group's rate so its layout span, with unstretched parts kept, equals the requested seconds. */
-export function solveFitRates(items: FitItem[], groups: ReadonlyMap<number, number>, gap: number): FitGroupResult[] {
+/** Solves each group's rate so its layout span, with unstretched parts kept, equals the requested seconds; only items on the group's own track (`owners`, default main) are measured. */
+export function solveFitRates(items: FitItem[], groups: ReadonlyMap<number, number>, gap: number, owners: ReadonlyMap<number, number> = new Map()): FitGroupResult[] {
   const solved = new Map<number, number>();
   const ranges = [...groups.keys()].flatMap((id) => {
-    const inside = items.flatMap((item, index) => item.fits?.includes(id) ? [index] : []);
+    const inside = items.flatMap((item, index) => item.fits?.includes(id) && (item.track ?? 0) === (owners.get(id) ?? 0) ? [index] : []);
     return inside.length ? [{ id, first: inside[0], last: inside[inside.length - 1] }] : [];
   }).sort((left, right) => left.last - left.first - (right.last - right.first) || right.id - left.id);
   const results: FitGroupResult[] = [];
@@ -79,7 +83,7 @@ export function solveFitRates(items: FitItem[], groups: ReadonlyMap<number, numb
     const spanAt = (rate: number) => layoutSpan(items, first, last, gap, (item) => {
       const own = item.fits?.at(-1);
       return own === id ? rate : own !== undefined ? solved.get(own) ?? item.rate : item.rate;
-    });
+    }, owners.get(id) ?? 0);
     const natural = spanAt(1);
     const noSpeech = natural - spanAt(Infinity) <= 1e-6;
     let rate = 1;
@@ -114,6 +118,12 @@ export function fitGroupsOf(plan: WordPlan[]): Map<number, number> {
   return groups;
 }
 
+export function fitOwnersOf(plan: WordPlan[]): Map<number, number> {
+  const owners = new Map<number, number>();
+  for (const word of plan) for (const group of word.fits ?? []) owners.set(group.id, group.track);
+  return owners;
+}
+
 export function fitWarning(result: FitGroupResult): string {
   return `Reading duration of ${result.seconds.toFixed(2)} s cannot be met; the closest achievable is ${result.achievable.toFixed(2)} s at ${result.rate}× speech rate.`;
 }
@@ -134,5 +144,5 @@ export function estimateFitWarnings(plan: WordPlan[], bank: Bank, options: { gap
     const gaps = timings.slice(1).reduce((sum, timing, index) => sum + Math.max(0, timing.startSeconds - timings[index].endSeconds), 0) / (word.pitch * options.pitch);
     return fitItemOf(word, options.rate, { kind: clips.get(word.clipId)?.kind ?? 'effect', total, gaps });
   });
-  return solveFitRates(items, groups, options.gap).filter((result) => result.clamped).map(fitWarning);
+  return solveFitRates(items, groups, options.gap, fitOwnersOf(plan)).filter((result) => result.clamped).map(fitWarning);
 }

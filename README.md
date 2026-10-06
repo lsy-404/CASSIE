@@ -46,6 +46,7 @@ Type complete English words directly. Numbers expand into speech units where ava
 | `<fit seconds="2">text</fit>` | Time-stretch enclosed speech to finish in 0.05–120 seconds, overriding the speech rate |
 | `<voice pitch="3" loudness="-2.5" tension="0.25" breathiness="0.3" formant="-2">text</voice>` | Adjust pitch, loudness, tension, breathiness and resonance for enclosed speech |
 | `<volume value="0.7">text</volume>` | Set volume for enclosed speech |
+| `<sync>text</sync>` | Play enclosed speech on a temporary extra track that starts together with the next main item, for harmony, echo or backing voices; the main track does not advance by it |
 | `<stutter repeats="3">text</stutter>` | Play enclosed speech, then repeat it three more times |
 | `<offset seconds="0.1">text</offset>` | Skip the start of enclosed speech |
 | `<duration seconds="0.3">text</duration>` | Limit the duration of enclosed speech |
@@ -60,6 +61,8 @@ The standalone markers `start`, `end`, `pause`, `clip`, and `br` also accept a t
 Effects end at their closing tag. Tags can nest; closing an inner tag restores the enclosing parameters. For example, `<pitch value="1.2">attention</pitch> personnel` changes only `attention`. You can put tags inside a word, such as `me<pitch value="1.2">tri</pitch>cs`. The complete word is pronounced first, and phonemized spelling prefixes locate the nearest phone boundaries for its effects; the measured phone fragments join without a word gap. Such boundaries are approximate and receive a red advisory. Opening and closing tags remain visible in the editor and are never rendered as HTML.
 
 The effects simplify the [documented modern CASSIE behavior](https://en.scpslgame.com/index.php?title=Updates/14.2.3). Slash pairs are reserved for direct phonemes. Invalid, unknown, mismatched, or unclosed tags produce red error marks and a warning. The renderer has bounded duration and token counts and does not reproduce the game's announcement queue. Ambient facility mixing has been removed.
+
+A `<sync>` block starts where the next item after the preceding one would start, using the same gap and spacing rules, so `X <sync>Y</sync> Z` makes Y and Z start together. After `</sync>` the main track continues from where it was, and the total length is that of the longest track. Pitch, volume, rate and voice are inherited and every scoped tag works inside, including nested `<sync>` blocks, which anchor at their parent track. A `<fit>` group measures only the track it was opened on, so sync content inside it follows the derived rate but does not count toward the duration. Sync tracks mix additively with the main track.
 
 Inside `<fit>`, the rate is derived so the enclosed words and the gaps between them take the requested time; gaps, pauses and cues keep their length and count toward it. The derived rate is limited to 0.25–4× and a warning states the closest achievable duration when the limit applies. Content outside the tag is unaffected, and a stutter inside a fit group is not counted. Speech rate defaults to 1×. The global control and scoped rate each accept 0.5–2× and multiply when combined. Speech uses pitch-preserving time stretching; word gaps, measured gaps inside phrase recordings, explicit pauses, and effect clips including announcement boundary cues keep their duration.
 
