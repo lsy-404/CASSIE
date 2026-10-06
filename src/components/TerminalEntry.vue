@@ -6,10 +6,10 @@ import { cellPath, glyphPath, GLYPH_HEIGHT, GLYPH_WIDTH, textCells, textPath } f
 const SPINNER = ['\\', '|', '/', '-'];
 const SPINNER_MS = 80;
 const DOT_MS = 100;
+// Columns taken by the tag plus marker margin and by the spinner plus its margin (see the marker and spinner CSS).
 const TAG_COLS = 7;
 const SPINNER_COLS = 2;
 const PROBE_CHARS = 10;
-const TICK_MS = 35;
 const HANDOFF_MS = 700;
 const WORDMARK = 'CASSIE+';
 const GLYPH_STRIDE = 8;
@@ -42,6 +42,7 @@ const now = ref(performance.now());
 const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 const failedStep = computed(() => steps.value.find((step) => step.status === 'fail'));
 const startedAt = new Map<string, number>();
+const frozenDots = new Map<string, number>();
 const log = ref<HTMLElement>();
 const probe = ref<HTMLElement>();
 const columns = ref(0);
@@ -56,10 +57,19 @@ const measure = () => {
   if (!cell || !log.value || !style) return;
   columns.value = Math.floor((log.value.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)) / cell);
 };
-const frozenDots = new Map<string, number>();
 let resizer: ResizeObserver | undefined;
 let controller: AbortController | undefined;
-let ticker: ReturnType<typeof setInterval> | undefined;
+let frame = 0;
+
+const tick = (time: number) => {
+  now.value = time;
+  frame = requestAnimationFrame(tick);
+};
+
+function stopClock(): void {
+  cancelAnimationFrame(frame);
+  resizer?.disconnect();
+}
 
 function record(step: StartupStep): void {
   const index = steps.value.findIndex((item) => item.id === step.id);
@@ -82,7 +92,7 @@ onMounted(async () => {
     resizer = new ResizeObserver(measure);
     resizer.observe(log.value);
   }
-  if (!reducedMotion) ticker = setInterval(() => { now.value = performance.now(); }, TICK_MS);
+  if (!reducedMotion) frame = requestAnimationFrame(tick);
   controller = new AbortController();
   const { signal } = controller;
   try {
@@ -91,20 +101,19 @@ onMounted(async () => {
     if (signal.aborted) return;
     checking.value = false;
     failed.value = true;
-    clearInterval(ticker);
+    stopClock();
     return;
   }
   checking.value = false;
   await new Promise((resolve) => setTimeout(resolve, reducedMotion ? 0 : HANDOFF_MS));
   if (signal.aborted) return;
-  clearInterval(ticker);
+  stopClock();
   entered.value = true;
 });
 
 onBeforeUnmount(() => {
   controller?.abort();
-  clearInterval(ticker);
-  resizer?.disconnect();
+  stopClock();
 });
 </script>
 
