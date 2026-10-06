@@ -24,7 +24,7 @@ import { t } from "../i18n";
     </div>
     <h3>{{ t('markupReference') }}</h3>
     <div class="help-examples">
-      <p>{{ t('wholeWord') }} <code>&lt;pitch value="1.2"&gt;attention&lt;/pitch&gt;</code>{{ t('fullStop') }} {{ t('markupStutter') }} <code>&lt;stutter repeats="2"&gt;attention&lt;/stutter&gt;</code>{{ t('fullStop') }} {{ t('repeatHelp') }}</p>
+      <p>{{ t('wholeWord') }} <code>&lt;pitch value="1.2"&gt;attention&lt;/pitch&gt;</code>{{ t('fullStop') }} {{ t('markupStutter') }} <code>&lt;stutter repeats="2" length="0.1"&gt;attention&lt;/stutter&gt;</code>{{ t('fullStop') }} {{ t('repeatHelp') }}</p>
       <p>{{ t('cursorHelp') }} <code>{{ t('wordPlaceholder') }}</code>{{ t('fullStop') }}</p>
       <p>{{ t('standaloneHelp') }} <code>&lt;start&gt;</code>/<code>&lt;start/&gt;</code> {{ t('andWord') }} <code>&lt;end&gt;</code>/<code>&lt;end/&gt;</code> {{ t('equivalent') }} <code>&lt;br&gt;</code>{{ t('brHelp') }}<code>&lt;br/&gt;</code>{{ t('brAlsoPauses') }}</p>
       <p>{{ t('pauseHelp') }} <code>&lt;pause seconds="0.5"&gt;</code> {{ t('orWord') }} <code>&lt;pause seconds="0.5"/&gt;</code>{{ t('listSeparator') }} {{ t('clipHelp') }} <code>&lt;clip id="cassie"&gt;</code> {{ t('orWord') }} <code>&lt;clip id="cassie"/&gt;</code>{{ t('comma') }} {{ t('replaceClipId') }}</p>

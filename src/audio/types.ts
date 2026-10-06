@@ -105,6 +105,7 @@ export interface WordPlan {
   maxDuration?: number;
   sleep?: number;
   spacing?: number;
+  /** Slice loop: `position` is a 0-1 fraction of the clip, `length` is in seconds. */
   stutter?: { position: number; length: number; repeats: number };
   phonemeUnits?: PhonemeUnit[];
   pauseDuration?: number;
@@ -115,8 +116,6 @@ export interface WordPlan {
   timelineKind?: 'word' | 'gap' | 'cue';
   sourceWordTimings?: Array<{ text: string; startSeconds: number; endSeconds: number; sourceStart: number; sourceEnd: number }>;
   joinPrevious?: boolean;
-  stutterScopes?: Array<{ id: number; repeats: number }>;
-  stutterScopeEnds?: number[];
 }
 
 export interface PhonemeUnit {

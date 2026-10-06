@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { analyzeText, createWordPlan } from '../src/audio/parser';
 import { getClipUsage } from '../src/audio/catalog';
 import { analyzeAnnouncement, renderAnnouncement } from '../src/audio/engine';
-import { advancePlaybackCursorAfterRepeat, appendTimelineEntry, applyStutter, clipTimelineToDuration, encodeWav, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, splicePhonemeWindows, stretchSpeechPreservingGaps, stretchSpeechRate, stretchVowelLoop, transformWord } from '../src/audio/dsp';
+import { appendTimelineEntry, applyStutter, clipTimelineToDuration, encodeWav, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, splicePhonemeWindows, stretchSpeechPreservingGaps, stretchSpeechRate, stretchVowelLoop, transformWord } from '../src/audio/dsp';
 import type { Bank } from '../src/audio/types';
 import type { PhonemeCatalog } from '../src/audio/phonemes';
 import { parseGeneratedPhones, resolvePhoneUnits } from '../src/audio/phonemes';
@@ -109,7 +109,8 @@ describe('CASSIE announcement parser', () => {
     const result = createWordPlan('<pitch value="1.25"><volume value="0.4">cassie</volume></pitch><pause seconds="0.6"/><stutter repeats="3">word</stutter>', bank);
     expect(result.plan[0]).toMatchObject({ pitch: 1.25, volume: 0.4 });
     expect(result.plan[1]).toMatchObject({ pauseDuration: 0.6 });
-    expect(result.plan[2]).toMatchObject({ stutterScopes: [{ id: expect.any(Number), repeats: 3 }], stutterScopeEnds: [expect.any(Number)] });
+    expect(result.plan[2]).toMatchObject({ stutter: { repeats: 3, length: 0.08, position: 0 } });
+    expect(result.plan[0].stutter).toBeUndefined();
     expect(warningsOf(result)).toEqual([]);
   });
 
@@ -611,10 +612,6 @@ describe('audio DSP', () => {
     expect(nextClipStart(1, 'word', 'effect', 0.24)).toBe(1);
     expect(nextClipStart(1.2, 'effect', 'word', 0.24)).toBe(1.2);
     expect(nextClipStart(0, undefined, 'effect', 0.24, 0.5)).toBe(0.5);
-  });
-
-  it('keeps following audio after the full repeated group when overlapping words shorten the cursor', () => {
-    expect(advancePlaybackCursorAfterRepeat(0.96, 0.01, 17.53)).toEqual({ previousEnd: 17.53, previousStart: 17.53 });
   });
 
   it('maps phrase word and whitespace spans through crop, noninteger stutter points, repeats, and pitch', () => {

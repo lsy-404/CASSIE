@@ -217,17 +217,19 @@ describe('sync rendering', () => {
     expect(sync[0].endSeconds - sync[0].startSeconds).toBeGreaterThan(0.5);
   });
 
-  it('repeats a stutter inside the block on its own track only', async () => {
-    const { timeline } = await render('cassie <sync><stutter repeats="2">word</stutter></sync> apple');
-    expect(words(timeline, 1)).toHaveLength(3);
+  it('lengthens a stuttered word inside the block on its own track only', async () => {
+    const { timeline } = await render('cassie <sync><stutter repeats="2" length="0.1">word</stutter></sync> apple');
+    const [stuttered] = words(timeline, 1);
+    expect(stuttered.endSeconds - stuttered.startSeconds).toBeCloseTo(0.7, 3);
     expect(words(timeline, 0)).toHaveLength(2);
     expect(starts(timeline, 0)).toEqual([0, 0.74]);
   });
 
-  it('repeats a block together with the main track when the stutter encloses it', async () => {
-    const { timeline } = await render('<stutter repeats="1">cassie <sync>word</sync> apple</stutter>');
-    expect(words(timeline, 0)).toHaveLength(4);
-    expect(words(timeline, 1)).toHaveLength(2);
+  it('stutters the main track and the block when the stutter encloses both', async () => {
+    const { timeline } = await render('<stutter repeats="1" length="0.1">cassie <sync>word</sync> apple</stutter>');
+    expect(words(timeline, 0).map((entry) => Number((entry.endSeconds - entry.startSeconds).toFixed(3)))).toEqual([0.6, 0.6]);
+    expect(words(timeline, 1).map((entry) => Number((entry.endSeconds - entry.startSeconds).toFixed(3)))).toEqual([0.6]);
+    expect(starts(timeline, 0)).toEqual([0, 0.84]);
   });
 
   it('mixes tracks additively', async () => {
@@ -236,19 +238,6 @@ describe('sync rendering', () => {
     expect(doubled.duration).toBeCloseTo(solo.duration, 3);
     const peak = (samples: Float32Array) => samples.reduce((maximum, sample) => Math.max(maximum, Math.abs(sample)), 0);
     expect(peak(doubled.samples) / peak(solo.samples)).toBeCloseTo(2, 2);
-  });
-
-  it('does not add silence when a nested stutter sits inside a stutter holding a longer sync block', async () => {
-    const plain = await render('<stutter repeats="1">cassie <sync>word apple word</sync> apple</stutter>');
-    const nested = await render('<stutter repeats="1">cassie <sync>word apple word</sync> <stutter repeats="1">apple</stutter></stutter>');
-    expect(plain.duration).toBeCloseTo(5.44, 2);
-    expect(nested.duration).toBeCloseTo(5.44, 2);
-    expect(starts(nested.timeline, 0).find((start) => start > 2)).toBeCloseTo(2.72, 2);
-  });
-
-  it('repeats earlier main-track items when a sync block opens the stutter', async () => {
-    const { timeline } = await render('cassie <stutter repeats="1"><sync>word</sync> <clip id="chime"></stutter>');
-    expect(timeline.filter((entry) => entry.kind === 'cue')).toHaveLength(2);
   });
 
   it('soft limits overlapping near-full-scale tracks instead of hard clamping', async () => {

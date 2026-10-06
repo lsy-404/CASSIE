@@ -65,30 +65,6 @@ test('manual markup is literal editor text and malformed closing tags are red', 
   expect(errors).toEqual([]);
 });
 
-test('nested stutters repeat their full scopes and advance past overlapping speech', async ({ page }, info) => {
-  const errors: string[] = [];
-  page.on('pageerror', (error) => errors.push(error.message));
-  await openStudio(page);
-  await expect(page.locator('textarea')).toBeEnabled();
-  await page.locator('[data-command="live"]').click();
-  const word = await renderWav(page, 'cassie', info.outputPath('one-word.wav'));
-  const nested = await renderWav(page,
-    '<stutter repeats="1">cassie <stutter repeats="1">cassie</stutter></stutter> cassie',
-    info.outputPath('nested.wav'));
-  expect(Math.abs(nested.length - (word.length * 7 + 0.72 * 48_000))).toBeLessThan(8);
-  const body = '<spacing seconds="0.01">all remaining personnel attention</spacing>';
-  const overlapping = await renderWav(page, body, info.outputPath('overlapping.wav'));
-  const repeated = await renderWav(page, `<stutter repeats="1">${body}</stutter> cassie`, info.outputPath('overlapping-repeat.wav'));
-  const leadingSpacingSamples = 0.01 * 48_000;
-  expect(Math.abs(repeated.length - (overlapping.length * 2 - leadingSpacingSamples + word.length + 0.24 * 48_000))).toBeLessThan(8);
-  await page.locator('audio').evaluate((element: HTMLAudioElement, currentTime) => {
-    element.currentTime = currentTime;
-    element.dispatchEvent(new Event('seeking'));
-  }, overlapping.length * 2 / 48_000 + 0.34);
-  await expect(page.locator('.annotated-editor .active')).toHaveText('cassie');
-  expect(errors).toEqual([]);
-});
-
 test('speech rate changes only speech while gaps, pauses and boundary cue PCM stay fixed', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));

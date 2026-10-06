@@ -93,6 +93,10 @@ describe('automatic fix suggestions', () => {
     ['<fit seconds="500">word</fit>', '<fit seconds="120">'],
     ['<stutter repeats="2.5">word</stutter>', '<stutter repeats="3">'],
     ['<stutter repeats="0">word</stutter>', '<stutter repeats="1">'],
+    ['<stutter repeats="2" length="5">word</stutter>', '<stutter repeats="2" length="1">'],
+    ['<stutter repeats="2" length="0.001">word</stutter>', '<stutter repeats="2" length="0.02">'],
+    ['<stutter repeats="2" position="-1">word</stutter>', '<stutter repeats="2" position="0">'],
+    ['<stutter repeats="40" length="2">word</stutter>', '<stutter repeats="32" length="1">'],
     ['<voice pitch="13" tension="0.5">word</voice>', '<voice pitch="12" tension="0.5">'],
     ['<pause seconds="999"/>', '<pause seconds="120"/>'],
   ])('clamps %s', (text, replacement) => {
@@ -104,6 +108,9 @@ describe('automatic fix suggestions', () => {
     expect(fixOf('<pitch value="abc">word</pitch>')).toBeUndefined();
     expect(fixOf('<pitch>word</pitch>')).toBeUndefined();
     expect(fixOf('<voice gain="1">word</voice>')).toBeUndefined();
+    expect(fixOf('<stutter length="0.1">word</stutter>')).toBeUndefined();
+    expect(fixOf('<stutter repeats="2" speed="1">word</stutter>')).toBeUndefined();
+    expect(fixOf('<stutter repeats="2" length="abc">word</stutter>')).toBeUndefined();
   });
 
   it('repairs a closing tag only when exactly one scope is open or none', () => {

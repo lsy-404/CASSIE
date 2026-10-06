@@ -12,7 +12,7 @@ test('default recruitment announcement exposes complete editable markup examples
   for (const sample of [
     '<start>', '<end>', '<pause seconds="0.5"/>',
     '<pitch value="1.2">', '</pitch>', '<volume value="0.7">', '</volume>',
-    '<stutter repeats="2">', '</stutter>', '<rate value="1.1">', '</rate>',
+    '<stutter repeats="2" length="0.1">', '</stutter>', '<rate value="1.1">', '</rate>',
     '<fit seconds="2.5">', '</fit>', '</voice>', '<sync>', '</sync>',
   ]) expect(value).toContain(sample);
   const typography = await page.locator('.annotated-editor').evaluate((container) => {

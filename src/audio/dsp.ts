@@ -105,11 +105,6 @@ export function nextClipStart(
   return Math.max(0, previousEnd + gap + sleep);
 }
 
-export function advancePlaybackCursorAfterRepeat(previousEnd: number, previousStart: number, groupEnd: number): { previousEnd: number; previousStart: number } {
-  const end = Math.max(previousEnd, groupEnd);
-  return { previousEnd: end, previousStart: Math.max(previousStart, end) };
-}
-
 function crossfadeJoin(left: Float32Array, right: Float32Array, sampleRate: number): Float32Array {
   if (!left.length) return right;
   if (!right.length) return left;
@@ -178,6 +173,8 @@ export function monoFromChannels(channels: Float32Array[]): Float32Array {
   return mono;
 }
 
+const STUTTER_FADE_SECONDS = 0.004;
+
 export function applyStutter(samples: Float32Array, sampleRate: number, stutter?: WordPlan['stutter']): Float32Array {
   if (!Number.isFinite(sampleRate) || sampleRate <= 0 || samples.length > MAX_RENDER_SECONDS * sampleRate) {
     throw new Error('Audio clip exceeds rendering limits.');
@@ -196,6 +193,16 @@ export function applyStutter(samples: Float32Array, sampleRate: number, stutter?
     offset += segmentLength;
   }
   repeated.set(samples.subarray(point), offset);
+  // Equal-power blend into the audio that follows the slice end hides the loop seam
+  const sliceEnd = point + segmentLength;
+  const fade = Math.min(Math.round(sampleRate * STUTTER_FADE_SECONDS), Math.floor(segmentLength / 2), samples.length - sliceEnd);
+  for (let join = 1; join <= stutter.repeats; join += 1) {
+    const base = point + join * segmentLength;
+    for (let index = 0; index < fade; index += 1) {
+      const angle = Math.PI / 2 * (index + 1) / (fade + 1);
+      repeated[base + index] = samples[point + index] * Math.sin(angle) + samples[sliceEnd + index] * Math.cos(angle);
+    }
+  }
   return repeated;
 }
 
