@@ -96,7 +96,10 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
   const playbackDuration = computed(() => playbackResult.value?.duration ?? 0);
   const hasText = computed(() => Boolean(text.value.trim()) && Boolean(bank.value));
   const busy = computed(() => rendering.value || encodingOpus.value);
-  const activeTimelineItem = computed(() => playbackResult.value?.timeline?.find((item) => audioTime.value >= item.startSeconds && audioTime.value < item.endSeconds) ?? null);
+  const activeTimelineItem = computed(() => {
+    const active = playbackResult.value?.timeline?.filter((item) => audioTime.value >= item.startSeconds && audioTime.value < item.endSeconds) ?? [];
+    return active.find((item) => item.track === 0) ?? active[0] ?? null;
+  });
 
   function statusText(message: string) { return statusMessageKeys.has(message) ? t(message) : message; }
   function toggleLocale() { setLocale(locale.value === "zh" ? "en" : "zh"); }

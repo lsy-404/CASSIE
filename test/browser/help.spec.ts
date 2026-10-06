@@ -42,6 +42,14 @@ test('timeline segments use the editor token colours and sync tracks get thin la
   expect(laneBox!.y).toBeGreaterThanOrEqual(mainBox!.y + mainBox!.height);
 });
 
+test('the seek slider track is transparent so segment colours show on the progress bar', async ({ page }) => {
+  await openStudio(page);
+  await page.locator('textarea').fill('cassie');
+  await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('src', /^blob:/, { timeout: 60_000 });
+  const track = await page.locator('.announcement-player input[type="range"]').evaluate((input) => getComputedStyle(input, '::-webkit-slider-runnable-track').backgroundColor);
+  expect(track).toBe('rgba(0, 0, 0, 0)');
+});
+
 test('the sync ribbon command wraps the selection or the placeholder and renders a second lane', async ({ page }) => {
   await openStudio(page);
   const field = page.locator('textarea');

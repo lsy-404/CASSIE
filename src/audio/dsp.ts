@@ -303,6 +303,8 @@ export function transformWord(samples: Float32Array, sampleRate: number, plan: W
   return output;
 }
 
+const LIMITER_KNEE = 0.95;
+
 export function mixLayers(layers: Array<{ samples: Float32Array; start: number; gain?: number }>): Float32Array {
   const end = layers.reduce((maximum, layer) => Math.max(maximum, layer.start + layer.samples.length), 0);
   if (end > MAX_RENDER_SECONDS * OUTPUT_SAMPLE_RATE) throw new Error(`Rendered audio exceeds the ${MAX_RENDER_SECONDS}-second limit.`);
@@ -313,7 +315,11 @@ export function mixLayers(layers: Array<{ samples: Float32Array; start: number; 
       mixed[layer.start + index] += layer.samples[index] * gain;
     }
   }
-  for (let index = 0; index < mixed.length; index += 1) mixed[index] = Math.max(-1, Math.min(1, mixed[index]));
+  for (let index = 0; index < mixed.length; index += 1) {
+    const magnitude = Math.abs(mixed[index]);
+    // Soft knee keeps overlapping tracks from hard clipping
+    if (magnitude > LIMITER_KNEE) mixed[index] = Math.sign(mixed[index]) * (LIMITER_KNEE + (1 - LIMITER_KNEE) * Math.tanh((magnitude - LIMITER_KNEE) / (1 - LIMITER_KNEE)));
+  }
   return mixed;
 }
 

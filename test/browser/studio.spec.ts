@@ -99,7 +99,7 @@ test('live render creates local WAV, custom player tracks words and gaps, and Op
     backgroundColor: getComputedStyle(input).backgroundColor,
     trackRule: Array.from(document.styleSheets).flatMap((sheet) => {
       try { return Array.from(sheet.cssRules); } catch { return []; }
-    }).find((rule) => rule.cssText.includes('.fluent-slider__input::-webkit-slider-runnable-track'))?.cssText ?? '',
+    }).find((rule) => (rule as CSSStyleRule).selectorText === '.fluent-slider__input::-webkit-slider-runnable-track')?.cssText ?? '',
   }));
   expect(trackStyle.position).toMatch(/%$/);
   expect(trackStyle.backgroundColor).toBe('rgba(0, 0, 0, 0)');

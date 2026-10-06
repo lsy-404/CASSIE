@@ -281,7 +281,7 @@ scope.onmessage = async ({ data }) => {
         timelineEnd = Math.max(timelineEnd, repeatedEnd);
         for (const active of word.stutterScopes ?? []) {
           const outer = stutterGroups.get(active.id);
-          if (outer && active.id !== id) outer.end += added / OUTPUT_SAMPLE_RATE;
+          if (outer && active.id !== id) outer.end = Math.max(outer.end, repeatedEnd);
         }
         stutterGroups.delete(id);
       }
@@ -335,6 +335,7 @@ scope.onmessage = async ({ data }) => {
         for (const scope of word.stutterScopes ?? []) {
           const group = stutterGroups.get(scope.id);
           if (group) {
+            group.start = Math.min(group.start, start);
             group.end = Math.max(group.end, cursor.end);
             group.tracks.add(track);
           }
@@ -402,6 +403,7 @@ scope.onmessage = async ({ data }) => {
       for (const scope of word.stutterScopes ?? []) {
         const group = stutterGroups.get(scope.id);
         if (group) {
+          group.start = Math.min(group.start, actualStart);
           group.end = Math.max(group.end, cursor.end);
           group.tracks.add(track);
         }

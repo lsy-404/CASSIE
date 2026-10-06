@@ -237,4 +237,29 @@ describe('sync rendering', () => {
     const peak = (samples: Float32Array) => samples.reduce((maximum, sample) => Math.max(maximum, Math.abs(sample)), 0);
     expect(peak(doubled.samples) / peak(solo.samples)).toBeCloseTo(2, 2);
   });
+
+  it('does not add silence when a nested stutter sits inside a stutter holding a longer sync block', async () => {
+    const plain = await render('<stutter repeats="1">cassie <sync>word apple word</sync> apple</stutter>');
+    const nested = await render('<stutter repeats="1">cassie <sync>word apple word</sync> <stutter repeats="1">apple</stutter></stutter>');
+    expect(plain.duration).toBeCloseTo(5.44, 2);
+    expect(nested.duration).toBeCloseTo(5.44, 2);
+    expect(starts(nested.timeline, 0).find((start) => start > 2)).toBeCloseTo(2.72, 2);
+  });
+
+  it('repeats earlier main-track items when a sync block opens the stutter', async () => {
+    const { timeline } = await render('cassie <stutter repeats="1"><sync>word</sync> <clip id="chime"></stutter>');
+    expect(timeline.filter((entry) => entry.kind === 'cue')).toHaveLength(2);
+  });
+
+  it('soft limits overlapping near-full-scale tracks instead of hard clamping', async () => {
+    const { samples } = await render('<sync>cassie</sync> cassie', { volume: 2.5 });
+    const peak = samples.reduce((maximum, sample) => Math.max(maximum, Math.abs(sample)), 0);
+    expect(peak).toBeGreaterThan(0.95);
+    expect(peak).toBeLessThan(1);
+  });
+
+  it('does not join word halves across a sync boundary', () => {
+    const { plan } = createWordPlan('<sync>new</sync>word', bank, undefined, catalog, phonemized, true);
+    expect(plan.some((item) => item.joinPrevious)).toBe(false);
+  });
 });

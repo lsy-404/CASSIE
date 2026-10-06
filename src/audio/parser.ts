@@ -311,7 +311,7 @@ function tokenizeInput(text: string): ScanResult {
     const hasTextWhitespace = previous >= 0 && spaces.some((space) => space.start >= spans[previous].end && space.end <= spans[index].start);
     const joins = previous >= 0 && !hasTextWhitespace && betweenIndices.length > 0 && betweenIndices.every((betweenIndex) => {
       const tag = tags.get(betweenIndex);
-      return Boolean(tag?.valid && SCOPED_TAGS.has(tag.name));
+      return Boolean(tag?.valid && tag.name !== 'sync' && SCOPED_TAGS.has(tag.name));
     });
     if (!joins) {
       group = tokens[index];
