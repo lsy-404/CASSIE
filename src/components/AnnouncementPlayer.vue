@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { FluentButton, FluentSlider } from "@platform-kit/fluent/vue";
 import type { TimelineEntry } from "../audio/types";
+import { segmentKind, syncLaneCount } from "../timeline";
 
 const props = defineProps<{
   src?: string;
@@ -37,10 +38,14 @@ const segments = computed(() => props.timeline
   .filter((item) => item.endSeconds > item.startSeconds && duration.value > 0)
   .map((item) => ({
     key: `${item.startSeconds}-${item.endSeconds}-${item.sourceStart}`,
-    kind: item.kind,
+    kind: segmentKind(item),
+    track: item.track,
+    start: item.startSeconds,
     left: `${Math.max(0, item.startSeconds / duration.value) * 100}%`,
     width: `${Math.max(0, (item.endSeconds - item.startSeconds) / duration.value) * 100}%`,
   })));
+
+const syncLanes = computed(() => syncLaneCount(props.timeline));
 
 function formatTime(seconds: number): string {
   const safeSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
@@ -173,11 +178,16 @@ onBeforeUnmount(stopPlayback);
       <span class="player-time" aria-live="off">{{ formatTime(currentTime) }} / {{ formatTime(duration) }}</span>
     </div>
 
-    <div class="timeline-track">
+    <div class="timeline-track" :style="{ '--sync-lanes': syncLanes }">
       <div class="timeline-overview" :aria-label="t('player.timeline')" role="img">
-        <span v-for="segment in segments" :key="segment.key" :class="['timeline-segment', `timeline-${segment.kind}`]" :style="{ left: segment.left, width: segment.width }" />
+        <span
+          v-for="segment in segments"
+          :key="segment.key"
+          :class="['timeline-segment', `timeline-${segment.kind}`, { 'timeline-sync': segment.track > 0, played: segment.start < currentTime }]"
+          :data-track="segment.track"
+          :style="{ left: segment.left, width: segment.width, '--lane': segment.track }"
+        />
         <span v-if="rendering" class="timeline-progress" :style="{ width: `${Math.max(0, Math.min(100, progress))}%` }" />
-        <span class="timeline-playhead" :style="{ left: `${duration ? currentTime / duration * 100 : 0}%` }" />
       </div>
       <FluentSlider
         class="diamond-slider"
@@ -199,12 +209,15 @@ onBeforeUnmount(stopPlayback);
 .player-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; min-height: 34px; }
 .player-time { margin-left: auto; min-width: 86px; text-align: right; font: 12px ui-monospace, monospace; font-variant-numeric: tabular-nums; color: var(--fluent-muted); }
 .rendering-label { color: var(--fluent-accent); font: 11px ui-monospace, monospace; }
-.timeline-track { position: relative; min-height: 20px; }
+.timeline-track { position: relative; min-height: calc(20px + var(--sync-lanes, 0) * 4px); }
 .timeline-overview { position: absolute; inset: 0 8px; z-index: 1; height: 20px; pointer-events: none; }
-.timeline-segment { position: absolute; top: 7px; height: 6px; min-width: 1px; background: var(--fluent-muted); opacity: .65; }
-.timeline-gap { background: var(--fluent-warning); opacity: .55; }
-.timeline-cue { background: var(--fluent-accent); }
-.timeline-playhead { position: absolute; z-index: 2; top: 2px; bottom: 2px; width: 2px; background: var(--fluent-accent); }
+.timeline-segment { position: absolute; top: 7px; height: 6px; min-width: 1px; opacity: .45; }
+.timeline-segment.played { opacity: 1; }
+.timeline-sync { top: calc(14px + (var(--lane) - 1) * 4px); height: 3px; }
+.timeline-recorded { background: var(--token-recorded); }
+.timeline-synthesized { background: var(--token-synthesized); }
+.timeline-cue { background: var(--token-cue); }
+.timeline-gap { background: transparent; }
 .timeline-progress { position: absolute; z-index: 0; top: 7px; left: 0; height: 6px; background: var(--fluent-accent); opacity: .3; }
 .timeline-track :deep(.fluent-slider) { position: relative; z-index: 2; }
 </style>

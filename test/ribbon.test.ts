@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ICONS } from "../src/icons";
-import { FIT_RANGE, fitScope } from "../src/markup";
+import { FIT_RANGE, SCOPES, fitScope } from "../src/markup";
 import { RIBBON_GROUPS } from "../src/ribbon";
 
 const commands = RIBBON_GROUPS.flatMap((group) => group.commands);
@@ -18,6 +18,13 @@ describe("ribbon configuration", () => {
     expect(reading?.commands.map((command) => command.id)).toEqual(["fitSeconds", "fit"]);
     expect(FIT_RANGE).toMatchObject({ min: 0.05, max: 120, default: 2 });
     expect(fitScope(2)).toEqual({ open: '<fit seconds="2">', close: "</fit>" });
+  });
+
+  it("has no phonemes or view group and offers sync in the advanced group", () => {
+    expect(RIBBON_GROUPS.map((group) => group.id)).not.toContain("phonemes");
+    expect(RIBBON_GROUPS.map((group) => group.id)).not.toContain("view");
+    expect(RIBBON_GROUPS.find((group) => group.id === "advanced")?.commands).toMatchObject([{ id: "scope.sync", action: "scope.sync" }]);
+    expect(SCOPES.sync).toEqual({ open: "<sync>", close: "</sync>" });
   });
 
   it("hosts the global mix, voice processing, strict toggle and the only export commands", () => {

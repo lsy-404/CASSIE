@@ -111,14 +111,6 @@ onBeforeUnmount(() => observer.disconnect());
         </div>
       </div>
     </div>
-    <div class="token-legend" :aria-label="t('legendAria')">
-      <span class="token-marker">{{ t('recognizedCommand') }}</span>
-      <span class="token-recorded">{{ t('recorded') }}</span>
-      <span class="token-synthesized">{{ t('synthesized') }}</span>
-      <span class="token-synthesized blocked">{{ t('blockedWord') }}</span>
-      <span class="token-error">{{ t('cannotSynthesize') }}</span>
-      <span class="token-synthesized fixable">{{ t('fixableLegend') }}</span>
-    </div>
   </section>
 </template>
 
@@ -142,14 +134,5 @@ textarea::selection { color: transparent; background: var(--ide-selection); }
 .highlight-layer { position: relative; min-height: 100%; width: 100%; margin: 0; padding: 8px 12px; color: var(--fluent-text); font: inherit; white-space: pre-wrap; overflow-wrap: break-word; tab-size: 2; transform: translate(calc(-1 * var(--scroll-left, 0px)), calc(-1 * var(--scroll-top, 0px))); }
 .highlight-layer span { text-decoration-line: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
 .highlight-layer span.token-neutral, .highlight-layer span.token-gap { text-decoration: none; }
-.token-recorded { text-decoration-color: var(--fluent-success); }
-.token-synthesized { text-decoration-color: var(--fluent-warning); }
-.token-error { text-decoration-color: var(--fluent-danger); }
-.token-marker { text-decoration-color: var(--token-command); }
-.fixable { text-decoration-style: wavy; }
-.blocked { text-decoration-style: dashed; }
 .highlight-layer span.active { color: var(--fluent-accent-text); background: var(--fluent-accent); border-radius: 2px; text-decoration: none; }
-.token-legend { flex: none; display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 6px 14px; border-top: 1px solid var(--ide-border); background: var(--ide-sidebar); color: var(--fluent-muted); font-size: 11px; }
-.token-legend span { text-decoration-line: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
-@media (max-width: 600px) { .token-legend { display: none; } }
 </style>

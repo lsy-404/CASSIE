@@ -9,9 +9,9 @@ import { DEFAULT_GAP } from "./audio/fit";
 import type { ActionId } from "./ribbon";
 import type { DecodedUrlState } from "./url-state";
 
-export const ACTIVITY_VIEWS = ["outline", "phonemes"] as const;
+export const ACTIVITY_VIEWS = ["outline", "phonemes", "help"] as const;
 export const PANEL_TABS = ["player", "analysis"] as const;
-export type SideView = (typeof ACTIVITY_VIEWS)[number] | "help";
+export type SideView = (typeof ACTIVITY_VIEWS)[number];
 export type PanelTab = (typeof PANEL_TABS)[number];
 export const SIDE_VIEW_LABELS: Record<SideView, string> = { outline: "outline", phonemes: "phonemeList", help: "help" };
 
@@ -338,11 +338,6 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
     toggleSynthesis: () => { synthesizeUnrecorded.value = !synthesizeUnrecorded.value; },
     exportWav: () => { if (downloadUrl.value) saveUrl(downloadUrl.value, "wav"); },
     exportOpus: () => void downloadOpus(),
-    showHelp: () => showSideView("help"),
-    toggleSideBar: () => { sideBarOpen.value = !sideBarOpen.value; },
-    togglePanel: () => { panelOpen.value = !panelOpen.value; },
-    toggleRibbon,
-    insertPhonemes: () => insertPhoneme("a e:"),
     "scope.fit": () => {
       const seconds = boundedNumber(fitSeconds.value, FIT_RANGE.min, FIT_RANGE.max) ?? FIT_RANGE.default;
       fitSeconds.value = seconds;

@@ -14,7 +14,6 @@
   --ide-active: rgba(255, 255, 255, 0.14);
   --ide-selection: rgba(255, 255, 255, 0.24);
   --ide-line-number: #858585;
-  --token-command: #569cd6;
   --ide-titlebar-height: 32px;
   --ide-statusbar-height: 24px;
   --ide-activitybar-width: 48px;
@@ -37,6 +36,11 @@
   --fluent-control-pressed: #333333;
   --fluent-border: #454545;
   --fluent-selection: #3a3a3d;
+  --token-command: #569cd6;
+  --token-recorded: var(--fluent-success);
+  --token-synthesized: var(--fluent-warning);
+  --token-error: var(--fluent-danger);
+  --token-cue: #d4d4d4;
   --fluent-radius: 3px;
   --fluent-panel-radius: 4px;
   --fluent-font: var(--ide-font);

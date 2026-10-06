@@ -21,10 +21,11 @@ test('the ribbon is one flat page showing every group with its caption and no ta
   await openStudio(page);
   await expect(page.locator('.ribbon [role="tab"]')).toHaveCount(0);
   const captions = await page.locator('.rb-caption').allTextContents();
-  expect(captions).toEqual(['渲染', '导出', '标记', '效果', '时序', '朗读时长', '音素', '视图', '全局混音', '语音后处理']);
+  expect(captions).toEqual(['渲染', '导出', '标记', '效果', '时序', '朗读时长', '高级', '全局混音', '语音后处理']);
   await expect(page.locator('.rb-group').first()).toBeVisible();
   for (const name of ['语速', '音调偏移（半音）', '气声']) await expect(page.getByRole('slider', { name, exact: true })).toBeVisible();
-  await expect(page.locator('.activitybar [role="tab"]')).toHaveCount(2);
+  await expect(page.locator('.activitybar [role="tab"]')).toHaveCount(3);
+  await expect(page.locator('.rb-group[aria-label="音素"], .rb-group[aria-label="视图"]')).toHaveCount(0);
   await expect(page.locator('.sidebar-title')).toHaveText('大纲');
   await expect(page.locator('.panel-tabs [role="tab"]')).toHaveText([/^播放器$/, /^分析/]);
 });
@@ -99,7 +100,7 @@ test('the ribbon can be hidden and shown from the keyboard and the toggle strip'
   await expect(page.locator('.ribbon-body')).toHaveCount(0);
   await page.keyboard.press('Control+F1');
   await expect(page.locator('.ribbon-body')).toBeVisible();
-  await page.locator('[data-command="ribbon"]').click();
+  await page.locator(".rb-collapse").click();
   await expect(page.locator('.ribbon-body')).toHaveCount(0);
   await page.locator('#ribbon-show').click();
   await expect(page.locator('.ribbon-body')).toBeVisible();
@@ -156,9 +157,9 @@ test('token colours: blue commands, green recorded, yellow synthesized, red erro
       return { colour: style.textDecorationColor, style: style.textDecorationStyle, line: style.textDecorationLine };
     };
     return {
-      marker: probe('.token-legend .token-marker'), recorded: probe('.token-legend .token-recorded'),
-      synthesized: probe('.token-legend .token-synthesized'), error: probe('.token-legend .token-error'),
-      blocked: probe('.token-legend .blocked'), fixable: probe('.token-legend .fixable'),
+      marker: probe('.legend .token-marker'), recorded: probe('.legend .token-recorded'),
+      synthesized: probe('.legend .token-synthesized'), error: probe('.legend .token-error'),
+      blocked: probe('.legend .blocked'), fixable: probe('.legend .fixable'),
     };
   });
   expect(colours.marker.colour).toBe('rgb(86, 156, 214)');
@@ -176,7 +177,7 @@ test('a fixable error is a wavy red token whose tooltip carries the fix', async 
   const fixable = page.locator('.highlight-layer .token-error.fixable');
   await expect(fixable.first()).toHaveAttribute('title', /修复/);
   await expect(fixable.first()).toHaveCSS('text-decoration-style', 'wavy');
-  await expect(fixable.first()).toHaveCSS('text-decoration-color', await page.locator('.token-legend .token-error').evaluate((element) => getComputedStyle(element).textDecorationColor));
+  await expect(fixable.first()).toHaveCSS('text-decoration-color', await page.locator('.legend .token-error').evaluate((element) => getComputedStyle(element).textDecorationColor));
 });
 
 test('the unrecorded words toggle switches strict mode end to end', async ({ page }) => {

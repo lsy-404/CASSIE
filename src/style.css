@@ -14,3 +14,9 @@ button { font: inherit; }
 ::-webkit-scrollbar-corner { background: transparent; }
 .diamond-slider::-webkit-slider-thumb { width: 12px; height: 12px; margin-top: -4px; border: 2px solid #1e1e1e; border-radius: 0; background: #fff; box-shadow: none; transform: rotate(45deg); }
 .diamond-slider::-moz-range-thumb { width: 8px; height: 8px; border: 2px solid #1e1e1e; border-radius: 0; background: #fff; box-shadow: none; transform: rotate(45deg); }
+.token-recorded { text-decoration-color: var(--token-recorded); }
+.token-synthesized { text-decoration-color: var(--token-synthesized); }
+.token-error { text-decoration-color: var(--token-error); }
+.token-marker { text-decoration-color: var(--token-command); }
+.fixable { text-decoration-style: wavy; }
+.blocked { text-decoration-style: dashed; }

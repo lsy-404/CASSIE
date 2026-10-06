@@ -1,4 +1,4 @@
-import { openPanel, openStudio, wavButton } from './helpers';
+import { openPanel, openSideView, openStudio, wavButton } from './helpers';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { OggOpusDecoder } from 'ogg-opus-decoder';
@@ -207,7 +207,7 @@ test('markup help and insertion preserve exact inline text and selections', asyn
   await openStudio(page);
   const field = page.locator('textarea');
   await expect(field).toBeEnabled();
-  await page.locator('[data-command="help"]').click();
+  await openSideView(page, '帮助');
   await expect(page.getByText(/me<pitch value="1.2">tri<\/pitch>cs/)).toBeVisible();
 
   await field.fill('attention');
@@ -227,11 +227,6 @@ test('markup help and insertion preserve exact inline text and selections', asyn
   await page.getByRole('button', { name: '素材片段', exact: true }).click();
   await expect(field).toHaveValue('me<clip id="a"/>trics');
   await expect.poll(() => field.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe('me<clip id="a"/>'.length);
-
-  await field.fill('metrics');
-  await field.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(2, 2));
-  await page.getByRole('button', { name: '插入音素', exact: true }).click();
-  await expect(field).toHaveValue('me/ a e: /trics');
 
   await field.fill('me<pitch value="1.2">tri</pitch>cs');
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 90_000 });
@@ -291,7 +286,7 @@ test('direct phonemes and unknown English words synthesize locally by default', 
   await expect(page.locator('.spell-missing').first()).toHaveCSS('text-decoration-style', 'wavy');
   const colours = await page.evaluate(() => {
     const decoration = (selector: string) => getComputedStyle(document.querySelector(selector)!).textDecorationColor;
-    return { missing: decoration('.highlight-layer .spell-missing'), synthesized: decoration('.token-legend .token-synthesized'), error: decoration('.token-legend .token-error') };
+    return { missing: decoration('.highlight-layer .spell-missing'), synthesized: decoration('.legend .token-synthesized'), error: decoration('.legend .token-error') };
   });
   expect(colours.missing).toBe(colours.synthesized);
   expect(colours.missing).not.toBe(colours.error);

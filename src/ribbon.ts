@@ -6,7 +6,7 @@ export type SliderModel = "pitch" | "volume" | "gap" | "rate" | "voicePitch" | "
 
 export type ActionId =
   | "render" | "cancel" | "toggleLive" | "toggleSynthesis" | "exportWav" | "exportOpus"
-  | "toggleSideBar" | "togglePanel" | "toggleRibbon" | "showHelp" | "insertPhonemes" | "scope.fit"
+  | "scope.fit"
   | `marker.${MarkerName}` | `scope.${ScopeName}`;
 
 type Predicate = (studio: Studio) => boolean;
@@ -87,14 +87,8 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
     { id: "fitSeconds", kind: "number", label: "fitSeconds", icon: "fit", model: "fitSeconds", ...FIT_RANGE, tip: "tip.fit" },
     { id: "fit", label: "fit", icon: "fit", action: "scope.fit", size: "large", tip: "tip.fit", enabled: canEdit },
   ] },
-  { id: "phonemes", label: "group.phonemes", commands: [
-    { id: "insertPhonemes", label: "insertPhonemes", icon: "phoneme", action: "insertPhonemes", size: "large", tip: "tip.phonemes", enabled: canEdit },
-  ] },
-  { id: "view", label: "group.view", commands: [
-    { id: "sidebar", label: "sideBar", icon: "sidebar", action: "toggleSideBar", size: "large", pressed: (s) => s.sideBarOpen },
-    { id: "panel", label: "panel", icon: "panel", action: "togglePanel", size: "large", pressed: (s) => s.panelOpen },
-    { id: "ribbon", label: "ribbonToggle", icon: "ribbon", action: "toggleRibbon", size: "large", pressed: (s) => !s.ribbonCollapsed },
-    { id: "help", label: "help", icon: "help", action: "showHelp", size: "large" },
+  { id: "advanced", label: "group.advanced", commands: [
+    { ...scope("sync", "sync", "sync", "large"), tip: "tip.sync" },
   ] },
   { id: "mix", label: "group.mix", commands: [
     slider("pitch", "pitch", "pitch", 0.65, 1.35, 0.01),
