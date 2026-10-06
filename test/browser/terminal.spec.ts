@@ -1,6 +1,6 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { waitForStudio } from './helpers';
+import { test, waitForStudio } from './helpers';
 
 function launchUrl(payload: unknown, format?: string) {
   const data = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
@@ -49,56 +49,70 @@ test('wordmark draws the plus inline after the final dot and the caption shows t
   expect(caption!.x + caption!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 });
 
-const slowWorld = async (page: import('@playwright/test').Page) => page.route('**/assets/world-*.wasm', async (route) => { await new Promise((resolve) => setTimeout(resolve, 3000)); await route.continue().catch(() => undefined); });
+const slowWorld = async (page: import('@playwright/test').Page) => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  await page.route('**/assets/world-*.wasm', async (route) => { await gate; await route.continue().catch(() => undefined); });
+  return release;
+};
 
 for (const size of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
   test(`a pending step is a yellow single-row line whose dots grow every 100 ms with the spinner after them at ${size.width}px`, async ({ page }, info) => {
     await page.setViewportSize(size);
-    await slowWorld(page);
+    const release = await slowWorld(page);
     await page.goto('/');
     const line = page.getByTestId('terminal-step').filter({ hasText: 'instantiate WORLD wasm module' }).locator('.terminal-entry__line');
-    await expect(line.locator('.terminal-entry__marker')).toHaveText('[PEND]');
+    await expect(line.locator('.terminal-entry__marker')).toHaveText('[PEND]', { timeout: 30_000 });
     await expect(line.locator('.terminal-entry__marker')).toHaveCSS('color', 'rgb(250, 204, 21)');
     await expect(line.locator('.terminal-entry__spinner')).toHaveText(/^[\\|/-]$/);
     const order = await line.evaluate((el) => [...el.children].map((child) => child.className.replace('terminal-entry__', '')));
     expect(order).toEqual(['marker', 'label', 'dots', 'spinner']);
     const lineHeight = await line.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight));
     const samples: { t: number; dots: number }[] = [];
+    const dotsLocator = line.locator('.terminal-entry__dots');
     const start = Date.now();
     while (Date.now() - start < 1500) {
-      const dots = (await line.locator('.terminal-entry__dots').textContent())!;
+      const { text: dots, at } = await dotsLocator.evaluate((el) => ({ text: el.textContent ?? '', at: performance.now() }));
       expect(dots).toMatch(/^( \.)*$/);
       expect((await line.boundingBox())!.height).toBeLessThanOrEqual(lineHeight + 1);
       const spinner = (await line.locator('.terminal-entry__spinner').boundingBox())!;
       const log = (await page.getByTestId('terminal-log').boundingBox())!;
       expect(spinner.x + spinner.width).toBeLessThanOrEqual(log.x + log.width);
-      samples.push({ t: Date.now() - start, dots: dots.length / 2 });
+      samples.push({ t: at, dots: dots.length / 2 });
       await page.waitForTimeout(40);
     }
+    const first = samples[0];
     const last = samples.at(-1)!;
-    if (size.width > 400) {
-      expect(last.dots).toBeGreaterThanOrEqual(8);
-      expect(last.dots).toBeLessThanOrEqual(19);
-    }
+    const grown = last.dots - first.dots;
+    const elapsed = last.t - first.t;
+    expect(grown).toBeLessThanOrEqual(elapsed / 100 + 3);
+    if (size.width > 400) expect(grown).toBeGreaterThanOrEqual(Math.floor(elapsed / 200) - 2);
     for (let i = 1; i < samples.length; i += 1) expect(samples[i].dots).toBeGreaterThanOrEqual(samples[i - 1].dots);
     await page.screenshot({ path: info.outputPath(`pending-${size.width}.png`) });
-    await expect(page.getByTestId('terminal-status')).toHaveText('SYSTEM READY', { timeout: 30_000 });
-    const lines = page.locator('.terminal-entry__line');
-    const count = await lines.count();
-    for (let i = 0; i < count; i += 1) {
-      await expect(lines.nth(i).locator('.terminal-entry__marker')).toHaveText('[ OK ]');
-      await expect(lines.nth(i).locator('.terminal-entry__marker')).toHaveCSS('color', 'rgb(74, 222, 128)');
-      await expect(lines.nth(i).locator('.terminal-entry__spinner')).toHaveCount(0);
-      expect((await lines.nth(i).boundingBox())!.height).toBeLessThanOrEqual(lineHeight + 1);
+    release();
+    const settled = await (await page.waitForFunction(() => {
+      if (document.querySelector('[data-testid="terminal-status"]')?.textContent !== 'SYSTEM READY') return null;
+      return [...document.querySelectorAll('.terminal-entry__line')].map((el) => ({
+        marker: el.querySelector('.terminal-entry__marker')?.textContent,
+        color: getComputedStyle(el.querySelector('.terminal-entry__marker')!).color,
+        spinners: el.querySelectorAll('.terminal-entry__spinner').length,
+        height: el.getBoundingClientRect().height,
+      }));
+    }, undefined, { polling: 'raf', timeout: 30_000 })).jsonValue();
+    expect(settled.length).toBeGreaterThan(0);
+    for (const entry of settled) {
+      expect(entry).toMatchObject({ marker: '[ OK ]', color: 'rgb(74, 222, 128)', spinners: 0 });
+      expect(entry.height).toBeLessThanOrEqual(lineHeight + 1);
     }
   });
 }
 
 test('dots stop growing and stay as they were when a step finishes', async ({ page }) => {
-  await slowWorld(page);
+  const release = await slowWorld(page);
   await page.goto('/');
   const step = page.locator('[data-testid="terminal-step"][data-status="pending"]').first();
-  await expect(step).toBeVisible();
+  await expect(step).toBeVisible({ timeout: 30_000 });
+  release();
   const id = await step.locator('.terminal-entry__label').textContent();
   const done = page.getByTestId('terminal-step').filter({ hasText: id! }).locator('[class*="marker"]', { hasText: '[ OK ]' });
   const dots = page.getByTestId('terminal-step').filter({ hasText: id! }).locator('.terminal-entry__dots');

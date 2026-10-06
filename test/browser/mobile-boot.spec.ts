@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { waitForStudio } from './helpers';
+import { expect } from '@playwright/test';
+import { waitForStudio, test } from './helpers';
 
 test('the full boot sequence, including the phoneme worker, completes under mobile emulation', async ({ page }) => {
   const errors: string[] = [];

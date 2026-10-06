@@ -1,5 +1,5 @@
-import { openPanel, openSideView, openStudio, wavButton } from './helpers';
-import { expect, test } from '@playwright/test';
+import { openPanel, openSideView, openStudio, wavButton, test } from './helpers';
+import { expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { OggOpusDecoder } from 'ogg-opus-decoder';
 

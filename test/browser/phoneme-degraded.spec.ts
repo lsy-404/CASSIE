@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { openSideView } from './helpers';
+import { expect, type Page } from '@playwright/test';
+import { openSideView, test } from './helpers';
 
 const CASES = [
   {

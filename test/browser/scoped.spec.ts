@@ -1,5 +1,5 @@
-import { openPanel, openStudio, wavButton } from './helpers';
-import { expect, test } from '@playwright/test';
+import { openPanel, openStudio, wavButton, test } from './helpers';
+import { expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
 async function renderWav(page: import('@playwright/test').Page, text: string, output: string) {

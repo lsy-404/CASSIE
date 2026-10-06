@@ -1,4 +1,11 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, test as base, type Page } from '@playwright/test';
+
+export const test = base.extend({
+  page: async ({ page }, use) => {
+    await use(page);
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  },
+});
 
 export async function waitForStudio(page: Page) {
   await expect(page.locator('textarea')).toBeEnabled({ timeout: 30_000 });
