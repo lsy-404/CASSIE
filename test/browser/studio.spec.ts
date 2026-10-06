@@ -27,9 +27,8 @@ test('default recruitment announcement exposes complete editable markup examples
   await expect(page.locator('.annotated-editor .token-synthesized').filter({ hasText: /^(Become|Class-D|legend)$/ })).toHaveCount(4);
 });
 
-test('voice post-processing controls default neutral and scope insertion stays local to speech', async ({ page }) => {
+test('voice post-processing controls default neutral and the ribbon has no voice scope button', async ({ page }) => {
   await openStudio(page);
-  const editor = page.locator('textarea');
   const pitchShift = page.getByRole('slider', { name: '音调偏移（半音）' });
   const breathiness = page.getByRole('slider', { name: '气声' });
   const formant = page.getByRole('slider', { name: '共振峰偏移（半音）' });
@@ -44,10 +43,7 @@ test('voice post-processing controls default neutral and scope insertion stays l
   await expect(formant).toHaveAttribute('max', '6');
   await expect(formant).toHaveAttribute('step', '0.1');
   await expect(page.locator('[data-section="processing"]')).toContainText('WORLD DSP');
-  await editor.fill('attention');
-  await editor.evaluate((field: HTMLTextAreaElement) => field.setSelectionRange(0, field.value.length));
-  await page.getByRole('button', { name: '语音作用范围', exact: true }).click();
-  await expect(editor).toHaveValue('<voice pitch="3" loudness="2" tension="0.2" breathiness="0.3" formant="-2">attention</voice>');
+  await expect(page.getByRole('button', { name: '语音作用范围', exact: true })).toHaveCount(0);
 });
 
 test('deferred cursor restoration does not override newer editor input', async ({ page }) => {

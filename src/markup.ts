@@ -14,7 +14,6 @@ export const SCOPES = {
   spacing: { open: '<spacing seconds="0.2">', close: "</spacing>" },
   rate: { open: '<rate value="1.2">', close: "</rate>" },
   sync: { open: "<sync>", close: "</sync>" },
-  voice: { open: '<voice pitch="3" loudness="2" tension="0.2" breathiness="0.3" formant="-2">', close: "</voice>" },
 } as const;
 
 export const FIT_RANGE = { min: 0.05, max: 120, step: 0.05, default: 2 } as const;

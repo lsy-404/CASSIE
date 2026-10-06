@@ -64,14 +64,13 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
   ] },
   { id: "effects", label: "group.effects", commands: [
     scope("pitch", "pitch", "pitch"), scope("volume", "volume", "volume"), scope("rate", "rate", "rate"),
-    scope("voice", "voice", "voice", "large"),
   ] },
   { id: "timing", label: "group.timing", commands: [
     scope("offset", "offset", "offset"), scope("duration", "duration", "duration"), scope("spacing", "spacing", "spacing"),
   ] },
   { id: "reading", label: "group.reading", commands: [
     { id: "fitSeconds", kind: "number", label: "fitSeconds", icon: "fit", model: "fitSeconds", ...FIT_RANGE, tip: "tip.fit" },
-    { id: "fit", label: "fit", icon: "fit", action: "scope.fit", size: "large", tip: "tip.fit", enabled: canEdit },
+    { id: "fit", label: "fit", icon: "fit", action: "scope.fit", tip: "tip.fit", enabled: canEdit },
   ] },
   { id: "advanced", label: "group.advanced", commands: [
     { ...scope("sync", "sync", "sync", "large"), tip: "tip.sync" },
