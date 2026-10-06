@@ -193,14 +193,24 @@ export function applyStutter(samples: Float32Array, sampleRate: number, stutter?
     offset += segmentLength;
   }
   repeated.set(samples.subarray(point), offset);
-  // Equal-power blend into the audio that follows the slice end hides the loop seam
   const sliceEnd = point + segmentLength;
-  const fade = Math.min(Math.round(sampleRate * STUTTER_FADE_SECONDS), Math.floor(segmentLength / 2), samples.length - sliceEnd);
+  const fade = Math.min(Math.round(sampleRate * STUTTER_FADE_SECONDS), Math.floor(segmentLength / 2));
+  const following = Math.min(fade, samples.length - sliceEnd);
   for (let join = 1; join <= stutter.repeats; join += 1) {
     const base = point + join * segmentLength;
-    for (let index = 0; index < fade; index += 1) {
-      const angle = Math.PI / 2 * (index + 1) / (fade + 1);
-      repeated[base + index] = samples[point + index] * Math.sin(angle) + samples[sliceEnd + index] * Math.cos(angle);
+    if (following === fade) {
+      // Equal-power blend into the audio that follows the slice end hides the loop seam
+      for (let index = 0; index < fade; index += 1) {
+        const angle = Math.PI / 2 * (index + 1) / (fade + 1);
+        repeated[base + index] = samples[point + index] * Math.sin(angle) + samples[sliceEnd + index] * Math.cos(angle);
+      }
+    } else {
+      // The slice reaches the end of the audio, so dip through zero at the restart instead
+      for (let index = 0; index < fade; index += 1) {
+        const angle = Math.PI / 2 * (index + 1) / (fade + 1);
+        repeated[base + index] *= Math.sin(angle);
+        repeated[base - 1 - index] *= Math.sin(angle);
+      }
     }
   }
   return repeated;

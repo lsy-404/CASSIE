@@ -79,7 +79,7 @@ describe('applyStutter slice loop', () => {
     const output = applyStutter(ramp, rate, { position: 0.2, length: 0.1, repeats: 3 });
     for (let join = 1; join <= 3; join += 1) {
       const base = 200 + join * 100;
-      for (let index = 4; index < 100; index += 1) expect(output[base + index - 100 + 100]).toBe(ramp[200 + index]);
+      for (let index = 4; index < 100; index += 1) expect(output[base + index]).toBe(ramp[200 + index]);
     }
   });
 
@@ -102,6 +102,14 @@ describe('applyStutter slice loop', () => {
       expect(entering[200 + index]).toBeCloseTo(Math.sin(Math.PI / 2 * (index + 1) / 5), 5);
     }
     expect(entering[204]).toBe(1);
+  });
+
+  it('has no hard splice when the slice reaches the end of loud audio', () => {
+    const loud = Float32Array.from({ length: 4800 }, (_, index) => 0.5 + 0.3 * Math.sin(index / 7));
+    const output = applyStutter(loud, 48_000, { position: 0.5, length: 1, repeats: 3 });
+    let largestStep = 0;
+    for (let index = 1; index < output.length; index += 1) largestStep = Math.max(largestStep, Math.abs(output[index] - output[index - 1]));
+    expect(largestStep).toBeLessThan(0.1);
   });
 
   it('clamps the slice to the audio that remains and ignores a slice past the end', () => {
@@ -171,7 +179,7 @@ describe('stutter rendering', () => {
     expect(duration).toBeCloseTo(0.7 + 0.1 + 0.3, 3);
   });
 
-  it('applies the slice loop before rate stretching, offset and duration', async () => {
+  it('applies the slice loop after the offset and duration crop and before rate stretching', async () => {
     expect((await render('<rate value="2"><stutter repeats="2" length="0.1">word</stutter></rate>')).duration).toBeCloseTo(0.35, 2);
     expect((await render('<offset seconds="0.1"><stutter repeats="2" length="0.1">word</stutter></offset>')).duration).toBeCloseTo(0.6, 3);
     expect((await render('<duration seconds="0.3"><stutter repeats="2" length="0.1">word</stutter></duration>')).duration).toBeCloseTo(0.5, 3);

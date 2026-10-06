@@ -139,7 +139,9 @@ export function estimateFitWarnings(plan: WordPlan[], bank: Bank, options: { gap
       ? word.phonemeUnits.reduce((sum, unit) => sum + (unit.endSeconds - unit.startSeconds) * (unit.stretchFactor ?? 1), 0)
       : [...(word.prefixClipIds ?? []), word.clipId, ...(word.suffixClipIds ?? [])].reduce((sum, id) => sum + (clips.get(id)?.duration ?? 0), 0);
     const start = Math.min(sourceSeconds, word.startAt ?? 0);
-    const total = Math.min(sourceSeconds - start, word.maxDuration ?? Infinity) / (word.pitch * options.pitch);
+    const cropped = Math.min(sourceSeconds - start, word.maxDuration ?? Infinity);
+    const stutter = word.stutter ? Math.min(word.stutter.length, cropped * (1 - word.stutter.position)) * word.stutter.repeats : 0;
+    const total = (cropped + stutter) / (word.pitch * options.pitch);
     const timings = [...(word.sourceWordTimings ?? [])].sort((left, right) => left.startSeconds - right.startSeconds);
     const gaps = timings.slice(1).reduce((sum, timing, index) => sum + Math.max(0, timing.startSeconds - timings[index].endSeconds), 0) / (word.pitch * options.pitch);
     return fitItemOf(word, options.rate, { kind: clips.get(word.clipId)?.kind ?? 'effect', total, gaps });

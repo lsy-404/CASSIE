@@ -189,6 +189,11 @@ describe('fit warnings in analysis', () => {
     expect(result.notices[0].text).toContain('4×');
   });
 
+  it('counts stutter audio toward the estimate', async () => {
+    expect((await analysis('<fit seconds="1"><stutter repeats="32" length="0.5">cassie</stutter></fit>')).notices).toHaveLength(1);
+    expect((await analysis('<fit seconds="10"><stutter repeats="20" length="0.1">cassie</stutter></fit>')).notices).toEqual([]);
+  });
+
   it('stays silent when the duration is reachable', async () => {
     expect((await analysis('<fit seconds="1">cassie word</fit>')).notices).toEqual([]);
   });
