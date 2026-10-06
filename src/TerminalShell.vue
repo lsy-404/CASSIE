@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import App from './App.vue';
 import TerminalEntry from './components/TerminalEntry.vue';
-import { locale, setLocale } from './i18n';
+import { setLocale } from './i18n';
 import { decodeUrlState, type DecodedUrlState } from './url-state';
 
 let launchState: DecodedUrlState | null = null;
@@ -15,7 +15,7 @@ try {
 </script>
 
 <template>
-  <TerminalEntry :locale="locale">
+  <TerminalEntry>
     <App :initial-state="launchState" :url-error="urlError" />
   </TerminalEntry>
 </template>
