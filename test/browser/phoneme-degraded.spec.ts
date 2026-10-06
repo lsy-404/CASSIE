@@ -31,7 +31,8 @@ const CASES = [
 async function breakWorker(page: Page, script: (real: string) => string) {
   await page.route(/phoneme\.worker-[^/]*\.js$/, async (route) => {
     const response = await route.fetch();
-    await route.fulfill({ response, body: script(await response.text()) });
+    const source = await response.text();
+    await route.fulfill({ response, body: script(source) });
   });
 }
 
