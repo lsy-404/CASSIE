@@ -1,4 +1,4 @@
-import { openPanel, openRibbon, openSideView, openStudio, wavLink } from './helpers';
+import { openPanel, openStudio, wavButton } from './helpers';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { OggOpusDecoder } from 'ogg-opus-decoder';
@@ -29,8 +29,6 @@ test('default recruitment announcement exposes complete editable markup examples
 test('voice post-processing controls default neutral and scope insertion stays local to speech', async ({ page }) => {
   await openStudio(page);
   const editor = page.locator('textarea');
-  await openSideView(page, '声音设置');
-  await expect(page.locator('.voice-processing')).toBeVisible();
   const pitchShift = page.getByRole('slider', { name: '音调偏移（半音）' });
   const breathiness = page.getByRole('slider', { name: '气声' });
   const formant = page.getByRole('slider', { name: '共振峰偏移（半音）' });
@@ -44,9 +42,7 @@ test('voice post-processing controls default neutral and scope insertion stays l
   await expect(formant).toHaveAttribute('min', '-6');
   await expect(formant).toHaveAttribute('max', '6');
   await expect(formant).toHaveAttribute('step', '0.1');
-  await expect(page.getByText(/WORLD DSP/)).toBeVisible();
-
-  await openRibbon(page, '插入');
+  await expect(page.getByRole('group', { name: '语音后处理' })).toHaveAttribute('title', /WORLD DSP/);
   await editor.fill('attention');
   await editor.evaluate((field: HTMLTextAreaElement) => field.setSelectionRange(0, field.value.length));
   await page.getByRole('button', { name: '语音作用范围', exact: true }).click();
@@ -55,7 +51,6 @@ test('voice post-processing controls default neutral and scope insertion stays l
 
 test('deferred cursor restoration does not override newer editor input', async ({ page }) => {
   await openStudio(page);
-  await openRibbon(page, '插入');
   await page.locator('textarea').fill('metrics');
   await page.evaluate(() => {
     const button = document.querySelector('[data-command="marker.clip"]');
@@ -81,7 +76,7 @@ async function waitForReady(page: import('@playwright/test').Page, timeout = 900
 
 async function saveWav(page: import('@playwright/test').Page, path: string) {
   const download = page.waitForEvent('download');
-  await (await wavLink(page, '下载 WAV')).click();
+  await wavButton(page).click();
   const item = await download;
   await item.saveAs(path);
   return readFile(path);
@@ -96,7 +91,7 @@ test('live render creates local WAV, custom player tracks words and gaps, and Op
     if (/^https?:/.test(request.url()) && new URL(request.url()).origin !== appOrigin) remoteRequests.push(request.url());
   });
   await openStudio(page);
-  await expect(page.getByRole('checkbox', { name: '实时渲染' })).toBeChecked();
+  await expect(page.getByRole('button', { name: '实时渲染' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('heading', { name: '素材目录' })).toHaveCount(0);
   const trackStyle = await page.locator('input[type="range"]').first().evaluate((input) => ({
     position: (input as HTMLInputElement).style.getPropertyValue('--fluent-slider-position'),
@@ -146,11 +141,9 @@ test('live render creates local WAV, custom player tracks words and gaps, and Op
   const pcm = new Int16Array(bytes.buffer.slice(bytes.byteOffset + 44, bytes.byteOffset + bytes.length));
   const rms = Math.sqrt(pcm.reduce((sum, value) => sum + (value / 32768) ** 2, 0) / pcm.length);
   expect(rms).toBeGreaterThan(0.005);
-  await openPanel(page, '导出');
-  await page.getByRole('button', { name: '导出 Opus', exact: true }).click();
-  await expect(page.getByRole('link', { name: '下载 Opus' })).toBeVisible({ timeout: 90000 });
-  const opusDownload = page.waitForEvent('download');
-  await page.getByRole('link', { name: '下载 Opus' }).click();
+  await expect(page.locator('.panel-tabs').getByRole('tab', { name: '导出' })).toHaveCount(0);
+  const opusDownload = page.waitForEvent('download', { timeout: 90_000 });
+  await page.locator('[data-command="opus"]').click();
   const opus = await opusDownload;
   const opusPath = info.outputPath('announcement.opus');
   await opus.saveAs(opusPath);
@@ -173,8 +166,8 @@ test('manual rendering can be cancelled and restarted', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await openStudio(page);
-  await page.locator('.live-controls .fluent-checkbox__box').click();
-  await expect(page.getByRole('checkbox', { name: '实时渲染' })).not.toBeChecked();
+  await page.locator('[data-command="live"]').click();
+  await expect(page.getByRole('button', { name: '实时渲染' })).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByRole('button', { name: '生成音频' })).toBeVisible();
   await page.locator('textarea').fill('zzyyxxunrecorded');
   await page.route('**/audio/**', async (route) => {
@@ -213,9 +206,8 @@ test('markup help and insertion preserve exact inline text and selections', asyn
   await openStudio(page);
   const field = page.locator('textarea');
   await expect(field).toBeEnabled();
-  await openSideView(page, '帮助');
+  await page.locator('[data-command="help"]').click();
   await expect(page.getByText(/me<pitch value="1.2">tri<\/pitch>cs/)).toBeVisible();
-  await openRibbon(page, '插入');
 
   await field.fill('attention');
   await field.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(element.value.length, element.value.length));
@@ -269,11 +261,10 @@ test('direct phonemes and unknown English words synthesize locally by default', 
   await openStudio(page);
   await page.locator('textarea').fill('/ a e: /');
   await waitForReady(page, 90000);
-  await openPanel(page, '分析');
+  await openPanel(page, /^分析/);
   await expect(page.locator('.analysis-details')).toContainText('语音片段');
   await expect(page.locator('.annotated-editor .token-synthesized')).toHaveText('/ a e: /');
-  await openPanel(page, /^问题/);
-  await expect(page.locator('.warning-item').filter({ hasText: /was stretched from/ })).toBeVisible();
+  await expect(page.locator('.notice-item.sev-warning').filter({ hasText: /was stretched from/ })).toBeVisible();
   const phonemePath = info.outputPath('phonemes.wav');
   const bytes = await saveWav(page, phonemePath);
   expect(bytes.toString('ascii', 0, 4)).toBe('RIFF');
@@ -297,7 +288,12 @@ test('direct phonemes and unknown English words synthesize locally by default', 
   await expect(page.locator('.annotated-editor .token-synthesized').filter({ hasText: 'worksheet' })).not.toHaveClass(/spell-missing/);
   await expect(page.locator('.spell-missing').first()).toHaveCSS('text-decoration-line', 'underline');
   await expect(page.locator('.spell-missing').first()).toHaveCSS('text-decoration-style', 'wavy');
-  await expect(page.locator('.spell-missing').first()).toHaveCSS('text-decoration-color', 'rgb(255, 153, 164)');
+  const colours = await page.evaluate(() => {
+    const decoration = (selector: string) => getComputedStyle(document.querySelector(selector)!).textDecorationColor;
+    return { missing: decoration('.highlight-layer .spell-missing'), synthesized: decoration('.token-legend .token-synthesized'), error: decoration('.token-legend .token-error') };
+  });
+  expect(colours.missing).toBe(colours.synthesized);
+  expect(colours.missing).not.toBe(colours.error);
   await waitForReady(page, 90000);
   expect(errors).toEqual([]);
   expect(remoteRequests).toEqual([]);

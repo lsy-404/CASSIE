@@ -1,36 +1,36 @@
 import { describe, expect, it, vi } from "vitest";
 import { ICONS } from "../src/icons";
 import { FIT_RANGE, fitScope } from "../src/markup";
-import { RIBBON_TABS, RIBBON_TAB_IDS } from "../src/ribbon";
+import { RIBBON_GROUPS } from "../src/ribbon";
+
+const commands = RIBBON_GROUPS.flatMap((group) => group.commands);
 
 describe("ribbon configuration", () => {
-  it("has unique tab and group ids and only known icons", () => {
-    expect(new Set(RIBBON_TABS.map((tab) => tab.id)).size).toBe(RIBBON_TABS.length);
-    for (const tab of RIBBON_TABS) {
-      expect(new Set(tab.groups.map((group) => group.id)).size).toBe(tab.groups.length);
-      for (const group of tab.groups) {
-        expect(group.commands.length).toBeGreaterThan(0);
-        expect(new Set(group.commands.map((command) => command.id)).size).toBe(group.commands.length);
-        for (const command of group.commands) expect(ICONS).toHaveProperty(command.icon);
-      }
-    }
+  it("is one flat list of groups with unique ids and only known icons", () => {
+    expect(new Set(RIBBON_GROUPS.map((group) => group.id)).size).toBe(RIBBON_GROUPS.length);
+    expect(new Set(commands.map((command) => command.id)).size).toBe(commands.length);
+    for (const group of RIBBON_GROUPS) expect(group.commands.length).toBeGreaterThan(0);
+    for (const command of commands) expect(ICONS).toHaveProperty(command.icon);
   });
 
-  it("offers the reading time controls in the timing tab", () => {
-    const reading = RIBBON_TABS.find((tab) => tab.id === "timing")?.groups.find((group) => group.id === "reading");
+  it("offers the reading time controls", () => {
+    const reading = RIBBON_GROUPS.find((group) => group.id === "reading");
     expect(reading?.commands.map((command) => command.id)).toEqual(["fitSeconds", "fit"]);
     expect(FIT_RANGE).toMatchObject({ min: 0.05, max: 120, default: 2 });
     expect(fitScope(2)).toEqual({ open: '<fit seconds="2">', close: "</fit>" });
   });
 
-  it("lists tab ids once and in the declared order", () => {
-    expect(RIBBON_TABS.map((tab) => tab.id)).toEqual([...RIBBON_TAB_IDS]);
+  it("hosts the global mix, voice processing, strict toggle and the only export commands", () => {
+    const sliders = commands.flatMap((command) => command.kind === "slider" ? [command.model] : []);
+    expect(sliders).toEqual(["pitch", "volume", "gap", "rate", "voicePitch", "loudness", "tension", "breathiness", "formant"]);
+    expect(commands.find((command) => command.id === "synthesis")).toMatchObject({ action: "toggleSynthesis" });
+    expect(RIBBON_GROUPS.find((group) => group.id === "export")?.commands.map((command) => command.id)).toEqual(["wav", "opus"]);
   });
 
   it("has a label and tip in every locale", async () => {
     vi.stubGlobal("document", { documentElement: {}, title: "", createElement: () => ({}) });
     const { i18n } = await import("../src/i18n");
-    const keys = RIBBON_TABS.flatMap((tab) => [tab.label, ...tab.groups.flatMap((group) => [group.label, ...group.commands.flatMap((command) => [command.label, ...(command.tip ? [command.tip] : [])])])]);
+    const keys = RIBBON_GROUPS.flatMap((group) => [group.label, ...(group.tip ? [group.tip] : []), ...group.commands.flatMap((command) => [command.label, ...(command.tip ? [command.tip] : [])])]);
     for (const locale of ["en", "zh"] as const) {
       const missing = keys.filter((key) => !i18n.global.te(key, locale));
       expect(missing, locale).toEqual([]);

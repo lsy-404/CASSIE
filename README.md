@@ -8,15 +8,17 @@ Vue and [platform-kit Fluent](https://github.com/lsy-404/platform-kit) provide t
 
 The interface supports Chinese and English, initially follows the browser language, and remembers the selected language. The terminal entry checks real module workers and the audio WebAssembly engines before **Tap to unlock** enables the studio. A failed capability check displays a centered device error. Use a standard Chromium browser with full support for the required browser APIs.
 
-The terminal layout references the game's [official CASSIE monitor](https://en.scpslgame.com/index.php?title=File:LCZ_Screen_CASSIE_Scan_Complete.png). Its editable default is an original SCP recruitment broadcast with markup examples. One long playback bar also shows rendering progress, supports already-rendered audio and updates the current time from the media clock. The export panel provides WAV and Opus downloads.
+The terminal layout references the game's [official CASSIE monitor](https://en.scpslgame.com/index.php?title=File:LCZ_Screen_CASSIE_Scan_Complete.png). Its editable default is an original SCP recruitment broadcast with markup examples. One long playback bar also shows rendering progress, supports already-rendered audio and updates the current time from the media clock. The ribbon provides WAV and Opus downloads.
 
 ## Interface
 
-The studio is laid out like an editor: a title bar, a Word-style ribbon, an activity bar with a collapsible side bar, the announcement editor with a line-number gutter and token highlighting, a bottom panel (Player, Problems, Analysis, Export) and a status bar. The theme is the Fluent dark scheme with a white accent and neutral greys; all overrides live in `src/theme.css`.
+The studio is laid out like an editor: a title bar, a Word-style ribbon, an activity bar with a collapsible side bar, the announcement editor with a line-number gutter and token highlighting, a bottom panel (Player and Analysis) and a status bar. The theme is the Fluent dark scheme with a white accent and neutral greys; all overrides live in `src/theme.css`.
 
-- The ribbon is data driven: `src/ribbon.ts` lists tabs, groups and commands (label, icon, enabled predicate, action id) and one generic `Ribbon.vue` renders them. Double-click the active ribbon tab, use the chevron at the right end of the ribbon, or press `Ctrl+F1` to collapse or expand it; with the ribbon collapsed, clicking or pressing Enter on a tab expands it again. Adding a command is one entry in that table, one handler in `src/studio.ts` (the action table is checked against the `ActionId` union at compile time) and label and tip keys in both locales in `src/i18n.ts`; a new tag also needs an entry in `src/markup.ts`.
+- The ribbon is a single flat page: `src/ribbon.ts` lists groups and commands (buttons, number fields, sliders; label, icon, enabled predicate, action id) and one generic `Ribbon.vue` renders every group side by side, each with its caption. It holds rendering, the live and unrecorded-word toggles, WAV and Opus export, tags, reading time, the global mix and the voice post-processing sliders. Use the chevron at its right end or `Ctrl+F1` to hide it; a slim strip brings it back. Adding a command is one entry in that table, one handler in `src/studio.ts` (the action table is checked against the `ActionId` union at compile time) and label and tip keys in both locales in `src/i18n.ts`; a new tag also needs an entry in `src/markup.ts`.
 - `src/studio.ts` holds the shared state and actions (text, options, render and export lifecycle, analysis, editor insertion) and is provided to the components under `src/components`.
-- The side bar shows the tag outline, the phoneme inventory, the sound settings or the help and markup reference. Shortcuts: `/` focuses the editor, `Ctrl/Cmd+Enter` renders, `Ctrl/Cmd+B` toggles the side bar.
+- The side bar shows the tag outline, the phoneme inventory, or the help and markup reference (opened from the ribbon). All sliders share one diamond thumb defined in `src/style.css`.
+- The Analysis tab lists every analysis notice with an error, warning or info icon, filterable by severity, with counts on the tab; selecting one moves the editor cursor to its source. Info entries include each word synthesized from phonemes. Render warnings appear there too.
+- Shortcuts: `/` focuses the editor, `Ctrl/Cmd+Enter` renders, `Ctrl/Cmd+B` toggles the side bar.
 - Below 820 px the side bar becomes an overlay (`Esc` closes it) and the ribbon scrolls horizontally with edge buttons.
 
 ## Development
@@ -35,7 +37,7 @@ Install the browser once with `pnpm exec playwright install chromium` before bro
 
 ## Announcement syntax
 
-Type complete English words directly. Numbers expand into speech units where available. You can type the tags yourself or insert them from the ribbon. Rendering updates as you edit; turn off the live-render checkbox to render manually. The audio bar supports seeking, with current words and spaces highlighted in the announcement.
+Type complete English words directly. Numbers expand into speech units where available. You can type the tags yourself or insert them from the ribbon. Rendering updates as you edit; turn off the live-render toggle in the ribbon to render manually. The audio bar supports seeking, with current words and spaces highlighted in the announcement.
 
 | Modifier | Meaning |
 | --- | --- |
@@ -77,9 +79,9 @@ Type space-separated phones between slashes, for example `/ a e: /`, or enter IP
 
 The shortcuts `a` and `e` select `ɑː` and `ɛ`. A trailing `:` requests a long vowel: a matching recorded long vowel is used when available; otherwise the vowel's middle portion is repeated with crossfades while preserving its pitch. IPA `j` remains the palatal glide; use `jh` for `dʒ`. Long-vowel repetition can sound rough.
 
-Unrecorded English words automatically use eSpeak's US English pronunciation through `phonemizer`. Existing word and phrase recordings take priority. Pronunciation conversion and composition run locally; missing phones cause the whole unrecorded word to be skipped with a warning.
+The ribbon's Unrecorded words toggle (on by default, stored as `options.phonemes` in the URL data) chooses between synthesizing unrecorded English words and strict mode. In strict mode only recorded words are spoken; words that could have been synthesized stay silent, appear as dashed yellow tokens and are listed as warnings in the Analysis tab. With the toggle on, unrecorded English words automatically use eSpeak's US English pronunciation through `phonemizer`. Existing word and phrase recordings take priority. Pronunciation conversion and composition run locally; missing phones cause the whole unrecorded word to be skipped with a warning.
 
-Underlines distinguish original recordings (green), composed words or phones (yellow), approximate or unavailable audio (red), and recognized tags (blue). Missing long vowels can be stretched from verified short-vowel windows; supported allophone substitutions keep the word playable with a red advisory underline. Words absent from both local US and British English Hunspell dictionaries use a red wavy underline and still synthesize. Dictionary hints can flag proper names or specialized vocabulary. Playback highlights the current word or intervening space using the rendered audio timeline.
+Underlines distinguish recognized commands and tags (blue), original recordings (green), composed words or phones (yellow) and text that cannot be synthesized (red). A wavy underline in the token's own colour means a fix is suggested, either by the analysis or by the spelling checker, and the tooltip shows the replacement; words absent from both local US and British English Hunspell dictionaries are yellow and wavy and still synthesize. Synthesizable words skipped in strict mode are yellow and dashed. Missing long vowels can be stretched from verified short-vowel windows; supported allophone substitutions keep the word playable with an advisory warning. Playback highlights the current word or intervening space using the rendered audio timeline.
 
 Echogarden's synthesis-reference MFCC/DTW alignment estimates phoneme boundaries from the actual audio, including the beginnings and endings of source words. Selection first favors the target word position, then neighboring phones and continuous source windows, with duration used to break ties. The renderer joins measured windows with short crossfades. These automatically aligned fragments can sound rough; pronunciation and transitions remain experimental.
 
@@ -87,7 +89,7 @@ Generation code, timestamp selection and composition code are AGPL-3.0-only. The
 
 ## URL loading and direct export
 
-`?data=<base64url>` preloads a UTF-8 JSON object containing `text`, optional `options`, and optional `locale` (`zh` or `en`). `&export=wav` or `&export=opus` renders and downloads the supplied announcement once after terminal unlock. An export requires valid `data`; invalid input produces an input error and never exports the default example. Importing does not play audio automatically.
+`?data=<base64url>` preloads a UTF-8 JSON object containing `text`, optional `options`, optional `locale` (`zh` or `en`), and within `options` an optional `phonemes` boolean (default `true`; `false` selects strict mode). `&export=wav` or `&export=opus` renders and downloads the supplied announcement once after terminal unlock. An export requires valid `data`; invalid input produces an input error and never exports the default example. Importing does not play audio automatically.
 
 ```js
 const payload = {

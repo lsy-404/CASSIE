@@ -14,6 +14,7 @@ export interface RenderUrlOptions {
   volume: number;
   gap: number;
   rate: number;
+  phonemes: boolean;
   voice: VoiceUrlOptions;
 }
 
@@ -40,6 +41,7 @@ const DEFAULT_OPTIONS: RenderUrlOptions = {
   volume: 1,
   gap: 0.24,
   rate: 1,
+  phonemes: true,
   voice: {
     pitchSemitones: 0,
     breathiness: 0,
@@ -67,10 +69,16 @@ function boundedNumber(value: unknown, fallback: number, key: string, minimum: n
   return value;
 }
 
+function booleanOption(value: unknown, fallback: boolean, key: string): boolean {
+  if (value === undefined) return fallback;
+  if (typeof value !== 'boolean') throw new Error(`Invalid ${key} value.`);
+  return value;
+}
+
 function normalizeOptions(value: unknown): RenderUrlOptions {
   if (value === undefined) return structuredClone(DEFAULT_OPTIONS);
   if (!isRecord(value)) throw new Error('Invalid options object.');
-  rejectUnknownKeys(value, ['pitch', 'volume', 'gap', 'rate', 'voice'], 'options');
+  rejectUnknownKeys(value, ['pitch', 'volume', 'gap', 'rate', 'phonemes', 'voice'], 'options');
   const voiceValue = value.voice;
   let voice = structuredClone(DEFAULT_OPTIONS.voice);
   if (voiceValue !== undefined) {
@@ -89,6 +97,7 @@ function normalizeOptions(value: unknown): RenderUrlOptions {
     volume: boundedNumber(value.volume, DEFAULT_OPTIONS.volume, 'volume', 0, 1),
     gap: boundedNumber(value.gap, DEFAULT_OPTIONS.gap, 'gap', 0, 0.8),
     rate: boundedNumber(value.rate, DEFAULT_OPTIONS.rate, 'rate', 0.5, 2),
+    phonemes: booleanOption(value.phonemes, DEFAULT_OPTIONS.phonemes, 'phonemes'),
     voice,
   };
 }

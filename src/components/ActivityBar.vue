@@ -1,25 +1,26 @@
 <script setup lang="ts">
-import { nextTick, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import { t } from "../i18n";
 import type { IconName } from "../icons";
-import { SIDE_VIEW_LABELS, SIDE_VIEWS, useStudio, type SideView } from "../studio";
+import { ACTIVITY_VIEWS, SIDE_VIEW_LABELS, useStudio } from "../studio";
 import AppIcon from "./AppIcon.vue";
 
 const studio = useStudio();
 const list = ref<HTMLElement | null>(null);
 
-const ICON_BY_VIEW: Record<SideView, IconName> = { outline: "outline", phonemes: "phoneme", settings: "sliders", help: "help" };
+const ICON_BY_VIEW: Record<(typeof ACTIVITY_VIEWS)[number], IconName> = { outline: "outline", phonemes: "phoneme" };
 
-function selected(view: SideView) { return studio.sideBarOpen && studio.sideView === view; }
+const rovingView = computed(() => ACTIVITY_VIEWS.find((view) => view === studio.sideView) ?? ACTIVITY_VIEWS[0]);
+function selected(view: (typeof ACTIVITY_VIEWS)[number]) { return studio.sideBarOpen && studio.sideView === view; }
 function onKeydown(event: KeyboardEvent) {
-  const current = SIDE_VIEWS.indexOf(studio.sideView);
-  const next = event.key === "ArrowDown" ? (current + 1) % SIDE_VIEWS.length
-    : event.key === "ArrowUp" ? (current - 1 + SIDE_VIEWS.length) % SIDE_VIEWS.length
-      : event.key === "Home" ? 0 : event.key === "End" ? SIDE_VIEWS.length - 1 : -1;
+  const current = ACTIVITY_VIEWS.indexOf(rovingView.value);
+  const next = event.key === "ArrowDown" ? (current + 1) % ACTIVITY_VIEWS.length
+    : event.key === "ArrowUp" ? (current - 1 + ACTIVITY_VIEWS.length) % ACTIVITY_VIEWS.length
+      : event.key === "Home" ? 0 : event.key === "End" ? ACTIVITY_VIEWS.length - 1 : -1;
   if (next < 0) return;
   event.preventDefault();
-  studio.sideView = SIDE_VIEWS[next];
-  void nextTick(() => list.value?.querySelector<HTMLElement>(`[data-view="${SIDE_VIEWS[next]}"]`)?.focus());
+  studio.sideView = ACTIVITY_VIEWS[next];
+  void nextTick(() => list.value?.querySelector<HTMLElement>(`[data-view="${ACTIVITY_VIEWS[next]}"]`)?.focus());
 }
 </script>
 
@@ -27,14 +28,14 @@ function onKeydown(event: KeyboardEvent) {
   <nav class="activitybar">
     <div ref="list" class="views" role="tablist" aria-orientation="vertical" :aria-label="t('activityAria')" @keydown="onKeydown">
       <button
-        v-for="view in SIDE_VIEWS"
+        v-for="view in ACTIVITY_VIEWS"
         :key="view"
         type="button"
         role="tab"
         :data-view="view"
         :aria-selected="selected(view)"
         :aria-controls="`sidebar-${view}`"
-        :tabindex="studio.sideView === view ? 0 : -1"
+        :tabindex="rovingView === view ? 0 : -1"
         :title="t(SIDE_VIEW_LABELS[view])"
         :aria-label="t(SIDE_VIEW_LABELS[view])"
         @click="studio.showSideView(view)"

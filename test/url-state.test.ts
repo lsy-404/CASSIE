@@ -23,6 +23,7 @@ describe('share URL state', () => {
         volume: 1,
         gap: 0.24,
         rate: 1,
+        phonemes: true,
         voice: { pitchSemitones: 0, breathiness: 0.4, formantSemitones: 0, loudnessDb: 0, tension: -0.2 },
       },
       locale: 'zh',
@@ -34,16 +35,16 @@ describe('share URL state', () => {
     const decoded = decodeUrlState(queryWith({
       text: 'Hello',
       options: {
-        pitch: 0.65, volume: 0, gap: 0.8, rate: 2,
+        pitch: 0.65, volume: 0, gap: 0.8, rate: 2, phonemes: false,
         voice: { pitchSemitones: -12, breathiness: 1, formantSemitones: 6, loudnessDb: -24, tension: 1 },
       },
     }));
     expect(decoded?.options).toEqual({
-      pitch: 0.65, volume: 0, gap: 0.8, rate: 2,
+      pitch: 0.65, volume: 0, gap: 0.8, rate: 2, phonemes: false,
       voice: { pitchSemitones: -12, breathiness: 1, formantSemitones: 6, loudnessDb: -24, tension: 1 },
     });
     expect(decodeUrlState(queryWith({ text: 'Hello' }))?.options).toEqual({
-      pitch: 1, volume: 1, gap: 0.24, rate: 1,
+      pitch: 1, volume: 1, gap: 0.24, rate: 1, phonemes: true,
       voice: { pitchSemitones: 0, breathiness: 0, formantSemitones: 0, loudnessDb: 0, tension: 0 },
     });
   });
@@ -79,6 +80,7 @@ describe('share URL state', () => {
     { text: 'Hi', options: { volume: Number.NaN } },
     { text: 'Hi', options: { gap: -0.01 } },
     { text: 'Hi', options: { rate: 2.01 } },
+    { text: 'Hi', options: { phonemes: 'no' } },
     { text: 'Hi', options: { voice: { loudnessDb: 12.1 } } },
   ])('rejects invalid payload %#', (payload) => {
     expect(() => decodeUrlState(queryWith(payload))).toThrow();

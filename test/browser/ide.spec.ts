@@ -1,10 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { openRibbon, openSideView, openStudio } from './helpers';
+import { openSideView, openStudio } from './helpers';
 
 test('reading time group wraps the selection or the placeholder in a fit tag', async ({ page }) => {
   await openStudio(page);
   const field = page.locator('textarea');
-  await openRibbon(page, '时间');
   const seconds = page.getByRole('spinbutton', { name: '秒数', exact: true });
   await expect(seconds).toHaveValue('2');
   await seconds.fill('3.5');
@@ -18,19 +17,16 @@ test('reading time group wraps the selection or the placeholder in a fit tag', a
   await expect(field).toHaveValue('<fit seconds="3.5">attention</fit> all<fit seconds="120">word</fit>');
 });
 
-test('ribbon tabs support arrow keys and double-click collapse', async ({ page }) => {
+test('the ribbon is one flat page showing every group with its caption and no tabs', async ({ page }) => {
   await openStudio(page);
-  const home = page.locator('.ribbon-tabs').getByRole('tab', { name: '主页', exact: true });
-  await home.focus();
-  await page.keyboard.press('ArrowRight');
-  await expect(page.locator('.ribbon-tabs').getByRole('tab', { name: '插入', exact: true })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.locator('.ribbon-tabs').getByRole('tab', { name: '插入', exact: true })).toBeFocused();
-  await expect(page.locator('.ribbon-body')).toBeVisible();
-  await page.locator('.ribbon-tabs').getByRole('tab', { name: '插入', exact: true }).dblclick();
-  await expect(page.locator('.ribbon-body')).toHaveCount(0);
-  await page.locator('.ribbon-tabs').getByRole('tab', { name: '插入', exact: true }).dblclick();
-  await expect(page.locator('.ribbon-body')).toBeVisible();
-  await expect(page.locator('.rb-caption').first()).toBeVisible();
+  await expect(page.locator('.ribbon [role="tab"]')).toHaveCount(0);
+  const captions = await page.locator('.rb-caption').allTextContents();
+  expect(captions).toEqual(['渲染', '导出', '标记', '效果', '时序', '朗读时长', '音素', '视图', '全局混音', '语音后处理']);
+  await expect(page.locator('.rb-group').first()).toBeVisible();
+  for (const name of ['语速', '音调偏移（半音）', '气声']) await expect(page.getByRole('slider', { name, exact: true })).toBeVisible();
+  await expect(page.locator('.activitybar [role="tab"]')).toHaveCount(2);
+  await expect(page.locator('.sidebar-title')).toHaveText('大纲');
+  await expect(page.locator('.panel-tabs [role="tab"]')).toHaveText([/^播放器$/, /^分析/]);
 });
 
 test('shortcuts toggle the side bar and render, and the outline moves the cursor', async ({ page }) => {
@@ -45,7 +41,7 @@ test('shortcuts toggle the side bar and render, and the outline moves the cursor
   await page.locator('.outline button').filter({ hasText: '<pause' }).click();
   await expect.poll(() => page.locator('textarea').evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(7);
   await expect(page.locator('.statusbar')).toContainText('2');
-  await page.locator('.live-controls label').click();
+  await page.locator('[data-command="live"]').click();
   await page.keyboard.press('Control+Enter');
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('src', /^blob:/, { timeout: 60_000 });
 });
@@ -90,23 +86,20 @@ test('long lines wrap and line numbers stay on the first visual row', async ({ p
   expect(layout.rows[2]).toBe(20);
 });
 
-test('a collapsed ribbon expands again from the keyboard', async ({ page }) => {
+test('the ribbon can be hidden and shown from the keyboard and the toggle strip', async ({ page }) => {
   await openStudio(page);
-  const tabs = page.locator('.ribbon-tabs');
-  await tabs.getByRole('tab', { name: '视图', exact: true }).click();
-  await page.getByRole('button', { name: '功能区', exact: true }).click();
+  await page.getByRole('button', { name: /^折叠功能区/ }).click();
   await expect(page.locator('.ribbon-body')).toHaveCount(0);
-  await expect(tabs.getByRole('tab', { name: '视图', exact: true })).toBeFocused();
-  await expect(tabs.getByRole('tab', { name: '视图', exact: true })).not.toHaveAttribute('aria-controls', /.+/);
+  await expect(page.locator('#ribbon-show')).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.locator('.ribbon-body')).toBeVisible();
   await page.keyboard.press('Control+F1');
   await expect(page.locator('.ribbon-body')).toHaveCount(0);
   await page.keyboard.press('Control+F1');
   await expect(page.locator('.ribbon-body')).toBeVisible();
-  await page.getByRole('button', { name: /^折叠功能区/ }).click();
+  await page.locator('[data-command="ribbon"]').click();
   await expect(page.locator('.ribbon-body')).toHaveCount(0);
-  await tabs.getByRole('tab', { name: '视图', exact: true }).click();
+  await page.locator('#ribbon-show').click();
   await expect(page.locator('.ribbon-body')).toBeVisible();
 });
 
@@ -123,8 +116,7 @@ test('the compact side bar overlay closes on Escape and returns focus to the act
 test('the narrow ribbon scrolls with edge buttons and keeps captions clear of the buttons', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openStudio(page);
-  await openRibbon(page, '插入');
-  const right = page.locator('.rb-scroll').nth(1);
+  const right = page.getByRole('button', { name: '向右滚动功能区' });
   await expect(right).toBeVisible();
   await right.click();
   await expect.poll(() => page.locator('.ribbon-body').evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
@@ -134,4 +126,96 @@ test('the narrow ribbon scrolls with edge buttons and keeps captions clear of th
     return Math.max(...buttons) - caption;
   });
   expect(overlap).toBeLessThanOrEqual(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('every slider shares the diamond thumb and the player seek bar follows the same style', async ({ page }) => {
+  await openStudio(page);
+  const sliders = await page.evaluate(() => [...document.querySelectorAll('input[type="range"]')].map((input) => ({ diamond: input.classList.contains('diamond-slider'), name: input.getAttribute('aria-label') })));
+  expect(sliders.length).toBeGreaterThanOrEqual(10);
+  for (const slider of sliders) expect(slider.diamond, String(slider.name)).toBe(true);
+  expect(sliders.map((slider) => slider.name)).toContain('播放位置');
+  const rules = await page.evaluate(() => Array.from(document.styleSheets).flatMap((sheet) => Array.from(sheet.cssRules))
+    .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule && rule.selectorText.startsWith('.diamond-slider::'))
+    .map((rule) => ({ selector: rule.selectorText, text: rule.style.cssText })));
+  expect(rules.map((rule) => rule.selector)).toContain('.diamond-slider::-webkit-slider-thumb');
+  for (const rule of rules) {
+    expect(rule.text).toContain('rotate(45deg)');
+    expect(rule.text).toMatch(/border-radius: 0(px)?/);
+    expect(rule.text).toMatch(/background: (rgb\(255, 255, 255\)|#fff|white)/);
+  }
+});
+
+test('token colours: blue commands, green recorded, yellow synthesized, red errors, wavy fixes and dashed blocked words', async ({ page }) => {
+  await openStudio(page);
+  const colours = await page.evaluate(() => {
+    const probe = (selector: string) => {
+      const style = getComputedStyle(document.querySelector(selector)!);
+      return { colour: style.textDecorationColor, style: style.textDecorationStyle, line: style.textDecorationLine };
+    };
+    return {
+      marker: probe('.token-legend .token-marker'), recorded: probe('.token-legend .token-recorded'),
+      synthesized: probe('.token-legend .token-synthesized'), error: probe('.token-legend .token-error'),
+      blocked: probe('.token-legend .blocked'), fixable: probe('.token-legend .fixable'),
+    };
+  });
+  expect(colours.marker.colour).toBe('rgb(86, 156, 214)');
+  expect(new Set([colours.recorded.colour, colours.synthesized.colour, colours.error.colour, colours.marker.colour]).size).toBe(4);
+  for (const key of ['marker', 'recorded', 'synthesized', 'error'] as const) expect(colours[key]).toMatchObject({ style: 'solid', line: 'underline' });
+  expect(colours.blocked.style).toBe('dashed');
+  expect(colours.blocked.colour).toBe(colours.synthesized.colour);
+  expect(colours.fixable.style).toBe('wavy');
+  expect(colours.fixable.colour).toBe(colours.synthesized.colour);
+});
+
+test('a fixable error is a wavy red token whose tooltip carries the fix', async ({ page }) => {
+  await openStudio(page);
+  await page.locator('textarea').fill('cassie <pause seconds="9999"/> cassie');
+  const fixable = page.locator('.highlight-layer .token-error.fixable');
+  await expect(fixable.first()).toHaveAttribute('title', /修复/);
+  await expect(fixable.first()).toHaveCSS('text-decoration-style', 'wavy');
+  await expect(fixable.first()).toHaveCSS('text-decoration-color', await page.locator('.token-legend .token-error').evaluate((element) => getComputedStyle(element).textDecorationColor));
+});
+
+test('the unrecorded words toggle switches strict mode end to end', async ({ page }) => {
+  await openStudio(page);
+  const toggle = page.locator('[data-command="synthesis"]');
+  const field = page.locator('textarea');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await field.fill('cassie robot');
+  await expect(page.locator('.highlight-layer .token-synthesized').filter({ hasText: 'robot' })).toBeVisible();
+  await expect(page.locator('.highlight-layer .blocked')).toHaveCount(0);
+  await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('src', /^blob:/, { timeout: 60_000 });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('audio[data-complete="true"]')).toHaveCount(0);
+  const blocked = page.locator('.highlight-layer .token-synthesized.blocked');
+  await expect(blocked).toHaveText('robot');
+  await expect(blocked).toHaveCSS('text-decoration-style', 'dashed');
+  await expect(page.locator('.highlight-layer .token-recorded').filter({ hasText: 'cassie' })).toBeVisible();
+  await expect(page.locator('.panel-tabs [data-severity="warning"]')).toHaveText('1');
+  await page.locator('#panel-tab-analysis').click();
+  const warning = page.locator('.notice-item.sev-warning').filter({ hasText: /robot/ });
+  await expect(warning).toBeVisible();
+  await warning.click();
+  await expect.poll(() => field.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(7);
+  await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('src', /^blob:/, { timeout: 60_000 });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.highlight-layer .blocked')).toHaveCount(0);
+});
+
+test('the analysis tab lists phoneme synthesis as info, filters by severity and counts them on the tab', async ({ page }) => {
+  await openStudio(page);
+  await page.locator('textarea').fill('cassie robot <pause seconds="9999"/>');
+  await page.locator('#panel-tab-analysis').click();
+  const info = page.locator('.notice-item.sev-info').filter({ hasText: /robot/ });
+  await expect(info).toBeVisible();
+  await expect(page.locator('.panel-tabs [data-severity="info"]')).toHaveText('1');
+  await expect(page.locator('.panel-tabs [data-severity="error"]')).toBeVisible();
+  await page.locator('.filter[data-severity="info"]').click();
+  await expect(info).toHaveCount(0);
+  await page.locator('.filter[data-severity="info"]').click();
+  await expect(info).toBeVisible();
+  await expect(page.locator('.panel-tabs').getByRole('tab', { name: /导出|问题/ })).toHaveCount(0);
 });

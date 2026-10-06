@@ -39,7 +39,7 @@ function updateSlider(value: number | string): void {
 
 <template>
   <div class="fine-control">
-    <FluentSlider :model-value="modelValue" :min="min" :max="max" :step="step" :aria-label="label" @update:model-value="updateSlider" />
+    <FluentSlider class="diamond-slider" :model-value="modelValue" :min="min" :max="max" :step="step" :aria-label="label" @update:model-value="updateSlider" />
     <FluentNumberField
       :key="revision"
       :model-value="modelValue"
@@ -56,8 +56,10 @@ function updateSlider(value: number | string): void {
 </template>
 
 <style scoped>
-.fine-control { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 76px; align-items: center; gap: 10px; }
+.fine-control { position: relative; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 76px; align-items: center; gap: 10px; }
 .fine-control :deep(.fluent-field) { display: block; }
 .fine-control :deep(.fluent-field__label) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .fine-control :deep(.fluent-field__input) { min-height: 30px; padding: 4px 6px; border-radius: 2px; font: 11px ui-monospace, monospace; }
+.fine-control.compact { grid-template-columns: 72px 52px; gap: 6px; }
+.fine-control.compact :deep(.fluent-field__input) { min-height: 20px; height: 20px; padding: 0 4px; }
 </style>

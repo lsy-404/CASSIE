@@ -14,6 +14,7 @@
   --ide-active: rgba(255, 255, 255, 0.14);
   --ide-selection: rgba(255, 255, 255, 0.24);
   --ide-line-number: #858585;
+  --token-command: #569cd6;
   --ide-titlebar-height: 32px;
   --ide-statusbar-height: 24px;
   --ide-activitybar-width: 48px;

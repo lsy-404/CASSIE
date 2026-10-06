@@ -1,4 +1,4 @@
-import { openPanel, openRibbon, openStudio, wavLink } from './helpers';
+import { openPanel, openStudio, wavButton } from './helpers';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
@@ -8,7 +8,7 @@ async function renderSeconds(page: import('@playwright/test').Page, text: string
   await page.getByRole('button', { name: '生成音频', exact: true }).click();
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('src', /^blob:/, { timeout: 60_000 });
   const download = page.waitForEvent('download');
-  await (await wavLink(page)).click();
+  await wavButton(page).click();
   await (await download).saveAs(output);
   const bytes = await readFile(output);
   expect(bytes.toString('ascii', 0, 4)).toBe('RIFF');
@@ -19,8 +19,8 @@ test('fit stretches only the enclosed speech to the requested duration', async (
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await openStudio(page);
-  await page.locator('.live-controls label').click();
-  await expect(page.getByRole('checkbox', { name: '实时渲染' })).not.toBeChecked();
+  await page.locator('[data-command="live"]').click();
+  await expect(page.getByRole('button', { name: '实时渲染' })).toHaveAttribute('aria-pressed', 'false');
   const single = await renderSeconds(page, 'cassie', info.outputPath('single.wav'));
   const gap = 0.24;
   for (const target of [single * 3 + gap * 2 + 1, single * 2 + gap]) {
@@ -42,13 +42,12 @@ test('fit stretches only the enclosed speech to the requested duration', async (
 
 test('fit tag inserted from the ribbon renders to the requested duration', async ({ page }, info) => {
   await openStudio(page);
-  await page.locator('.live-controls label').click();
-  await expect(page.getByRole('checkbox', { name: '实时渲染' })).not.toBeChecked();
+  await page.locator('[data-command="live"]').click();
+  await expect(page.getByRole('button', { name: '实时渲染' })).toHaveAttribute('aria-pressed', 'false');
   const single = await renderSeconds(page, 'cassie', info.outputPath('ui-single.wav'));
   const field = page.locator('textarea');
   await field.fill('cassie cassie');
   await field.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(7, 13));
-  await openRibbon(page, '时间');
   await page.getByRole('spinbutton', { name: '秒数', exact: true }).fill('2');
   await page.getByRole('button', { name: '限定时长', exact: true }).click();
   await expect(field).toHaveValue('cassie <fit seconds="2">cassie</fit>');

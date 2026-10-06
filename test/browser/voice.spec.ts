@@ -1,4 +1,4 @@
-import { openPanel, openSideView, openStudio, wavLink } from './helpers';
+import { openPanel, openStudio, wavButton } from './helpers';
 import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
@@ -8,7 +8,7 @@ async function wav(page: Page, text: string, path: string) {
   await page.getByRole('button', { name: '生成音频', exact: true }).click();
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('src', /^blob:/, { timeout: 60_000 });
   const pending = page.waitForEvent('download');
-  await (await wavLink(page)).click();
+  await wavButton(page).click();
   await (await pending).saveAs(path);
   const bytes = await readFile(path);
   expect(bytes.toString('ascii', 0, 4)).toBe('RIFF');
@@ -60,7 +60,7 @@ test('WASM post-processing raises and lowers a known fundamental without changin
   await page.route('**/audio/cassie.opus', (route) => route.fulfill({ body: tone, contentType: 'audio/ogg' }));
   await openStudio(page);
   await expect(page.locator('textarea')).toBeEnabled();
-  await page.locator('.live-controls label').click();
+  await page.locator('[data-command="live"]').click();
   const neutral = await wav(page, 'cassie', info.outputPath('known-tone.wav'));
   const raised = await wav(page, '<voice pitch="3">cassie</voice>', info.outputPath('known-tone-raised.wav'));
   const lowered = await wav(page, '<voice pitch="-3">cassie</voice>', info.outputPath('known-tone-lowered.wav'));
@@ -81,8 +81,6 @@ test('WASM post-processing raises and lowers a known fundamental without changin
   expect(Math.abs(peakFrequency(neutral) - 160)).toBeLessThan(2);
   expect(Math.abs(peakFrequency(raised) - 160 * 2 ** (3 / 12))).toBeLessThan(4);
   expect(Math.abs(peakFrequency(lowered) - 160 * 2 ** (-3 / 12))).toBeLessThan(4);
-  await openSideView(page, '声音设置');
-  await expect(page.locator('.voice-processing')).toBeVisible();
   const slider = page.getByRole('slider', { name: '音调偏移（半音）', exact: true });
   await expect(slider).toHaveValue('0');
   await slider.evaluate((element: HTMLInputElement) => {
@@ -105,7 +103,7 @@ test('neutral voice bypasses processing and scoped voice restores original speec
   page.on('pageerror', (error) => errors.push(error.message));
   await openStudio(page);
   await expect(page.locator('textarea')).toBeEnabled();
-  await page.locator('.live-controls label').click();
+  await page.locator('[data-command="live"]').click();
   const word = await wav(page, 'cassie', info.outputPath('voice-word.wav'));
   const neutral = await wav(page, '<voice pitch="0" breathiness="0" formant="0">cassie</voice>', info.outputPath('voice-neutral.wav'));
   expect(bytes(neutral)).toEqual(bytes(word));
@@ -127,7 +125,7 @@ test('voice processing preserves boundary cues, fixed gaps and explicit pauses',
   page.on('pageerror', (error) => errors.push(error.message));
   await openStudio(page);
   await expect(page.locator('textarea')).toBeEnabled();
-  await page.locator('.live-controls label').click();
+  await page.locator('[data-command="live"]').click();
   const word = await wav(page, 'cassie', info.outputPath('voice-original.wav'));
   const start = await wav(page, '<start>', info.outputPath('voice-start.wav'));
   const end = await wav(page, '<end>', info.outputPath('voice-end.wav'));

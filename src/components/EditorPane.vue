@@ -29,14 +29,18 @@ const parts = computed(() => {
     const token = tokens.find((item) => start >= item.sourceStart && start < item.sourceEnd);
     const timing = timeline.find((item) => start >= item.sourceStart && start < item.sourceEnd);
     const kind = token?.kind ?? (timing?.kind === "gap" ? "gap" : "neutral");
-    const labelKey = token?.spellingMissing ? "dictionaryMissing" : kind === "recorded" ? "recorded" : kind === "synthesized" ? "synthesized" : kind === "marker" ? "recognizedCommand" : kind === "gap" ? "gapLabel" : kind === "error" ? "renderError" : "ordinaryText";
+    const labelKey = token?.blocked ? "blockedWord" : kind === "recorded" ? "recorded" : kind === "synthesized" ? "synthesized" : kind === "marker" ? "recognizedCommand" : kind === "gap" ? "gapLabel" : kind === "error" ? "cannotSynthesize" : "ordinaryText";
+    const fix = token?.fix;
+    const hints = [t(labelKey), token?.spellingMissing ? t("dictionaryMissing") : "", fix ? (fix.replacement ? t("fixSuggestion", { text: fix.replacement }) : t("fixRemove")) : ""];
     return {
       key: `${start}-${end}`,
       text: text.slice(start, end),
       kind,
+      blocked: Boolean(token?.blocked),
+      fixable: Boolean(token?.spellingMissing || fix),
       spellingMissing: Boolean(token?.spellingMissing),
       active: Boolean(active && start >= active.sourceStart && start < active.sourceEnd),
-      label: t(labelKey),
+      label: hints.filter(Boolean).join(" · "),
     };
   });
 });
@@ -103,16 +107,17 @@ onBeforeUnmount(() => observer.disconnect());
           @focus="studio.syncCursor"
         />
         <div class="highlight-clip" :style="{ '--scroll-top': `${scroll.top}px`, '--scroll-left': `${scroll.left}px` }" aria-hidden="true">
-          <pre class="highlight-layer"><span v-for="part in parts" :key="part.key" :class="[`token-${part.kind}`, { active: part.active, 'spell-missing': part.spellingMissing }]" :title="part.label">{{ part.text }}</span></pre>
+          <pre class="highlight-layer"><span v-for="part in parts" :key="part.key" :class="[`token-${part.kind}`, { active: part.active, blocked: part.blocked, fixable: part.fixable, 'spell-missing': part.spellingMissing }]" :title="part.label">{{ part.text }}</span></pre>
         </div>
       </div>
     </div>
     <div class="token-legend" :aria-label="t('legendAria')">
+      <span class="token-marker">{{ t('recognizedCommand') }}</span>
       <span class="token-recorded">{{ t('recorded') }}</span>
       <span class="token-synthesized">{{ t('synthesized') }}</span>
-      <span class="spell-legend">{{ t('spellingHint') }}</span>
-      <span class="token-marker">{{ t('recognizedCommand') }}</span>
-      <span class="token-error">{{ t('approximateOrError') }}</span>
+      <span class="token-synthesized blocked">{{ t('blockedWord') }}</span>
+      <span class="token-error">{{ t('cannotSynthesize') }}</span>
+      <span class="token-synthesized fixable">{{ t('fixableLegend') }}</span>
     </div>
   </section>
 </template>
@@ -140,11 +145,11 @@ textarea::selection { color: transparent; background: var(--ide-selection); }
 .token-recorded { text-decoration-color: var(--fluent-success); }
 .token-synthesized { text-decoration-color: var(--fluent-warning); }
 .token-error { text-decoration-color: var(--fluent-danger); }
-.token-marker { text-decoration-color: #9a9a9a; }
-.spell-missing { text-decoration-style: wavy !important; text-decoration-color: var(--fluent-danger) !important; }
+.token-marker { text-decoration-color: var(--token-command); }
+.blocked { text-decoration-style: dashed; }
+.fixable { text-decoration-style: wavy; }
 .highlight-layer span.active { color: var(--fluent-accent-text); background: var(--fluent-accent); border-radius: 2px; text-decoration: none; }
 .token-legend { flex: none; display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 6px 14px; border-top: 1px solid var(--ide-border); background: var(--ide-sidebar); color: var(--fluent-muted); font-size: 11px; }
 .token-legend span { text-decoration-line: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
-.spell-legend { text-decoration-style: wavy !important; text-decoration-color: var(--fluent-danger); }
 @media (max-width: 600px) { .token-legend { display: none; } }
 </style>
