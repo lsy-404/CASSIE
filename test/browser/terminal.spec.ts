@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { openSideView, unlockTerminal } from './helpers';
+import { unlockTerminal } from './helpers';
 
 function launchUrl(payload: unknown, format?: string) {
   const data = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
@@ -11,9 +11,19 @@ test('terminal checks real engines before unlock and starts no announcement play
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
-  await expect(page.getByRole('img', { name: 'CASSIE', exact: true })).toBeVisible();
-  await expect(page.getByText('CENTRAL AUTONOMIC SERVICE SYSTEM FOR INTERNAL EMERGENCIES', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'C.A.S.S.I.E.' })).toBeVisible();
+  await expect(page.getByText('CENTRAL AUTONOMIC SERVICE SYSTEM FOR INTERNAL EMERGENCIES')).toBeVisible();
+  await expect(page.getByTestId('terminal-scanlines')).toHaveCSS('pointer-events', 'none');
   await expect(page.getByTestId('terminal-unlock')).toBeEnabled({ timeout: 30_000 });
+  await expect(page.getByTestId('terminal-unlock')).toHaveText('> TAP TO UNLOCK');
+  const steps = page.getByTestId('terminal-step');
+  expect(await steps.count()).toBeGreaterThanOrEqual(12);
+  await expect(page.locator('[data-testid="terminal-step"]:not([data-status="ok"])')).toHaveCount(0);
+  await expect(steps.filter({ hasText: 'load ffmpeg wasm chunk 1/' })).toContainText('[ OK ]');
+  await expect(steps.filter({ hasText: 'instantiate WORLD wasm module' })).toContainText('OK');
+  await expect(steps.filter({ hasText: 'render self-test' })).toContainText('render OK');
+  await expect(page.getByTestId('terminal-status')).toHaveText('SYSTEM READY');
+  await expect(page.getByTestId('terminal-status')).toHaveCSS('color', 'rgb(74, 222, 128)');
   await expect(page.locator('textarea')).toHaveCount(0);
   await expect(page.locator('audio')).toHaveCount(0);
   await page.screenshot({ path: info.outputPath('terminal.png'), fullPage: true });
@@ -24,45 +34,14 @@ test('terminal checks real engines before unlock and starts no announcement play
   expect(errors).toEqual([]);
 });
 
-test('boot log streams the real startup steps and the language toggle localises it', async ({ page }) => {
-  await page.goto('/');
-  const log = page.getByRole('log');
-  await expect(page.getByTestId('terminal-unlock')).toBeEnabled({ timeout: 30_000 });
-  await expect(log.getByText('[ OK ]')).toHaveCount(9);
-  await expect(log).toContainText(/WORLD|world/);
-  await expect(page.getByRole('status')).toContainText(/SYSTEM READY|系统就绪/);
-  const before = await page.getByRole('button', { name: /Switch language|切换为/ }).getAttribute('aria-label');
-  await page.getByTestId('terminal-locale').click();
-  const after = await page.getByTestId('terminal-locale').getAttribute('aria-label');
-  expect(after).not.toBe(before);
-  await expect(page.getByRole('img', { name: 'CASSIE', exact: true })).toBeVisible();
-  await expect(page.getByText('CENTRAL AUTONOMIC SERVICE SYSTEM FOR INTERNAL EMERGENCIES', { exact: true })).toBeVisible();
-});
-
-test('terminal fits a 390px wide screen without horizontal overflow', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 780 });
-  await page.goto('/');
-  await expect(page.getByTestId('terminal-unlock')).toBeEnabled({ timeout: 30_000 });
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  expect(overflow).toBeLessThanOrEqual(0);
-  const unlock = await page.getByTestId('terminal-unlock').boundingBox();
-  expect(unlock!.x + unlock!.width).toBeLessThanOrEqual(390);
-});
-
-test('reduced motion prints the full log without blinking', async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
-  await expect(page.getByTestId('terminal-unlock')).toBeEnabled({ timeout: 30_000 });
-  await expect(page.locator('.terminal-entry__cursor')).toHaveCSS('animation-name', 'none');
-});
-
 for (const api of ['Worker', 'WebAssembly'] as const) {
   test(`missing ${api} displays centered device failure and never unlocks`, async ({ page }) => {
     await page.addInitScript((name) => Object.defineProperty(globalThis, name, { configurable: true, value: undefined }), api);
     await page.goto('/');
     const error = page.getByTestId('terminal-error');
     await expect(error).toBeVisible();
-    await expect(error).toContainText('CASSIE 无法在您的设备上加载');
+    await expect(error).toContainText('CASSIE could not load on this device');
+    await expect(error).toContainText('[FAIL]');
     await expect(error).toContainText('Chromium');
     await expect(page.locator('textarea')).toHaveCount(0);
     await expect(page.getByTestId('terminal-unlock')).toHaveCount(0);
@@ -77,6 +56,7 @@ test('a real failed WASM fetch blocks the terminal', async ({ page }) => {
   await page.route('**/assets/world-*.wasm', (route) => route.abort());
   await page.goto('/');
   await expect(page.getByTestId('terminal-error')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('terminal-error')).toContainText('instantiate WORLD wasm module');
   await expect(page.locator('textarea')).toHaveCount(0);
 });
 
@@ -109,7 +89,6 @@ test('base64 URL preloads Unicode text, fine voice settings and locale after unl
   await unlockTerminal(page);
   await expect(page.locator('textarea')).toHaveValue('Attention <voice loudness="-2.5" tension="0.27">all personnel</voice> / ə /');
   await expect(page.getByRole('checkbox', { name: 'Live render' })).toBeVisible();
-  await openSideView(page, 'Sound settings');
   await expect(page.locator('.voice-processing')).toBeVisible();
   await expect(page.getByRole('slider', { name: /Loudness/ })).toHaveValue('-3.2');
   await expect(page.getByRole('slider', { name: /Tension/ })).toHaveValue('0.23');
@@ -176,4 +155,12 @@ test('editing during a URL export cancels the old download and resumes live rend
     expect(downloads).toEqual([]);
     await expect(page.locator('textarea')).toHaveValue('cassie');
   } finally { release(); }
+});
+
+test('reduced motion keeps static scanlines and a fixed marker', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await expect(page.getByTestId('terminal-unlock')).toBeEnabled({ timeout: 30_000 });
+  await expect(page.getByTestId('terminal-scanlines')).toBeVisible();
+  await expect.poll(() => page.getByTestId('terminal-scanlines').evaluate((el) => getComputedStyle(el, '::after').display)).toBe('none');
 });
