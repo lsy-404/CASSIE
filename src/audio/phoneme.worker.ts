@@ -30,10 +30,11 @@ scope.addEventListener('unhandledrejection', (event) => {
 });
 scope.addEventListener('error', (event) => {
   event.preventDefault();
-  report(new Error((event as ErrorEvent).message || 'Worker script error'));
+  const { error, message } = event as ErrorEvent;
+  report(error ?? new Error(message || 'Worker script error'));
 });
 
-// phonemizer reads its bundled data with for-await over a stream, which Safari before 27 lacks.
+// Some WebKit builds lack ReadableStream async iteration; without it phonemizer's data loader rejects unhandled and phonemize never settles.
 const streamPrototype = ReadableStream.prototype as unknown as Record<symbol, unknown>;
 if (!streamPrototype[Symbol.asyncIterator]) {
   streamPrototype[Symbol.asyncIterator] = async function* (this: ReadableStream<unknown>) {

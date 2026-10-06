@@ -213,7 +213,10 @@ export async function checkStartupCapabilities(signal?: AbortSignal, onStep?: St
         }, checks.signal);
         onStep?.({ id: 'phoneme-worker', label: 'spawn phoneme worker', detail: `module worker · phonemize "hello" -> /${phones}/ · ${elapsed(start)}`, status: 'ok' });
       } catch (error) {
-        if (checks.signal.aborted) return;
+        if (checks.signal.aborted) {
+          onStep?.({ id: 'phoneme-worker', label: 'spawn phoneme worker', detail: 'skipped · startup halted', status: 'warn' });
+          return;
+        }
         const reason = withStage(error instanceof Error ? error.message : 'failed', (error as StagedError).stage);
         phonemeEngineError.value = reason;
         onStep?.({ id: 'phoneme-worker', label: 'spawn phoneme worker', detail: reason, status: 'warn' });

@@ -62,3 +62,14 @@ for (const broken of CASES) {
     await expect(section.getByTestId('phoneme-unavailable')).toContainText(broken.reason);
   });
 }
+
+test('a halted boot leaves no pending phoneme line', async ({ page }) => {
+  await breakWorker(page, () => '');
+  await page.route(/spelling\.worker-[^/]*\.js$/, (route) => route.fulfill({ status: 404, body: 'missing' }));
+  await page.goto('/');
+  await expect(page.locator('[data-testid="terminal-step"]', { hasText: 'spawn spelling worker' })).toContainText('[FAIL]', { timeout: 45_000 });
+  const step = page.locator('[data-testid="terminal-step"]', { hasText: 'spawn phoneme worker' });
+  await expect(step).toContainText('[WARN]');
+  await expect(step).toContainText('startup halted');
+  await expect(page.locator('[data-testid="terminal-step"]', { hasText: '[PEND]' })).toHaveCount(0);
+});
