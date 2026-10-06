@@ -162,6 +162,15 @@ test('a real failed WASM fetch halts the boot log in place', async ({ page }) =>
   expect(detail).not.toBe('');
 });
 
+const warnedBoot = async (page: import('@playwright/test').Page, reason: RegExp) => {
+  const step = page.locator('[data-testid="terminal-step"]', { hasText: 'spawn phoneme worker' });
+  await expect(step).toHaveAttribute('data-status', 'warn', { timeout: 30_000 });
+  await expect(step).toContainText('[WARN]');
+  await expect(step.locator('.terminal-entry__detail')).toHaveText(reason);
+  await expect(step.locator('.terminal-entry__marker')).toHaveCSS('color', 'rgb(251, 146, 60)');
+  await expect(page.locator('textarea')).toBeEnabled({ timeout: 30_000 });
+};
+
 const workerFailures = [
   { name: 'is missing', respond: { status: 404, contentType: 'text/plain', body: 'missing' }, expected: /phoneme\.worker-.*\.js answered HTTP 404 \(text\/plain/ },
   { name: 'has a syntax error', respond: { status: 200, contentType: 'text/javascript', body: 'export {' }, expected: /was fetched \(HTTP 200, text\/javascript\) but failed to load as a module script/ },
@@ -171,8 +180,7 @@ for (const failure of workerFailures) {
   test(`a phoneme worker that ${failure.name} reports the HTTP cause`, async ({ page }) => {
     await page.route('**/assets/phoneme.worker-*.js', (route) => route.fulfill({ status: failure.respond.status, contentType: failure.respond.contentType, body: failure.respond.body }));
     await page.goto('/');
-    const { detail } = await haltedBoot(page, 'spawn phoneme worker');
-    expect(detail).toMatch(failure.expected);
+    await warnedBoot(page, failure.expected);
   });
 }
 
@@ -192,7 +200,7 @@ test('a phonemizer echo cannot pass the startup pronunciation check', async ({ p
     };
   });
   await page.goto('/');
-  await haltedBoot(page, 'spawn phoneme worker');
+  await warnedBoot(page, /returned an invalid result\. \(last stage: never started\)/);
 });
 
 test('base64 URL preloads Unicode text, fine voice settings and locale after start', async ({ page }) => {

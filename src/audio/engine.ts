@@ -1,6 +1,7 @@
 import { createWordPlan } from './parser';
 import type { AnalysisNotice, AnalysisOptions, AnalysisResult, AnalysisToken, Bank, BankClip, RenderOptions, RenderResult, WordPlan } from './types';
 import { DEFAULT_GAP, estimateFitWarnings } from './fit';
+import { phonemeEngineError } from '../phoneme-engine';
 import { loadPhonemeCatalog, phonemizeWords } from './phonemes';
 
 const BANK_URL = '/bank.json';
@@ -54,7 +55,7 @@ async function preparePlan(text: string, bank: Bank, synthesize: boolean, signal
   if (signal?.aborted) throw new DOMException('The audio render was cancelled.', 'AbortError');
 
   const initial = createWordPlan(text, bank, undefined, catalog, new Map(), true);
-  if (!catalog || !initial.unresolvedWords.length) {
+  if (!catalog || !initial.unresolvedWords.length || phonemeEngineError.value) {
     const notices = [...initial.notices];
     if (!catalog && initial.unresolvedWords.length) notices.push({ severity: 'warning', text: 'The phoneme catalog is unavailable; unrecorded words were skipped.' });
     return { plan: initial.plan, notices, tokens: initial.tokens };

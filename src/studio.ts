@@ -1,5 +1,6 @@
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, shallowRef, watch, type InjectionKey } from "vue";
 import { locale, setLocale, t } from "./i18n";
+import { phonemeEngineError } from "./phoneme-engine";
 import { analyzeAnnouncement, encodeWav, loadBank, renderAnnouncement, type AnalysisNotice, type AnalysisResult as EngineAnalysisResult, type AnalysisToken as EngineAnalysisToken, type TimelineEntry } from "./audio/engine";
 import { checkEnglishSpelling } from "./spelling";
 import { defaultAnnouncement } from "./defaultAnnouncement";
@@ -52,7 +53,7 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
   const tension = ref(initialOptions?.voice.tension ?? 0);
   const fitSeconds = ref<number>(FIT_RANGE.default);
   const liveRender = ref(true);
-  const synthesizeUnrecorded = ref(initialOptions?.phonemes ?? true);
+  const synthesizeUnrecorded = ref(!phonemeEngineError.value && (initialOptions?.phonemes ?? true));
 
   const compact = ref(compactQuery.matches);
   const sideBarOpen = ref(!compact.value);
@@ -89,7 +90,8 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
   const notices = computed<Notice[]>(() => {
     const known = new Set(analysis.value.notices.map((notice) => notice.text));
     const renderWarnings = [...new Set(rendered.value?.warnings ?? [])].filter((text) => !known.has(text));
-    return [...analysis.value.notices, ...renderWarnings.map((text): Notice => ({ severity: "warning", text }))];
+    const engine: Notice[] = phonemeEngineError.value ? [{ severity: "warning", text: t("phonemeUnavailable", { reason: phonemeEngineError.value }) }] : [];
+    return [...engine, ...analysis.value.notices, ...renderWarnings.map((text): Notice => ({ severity: "warning", text }))];
   });
   const playbackResult = computed(() => rendered.value ?? previewResult.value);
   const playbackUrl = computed(() => rendered.value ? downloadUrl.value || undefined : previewUrl.value || undefined);

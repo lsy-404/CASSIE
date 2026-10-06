@@ -1,8 +1,10 @@
 import phonemeWorkerUrl from '../audio/phoneme.worker.ts?worker&url';
 import renderWorkerUrl from '../audio/render.worker.ts?worker&url';
 import spellingWorkerUrl from '../spelling.worker.ts?worker&url';
+import { phonemeEngineError } from '../phoneme-engine';
+import { withStage, type StagedError } from './worker-stage';
 
-export type StepStatus = 'pending' | 'ok' | 'fail';
+export type StepStatus = 'pending' | 'ok' | 'warn' | 'fail';
 export interface StartupStep { id: string; label: string; detail: string; status: StepStatus }
 export type StepHandler = (step: StartupStep) => void;
 
@@ -16,7 +18,7 @@ interface FfmpegManifest {
 const CHECK_TIMEOUT_MS = 20_000;
 const LINE_PACING_MS = 40;
 
-type WorkerReply = { type?: string; proof?: Float32Array; error?: string; message?: string; step?: StartupStep };
+type WorkerReply = { type?: string; proof?: Float32Array; error?: string; message?: string; name?: string; stage?: string; step?: StartupStep };
 
 const sleep = (ms: number) => new Promise<void>((resolve) => globalThis.setTimeout(resolve, ms));
 const elapsed = (start: number) => `${Math.round(performance.now() - start)} ms`;
@@ -46,6 +48,7 @@ async function describeWorkerError(event: Event, url: string, signal: AbortSigna
 function requestWorker(worker: Worker, url: string, message: unknown, valid: (reply: WorkerReply) => boolean, signal: AbortSignal, onStep?: StepHandler, transfer: Transferable[] = []): Promise<void> {
   return new Promise((resolve, reject) => {
     const started = performance.now();
+    let stage: string | undefined;
     const timeout = globalThis.setTimeout(() => finish(new Error(`Worker gave no reply within ${CHECK_TIMEOUT_MS / 1000} s (${elapsed(started)} elapsed).`)), CHECK_TIMEOUT_MS);
     const cleanup = () => {
       globalThis.clearTimeout(timeout);
@@ -58,15 +61,18 @@ function requestWorker(worker: Worker, url: string, message: unknown, valid: (re
     const finish = (error?: Error) => {
       cleanup();
       signal.removeEventListener('abort', onAbort);
-      if (error) reject(error);
+      if (error) reject(Object.assign(error, { stage }));
       else resolve();
     };
     const onMessage = (event: MessageEvent<WorkerReply>) => {
       const reply = event.data;
       if (reply?.type === 'step' && reply.step) {
         onStep?.(reply.step);
+      } else if (reply?.type === 'stage') {
+        stage = reply.stage;
       } else if (reply?.type === 'error' || reply?.error) {
-        finish(new Error(reply.error ?? reply.message ?? 'A required audio capability failed.'));
+        stage = reply.stage ?? stage;
+        finish(new Error(reply.name ? `${reply.name}: ${reply.message}` : reply.error ?? reply.message ?? 'A required audio capability failed.'));
       } else if (valid(reply ?? {})) {
         finish();
       } else {
@@ -109,6 +115,7 @@ function browserVersion(): string {
 }
 
 export async function checkStartupCapabilities(signal?: AbortSignal, onStep?: StepHandler): Promise<void> {
+  phonemeEngineError.value = undefined;
   const checks = new AbortController();
   const abort = () => checks.abort();
   signal?.addEventListener('abort', abort, { once: true });
@@ -192,17 +199,26 @@ export async function checkStartupCapabilities(signal?: AbortSignal, onStep?: St
       return `${count} phones · ${size(bytes)}`;
     });
 
-    await step('phoneme-worker', 'spawn phoneme worker', async () => {
-      phonemeWorker = new Worker(phonemeWorkerUrl, { type: 'module' });
-      let phones = '';
-      await requestWorker(phonemeWorker, phonemeWorkerUrl, { words: ['hello'] }, (reply) => {
-        const value = (reply as WorkerReply & { phones?: Record<string, unknown> }).phones?.hello;
-        if (typeof value !== 'string' || !/^h(?:ə|ɛ|e)l(?:oʊ|əʊ|oː)$/u.test(value.replace(/[ˈˌ\s]/gu, ''))) return false;
-        phones = value;
-        return true;
-      }, checks.signal);
-      return `module worker · phonemize "hello" -> /${phones}/`;
-    });
+    // The engine only serves unrecorded words, so its failure degrades the studio instead of halting boot; the 20 s wait overlaps the other checks.
+    const phonemeCheck = (async () => {
+      try {
+        const start = await begin('phoneme-worker', 'spawn phoneme worker');
+        phonemeWorker = new Worker(phonemeWorkerUrl, { type: 'module' });
+        let phones = '';
+        await requestWorker(phonemeWorker, phonemeWorkerUrl, { words: ['hello'] }, (reply) => {
+          const value = (reply as WorkerReply & { phones?: Record<string, unknown> }).phones?.hello;
+          if (typeof value !== 'string' || !/^h(?:ə|ɛ|e)l(?:oʊ|əʊ|oː)$/u.test(value.replace(/[ˈˌ\s]/gu, ''))) return false;
+          phones = value;
+          return true;
+        }, checks.signal);
+        onStep?.({ id: 'phoneme-worker', label: 'spawn phoneme worker', detail: `module worker · phonemize "hello" -> /${phones}/ · ${elapsed(start)}`, status: 'ok' });
+      } catch (error) {
+        if (checks.signal.aborted) return;
+        const reason = withStage(error instanceof Error ? error.message : 'failed', (error as StagedError).stage);
+        phonemeEngineError.value = reason;
+        onStep?.({ id: 'phoneme-worker', label: 'spawn phoneme worker', detail: reason, status: 'warn' });
+      }
+    })();
 
     await step('spelling-worker', 'spawn spelling worker', async () => {
       spellingWorker = new Worker(spellingWorkerUrl, { type: 'module' });
@@ -243,6 +259,7 @@ export async function checkStartupCapabilities(signal?: AbortSignal, onStep?: St
       throw error;
     }
 
+    await phonemeCheck;
     if (signal?.aborted) throw cancelled();
   } catch (error) {
     checks.abort();

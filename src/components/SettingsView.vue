@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { FluentSwitch } from "@platform-kit/fluent/vue";
 import { t } from "../i18n";
+import { phonemeEngineError } from "../phoneme-engine";
 import { useStudio } from "../studio";
 import FineControl from "./FineControl.vue";
 
@@ -37,7 +38,8 @@ const studio = useStudio();
     </section>
     <section data-section="synthesis">
       <h3>{{ t('unrecordedWords') }}</h3>
-      <FluentSwitch v-model="studio.synthesizeUnrecorded" :label="t('unrecordedWords')" />
+      <FluentSwitch v-model="studio.synthesizeUnrecorded" :label="t('unrecordedWords')" :disabled="!!phonemeEngineError" />
+      <p v-if="phonemeEngineError" class="help" data-testid="phoneme-unavailable">{{ t('phonemeUnavailable', { reason: phonemeEngineError }) }}</p>
       <p class="help">{{ t('unrecordedHelp') }}</p>
     </section>
   </div>

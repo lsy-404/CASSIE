@@ -1,10 +1,54 @@
 type RequestMessage = { words: string[]; letterNames?: string[] };
-type ResponseMessage = { phones: Record<string, string> } | { error: string };
+type Stage = 'module loaded' | 'loading engine' | 'running engine' | 'ready';
+type ResponseMessage =
+  | { phones: Record<string, string> }
+  | { type: 'stage'; stage: Stage }
+  | { type: 'error'; stage: Stage; name: string; message: string };
 
 const scope = self as unknown as {
   onmessage: ((event: MessageEvent<RequestMessage>) => void) | null;
   postMessage: (message: ResponseMessage) => void;
+  addEventListener: (type: 'unhandledrejection' | 'error', listener: (event: Event) => void) => void;
 };
+
+let stage: Stage = 'module loaded';
+
+function mark(next: Stage): void {
+  stage = next;
+  scope.postMessage({ type: 'stage', stage });
+}
+
+function report(reason: unknown): void {
+  const error = reason instanceof Error ? reason : undefined;
+  scope.postMessage({ type: 'error', stage, name: error?.name ?? 'Error', message: error?.message ?? String(reason) });
+}
+
+// Unhandled rejections in a worker never reach the Worker object, so they are forwarded explicitly.
+scope.addEventListener('unhandledrejection', (event) => {
+  event.preventDefault();
+  report((event as PromiseRejectionEvent).reason);
+});
+scope.addEventListener('error', (event) => {
+  event.preventDefault();
+  report(new Error((event as ErrorEvent).message || 'Worker script error'));
+});
+
+// phonemizer reads its bundled data with for-await over a stream, which Safari before 27 lacks.
+const streamPrototype = ReadableStream.prototype as unknown as Record<symbol, unknown>;
+if (!streamPrototype[Symbol.asyncIterator]) {
+  streamPrototype[Symbol.asyncIterator] = async function* (this: ReadableStream<unknown>) {
+    const reader = this.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) return;
+        yield value;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  };
+}
 
 scope.onmessage = async ({ data }) => {
   try {
@@ -12,7 +56,9 @@ scope.onmessage = async ({ data }) => {
         (data.letterNames !== undefined && (!Array.isArray(data.letterNames) || data.letterNames.length > 26 || data.letterNames.some((letter) => !/^[A-Z]$/u.test(letter))))) {
       throw new Error('English phonemizer input is invalid.');
     }
+    mark('loading engine');
     const { phonemize } = await import('phonemizer');
+    mark('running engine');
     const phones: Record<string, string> = {};
     for (const word of data.words) {
       const result = await phonemize(word, 'en-us');
@@ -24,8 +70,11 @@ scope.onmessage = async ({ data }) => {
       const phonetic = result.find((item) => item.trim());
       if (phonetic) phones[`letter:${letter}`] = phonetic;
     }
+    mark('ready');
     scope.postMessage({ phones });
   } catch (error) {
-    scope.postMessage({ error: error instanceof Error ? error.message : 'English phonemizer failed.' });
+    report(error);
   }
 };
+
+mark('module loaded');

@@ -19,3 +19,13 @@ test('the phoneme worker is served as JavaScript and its boot step completes', a
   await expect(page.getByTestId('terminal-status')).toHaveText('SYSTEM READY', { timeout: 60_000 });
   await expect(page.locator('[data-testid="terminal-step"]', { hasText: 'spawn phoneme worker' })).toContainText('[ OK ]');
 });
+
+test('the phoneme worker still boots when the engine lacks stream async iteration', async ({ page }) => {
+  await page.route(/phoneme\.worker-[^/]*\.js$/, async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, body: `delete ReadableStream.prototype[Symbol.asyncIterator];\n${await response.text()}` });
+  });
+  await page.goto('/');
+  await expect(page.locator('[data-testid="terminal-step"]', { hasText: 'spawn phoneme worker' })).toContainText('[ OK ]', { timeout: 30_000 });
+  await waitForStudio(page);
+});

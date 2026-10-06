@@ -270,9 +270,9 @@ export async function phonemizeWords(words: string[], signal?: AbortSignal, lett
     signal?.addEventListener('abort', abort, { once: true });
     worker.onerror = (event) => fail(new Error(event.message || 'English phonemizer worker failed.'));
     worker.onmessageerror = () => fail(new Error('English phonemizer returned unreadable data.'));
-    worker.onmessage = ({ data }: MessageEvent<{ phones: Record<string, string> } | { error: string }>) => {
-      if ('error' in data) {
-        fail(new Error(data.error));
+    worker.onmessage = ({ data }: MessageEvent<{ phones: Record<string, string> } | { type: 'stage' } | { type: 'error'; name: string; message: string }>) => {
+      if ('type' in data) {
+        if (data.type === 'error') fail(new Error(`${data.name}: ${data.message}`));
         return;
       }
       if (finished) return;

@@ -52,7 +52,7 @@ const frozenDots = new Map<string, number>();
 const log = ref<HTMLElement>();
 const probe = ref<HTMLElement>();
 const columns = ref(0);
-const tag = (step: StartupStep) => step.status === 'ok' ? '[ OK ]' : step.status === 'fail' ? '[FAIL]' : '[PEND]';
+const tag = (step: StartupStep) => step.status === 'ok' ? '[ OK ]' : step.status === 'warn' ? '[WARN]' : step.status === 'fail' ? '[FAIL]' : '[PEND]';
 const spinner = () => reducedMotion ? '-' : SPINNER[Math.floor(now.value / SPINNER_MS) % SPINNER.length];
 const dotCap = (step: StartupStep) => Math.max(0, Math.floor((columns.value - TAG_COLS - step.label.length - SPINNER_COLS) / 2));
 const grownDots = (step: StartupStep, at: number) => reducedMotion ? 0 : Math.max(0, Math.floor((at - (startedAt.get(step.id) ?? at)) / DOT_MS));
@@ -176,6 +176,7 @@ onBeforeUnmount(() => {
   --ok: #4ade80;
   --fail: #f87171;
   --pend: #facc15;
+  --warn: #fb923c;
   position: fixed;
   inset: 0;
   z-index: 1000;
@@ -305,6 +306,10 @@ onBeforeUnmount(() => {
 [data-status='ok'] .terminal-entry__marker,
 .terminal-entry__status--ready {
   color: var(--ok);
+}
+
+[data-status='warn'] .terminal-entry__marker {
+  color: var(--warn);
 }
 
 [data-status='fail'] .terminal-entry__marker,

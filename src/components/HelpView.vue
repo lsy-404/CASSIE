@@ -36,6 +36,7 @@ import { t } from "../i18n";
       <p>{{ t('voiceExample') }} <code>&lt;voice pitch="3" loudness="2" tension="0.2" breathiness="0.3" formant="-2"&gt;attention&lt;/voice&gt;</code>{{ t('fullStop') }} {{ t('voiceTagHelp') }}</p>
       <p>{{ t('syncExample') }} <code>&lt;sync&gt;&lt;voice pitch="4"&gt;contain&lt;/voice&gt;&lt;/sync&gt; contain</code>{{ t('fullStop') }} {{ t('syncEchoExample') }} <code>&lt;sync&gt;&lt;volume value="0.5"&gt;&lt;pause seconds="0.15"/&gt;contain&lt;/volume&gt;&lt;/sync&gt; contain</code>{{ t('fullStop') }} {{ t('syncHelp') }}</p>
       <p>{{ t('strictHelp') }}</p>
+      <p>{{ t('engineHelp') }}</p>
     </div>
     <h3>{{ t('shortcuts') }}</h3>
     <dl>
