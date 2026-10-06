@@ -1,4 +1,4 @@
-type Pending = { resolve: (words: Set<string>) => void; reject: (error: Error) => void; cleanup: () => void };
+type Pending = { resolve: (words: Map<string, string>) => void; reject: (error: Error) => void; cleanup: () => void };
 const pending = new Map<number, Pending>();
 let worker: Worker | undefined;
 let nextId = 0;
@@ -6,13 +6,13 @@ let nextId = 0;
 function spellingWorker(): Worker {
   if (worker) return worker;
   worker = new Worker(new URL('./spelling.worker.ts', import.meta.url), { type: 'module' });
-  worker.onmessage = ({ data }: MessageEvent<{ id: number; misspelled?: string[]; error?: string }>) => {
+  worker.onmessage = ({ data }: MessageEvent<{ id: number; misspelled?: string[]; suggestions?: Record<string, string>; error?: string }>) => {
     const request = pending.get(data.id);
     if (!request) return;
     pending.delete(data.id);
     request.cleanup();
     if (data.error) request.reject(new Error(data.error));
-    else request.resolve(new Set(data.misspelled ?? []));
+    else request.resolve(new Map((data.misspelled ?? []).map((word) => [word, data.suggestions?.[word] ?? ''])));
   };
   worker.onerror = () => {
     const failed = worker;
@@ -27,11 +27,11 @@ function spellingWorker(): Worker {
   return worker;
 }
 
-export function checkEnglishSpelling(words: readonly string[], signal?: AbortSignal): Promise<Set<string>> {
+export function checkEnglishSpelling(words: readonly string[], signal?: AbortSignal): Promise<Map<string, string>> {
   const cancelled = () => new DOMException('Spelling analysis was cancelled.', 'AbortError');
   if (signal?.aborted) return Promise.reject(cancelled());
   const uniqueWords = [...new Set(words.map((word) => word.toLocaleLowerCase('en-US').replace(/’/g, "'")))];
-  if (!uniqueWords.length) return Promise.resolve(new Set());
+  if (!uniqueWords.length) return Promise.resolve(new Map());
   if (uniqueWords.length > 512) return Promise.reject(new Error('The spelling request exceeds the word limit.'));
   return new Promise((resolve, reject) => {
     const id = ++nextId;

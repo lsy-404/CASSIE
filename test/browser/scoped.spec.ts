@@ -1,4 +1,4 @@
-import { openPanel, openSideView, openStudio, wavLink } from './helpers';
+import { openPanel, openStudio, wavButton } from './helpers';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
@@ -8,7 +8,7 @@ async function renderWav(page: import('@playwright/test').Page, text: string, ou
   await page.getByRole('button', { name: '生成音频', exact: true }).click();
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('src', /^blob:/, { timeout: 60_000 });
   const download = page.waitForEvent('download');
-  await (await wavLink(page)).click();
+  await wavButton(page).click();
   await (await download).saveAs(output);
   const bytes = await readFile(output);
   expect(bytes.toString('ascii', 0, 4)).toBe('RIFF');
@@ -20,8 +20,8 @@ test('typed scope tags end their volume effect and br creates an explicit pause'
   page.on('pageerror', (error) => errors.push(error.message));
   await openStudio(page);
   await expect(page.locator('textarea')).toBeEnabled();
-  await page.locator('.live-controls label').click();
-  await expect(page.getByRole('checkbox', { name: '实时渲染' })).not.toBeChecked();
+  await page.locator('[data-command="live"]').click();
+  await expect(page.getByRole('button', { name: '实时渲染' })).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByRole('switch', { name: '环境底噪' })).toHaveCount(0);
   const baseline = await renderWav(page, 'cassie cassie cassie', info.outputPath('baseline.wav'));
   const scoped = await renderWav(page, 'cassie <volume value="0.25">cassie</volume> cassie', info.outputPath('volume-scope.wav'));
@@ -40,6 +40,7 @@ test('typed scope tags end their volume effect and br creates an explicit pause'
   await expect(page.locator('.annotated-editor .token-marker')).toHaveCount(2);
   const paused = await renderWav(page, 'cassie<br>cassie', info.outputPath('br-pause.wav'));
   expect(paused.length).toBeCloseTo(wordSamples * 2 + 24_000, -1);
+  await expect(page.locator('.annotated-editor .token-marker')).toHaveCount(1);
   await expect(page.locator('.annotated-editor .token-marker')).toHaveText('<br>');
   const selfClosed = await renderWav(page, 'cassie<br/>cassie', info.outputPath('br-self-closed.wav'));
   expect(selfClosed.length).toBe(paused.length);
@@ -69,7 +70,7 @@ test('nested stutters repeat their full scopes and advance past overlapping spee
   page.on('pageerror', (error) => errors.push(error.message));
   await openStudio(page);
   await expect(page.locator('textarea')).toBeEnabled();
-  await page.locator('.live-controls label').click();
+  await page.locator('[data-command="live"]').click();
   const word = await renderWav(page, 'cassie', info.outputPath('one-word.wav'));
   const nested = await renderWav(page,
     '<stutter repeats="1">cassie <stutter repeats="1">cassie</stutter></stutter> cassie',
@@ -93,8 +94,7 @@ test('speech rate changes only speech while gaps, pauses and boundary cue PCM st
   page.on('pageerror', (error) => errors.push(error.message));
   await openStudio(page);
   await expect(page.locator('textarea')).toBeEnabled();
-  await page.locator('.live-controls label').click();
-  await openSideView(page, '声音设置');
+  await page.locator('[data-command="live"]').click();
   const slider = page.getByRole('slider', { name: '语速', exact: true });
   await expect(slider).toHaveValue('1');
   const word = await renderWav(page, 'cassie', info.outputPath('rate-one-word.wav'));
@@ -126,7 +126,7 @@ test('custom controls play an early fragment while later audio is still loading'
   page.on('pageerror', (error) => errors.push(error.message));
   await openStudio(page);
   await expect(page.locator('textarea')).toBeEnabled();
-  await page.locator('.live-controls label').click();
+  await page.locator('[data-command="live"]').click();
   let release: () => void = () => undefined;
   const pending = new Promise<void>((resolve) => { release = resolve; });
   await page.route('**/audio/cassie.opus', async (route) => {
@@ -147,7 +147,7 @@ test('custom controls play an early fragment while later audio is still loading'
     await expect(audio).toHaveAttribute('data-complete', 'true', { timeout: 30_000 });
     await expect(page.locator('.timeline-track .timeline-progress')).toHaveCount(0);
     await expect(page.getByText('公告已就绪', { exact: true })).toHaveCount(0);
-    await expect(page.locator('.panel-tabs').getByRole('tab', { name: '导出', exact: true })).toBeVisible();
+    await expect(page.locator('.panel-tabs').getByRole('tab', { name: '导出' })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: '渲染与导出', exact: true })).toHaveCount(0);
     expect(errors).toEqual([]);
   } finally { release(); }

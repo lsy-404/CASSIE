@@ -1,4 +1,4 @@
-import { openPanel, openStudio, wavLink } from './helpers';
+import { openPanel, openStudio, wavButton } from './helpers';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
@@ -9,8 +9,8 @@ test('ordinary English and best-effort phonemes produce audible audio throughout
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await openStudio(page);
-  await page.locator('.live-controls label').click({ timeout: 10_000 });
-  await expect(page.getByRole('checkbox', { name: '实时渲染' })).not.toBeChecked();
+  await page.locator('[data-command="live"]').click({ timeout: 10_000 });
+  await expect(page.getByRole('button', { name: '实时渲染' })).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('textarea')).toBeEnabled();
   for (const word of ['a', 'I', 'unsupport', 'worksheet', 'metrics', 'beyond', 'accuracy']) {
     await openPanel(page, '播放器');
@@ -18,7 +18,7 @@ test('ordinary English and best-effort phonemes produce audible audio throughout
     await page.getByRole('button', { name: '生成音频', exact: true }).click();
     await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 30_000 });
     const download = page.waitForEvent('download');
-    await (await wavLink(page)).click();
+    await wavButton(page).click();
     const artifact = await download;
     const output = info.outputPath(`${word.toLowerCase()}-speech.wav`);
     await artifact.saveAs(output);
@@ -78,7 +78,7 @@ test('announcement commands play the game boundary excerpts and highlight their 
   });
   await expect(page.locator('.annotated-editor .active')).toHaveText('<end/>');
   const download = page.waitForEvent('download');
-  await (await wavLink(page)).click();
+  await wavButton(page).click();
   await (await download).saveAs(info.outputPath('boundary-cues.wav'));
   expect(errors).toEqual([]);
 });
@@ -96,7 +96,7 @@ test('uppercase recorded words stay case-insensitive while standalone I and unkn
   expect((await acronymLetters.allTextContents()).join('')).toBe('XYZ');
   for (const letter of await acronymLetters.all()) await expect(letter).not.toHaveClass(/spell-missing/);
   const download = page.waitForEvent('download');
-  await (await wavLink(page)).click();
+  await wavButton(page).click();
   const item = await download;
   const output = info.outputPath('uppercase-pronunciation.wav');
   await item.saveAs(output);

@@ -180,6 +180,7 @@ onBeforeUnmount(stopPlayback);
         <span class="timeline-playhead" :style="{ left: `${duration ? currentTime / duration * 100 : 0}%` }" />
       </div>
       <FluentSlider
+        class="diamond-slider"
         :model-value="currentTime"
         :min="0"
         :max="duration"

@@ -1,14 +1,13 @@
 import type { IconName } from "./icons";
-import { FIT_RANGE, type MarkerName, type ScopeName, type SettingId } from "./markup";
-import type { SideView, Studio } from "./studio";
+import { FIT_RANGE, type MarkerName, type ScopeName } from "./markup";
+import type { Studio } from "./studio";
 
-export const RIBBON_TAB_IDS = ["home", "insert", "voice", "timing", "export", "view"] as const;
-export type RibbonTabId = (typeof RIBBON_TAB_IDS)[number];
+export type SliderModel = "pitch" | "volume" | "gap" | "rate" | "voicePitch" | "loudness" | "tension" | "breathiness" | "formant";
 
 export type ActionId =
-  | "render" | "cancel" | "toggleLive" | "exportWav" | "exportOpus"
-  | "toggleSideBar" | "togglePanel" | "toggleRibbon" | "insertPhonemes" | "scope.fit"
-  | `marker.${MarkerName}` | `scope.${ScopeName}` | `view.${SideView}` | `setting.${SettingId}`;
+  | "render" | "cancel" | "toggleLive" | "toggleSynthesis" | "exportWav" | "exportOpus"
+  | "toggleSideBar" | "togglePanel" | "toggleRibbon" | "showHelp" | "insertPhonemes" | "scope.fit"
+  | `marker.${MarkerName}` | `scope.${ScopeName}`;
 
 type Predicate = (studio: Studio) => boolean;
 
@@ -38,9 +37,16 @@ export interface NumberCommand extends CommandBase {
   default: number;
 }
 
-export type RibbonCommand = ButtonCommand | NumberCommand;
-export interface RibbonGroup { id: string; label: string; commands: RibbonCommand[] }
-export interface RibbonTab { id: RibbonTabId; label: string; groups: RibbonGroup[] }
+export interface SliderCommand extends CommandBase {
+  kind: "slider";
+  model: SliderModel;
+  min: number;
+  max: number;
+  step: number;
+}
+
+export type RibbonCommand = ButtonCommand | NumberCommand | SliderCommand;
+export interface RibbonGroup { id: string; label: string; /** i18n key of the group tooltip */ tip?: string; commands: RibbonCommand[] }
 
 const canEdit: Predicate = (s) => Boolean(s.bank) && !s.encodingOpus;
 const canRender: Predicate = (s) => s.hasText && !s.busy;
@@ -51,101 +57,56 @@ function marker(name: MarkerName, label: string, icon: IconName, size: "large" |
 function scope(name: ScopeName, label: string, icon: IconName, size: "large" | "small" = "small"): ButtonCommand {
   return { id: `scope.${name}`, label, icon, action: `scope.${name}`, size, enabled: canEdit };
 }
-function setting(id: SettingId, label: string, icon: IconName, size: "large" | "small" = "small"): ButtonCommand {
-  return { id: `setting.${id}`, label, icon, action: `setting.${id}`, size, tip: "tip.setting" };
+function slider(model: SliderModel, label: string, icon: IconName, min: number, max: number, step: number): SliderCommand {
+  return { id: `slider.${model}`, kind: "slider", label, icon, model, min, max, step };
 }
 
-const renderCommand: ButtonCommand = { id: "render", label: "cmd.render", icon: "play", action: "render", size: "large", tip: "tip.render", enabled: canRender };
-const cancelCommand: ButtonCommand = { id: "cancel", label: "cancel", icon: "stop", action: "cancel", enabled: (s) => s.busy };
-const phonemeCommand: ButtonCommand = { id: "insertPhonemes", label: "insertPhonemes", icon: "phoneme", action: "insertPhonemes", size: "large", tip: "tip.phonemes", enabled: canEdit };
-
-export const RIBBON_TABS: RibbonTab[] = [
-  {
-    id: "home", label: "ribbon.home",
-    groups: [
-      { id: "render", label: "group.render", commands: [
-        renderCommand, cancelCommand,
-        { id: "live", label: "liveRender", icon: "live", action: "toggleLive", pressed: (s) => s.liveRender, tip: "liveHelp" },
-      ] },
-      { id: "markers", label: "group.markers", commands: [
-        marker("start", "start", "flagStart", "large"), marker("end", "end", "flagEnd", "large"),
-        marker("pause", "pause", "pause"), scope("stutter", "stutter", "stutter"),
-      ] },
-      { id: "effects", label: "group.effects", commands: [
-        scope("pitch", "pitch", "pitch"), scope("volume", "volume", "volume"), scope("rate", "rate", "rate"),
-      ] },
-    ],
-  },
-  {
-    id: "insert", label: "ribbon.insert",
-    groups: [
-      { id: "markers", label: "group.markers", commands: [
-        marker("start", "start", "flagStart", "large"), marker("end", "end", "flagEnd", "large"),
-        marker("pause", "pause", "pause"), marker("clip", "clip", "clip"),
-      ] },
-      { id: "effects", label: "group.effects", commands: [
-        scope("stutter", "stutter", "stutter"), scope("pitch", "pitch", "pitch"),
-        scope("volume", "volume", "volume"), scope("rate", "rate", "rate"),
-      ] },
-      { id: "timing", label: "group.timing", commands: [
-        scope("offset", "offset", "offset"), scope("duration", "duration", "duration"), scope("spacing", "spacing", "spacing"),
-      ] },
-      { id: "voice", label: "group.voice", commands: [scope("voice", "voice", "voice", "large")] },
-      { id: "phonemes", label: "group.phonemes", commands: [phonemeCommand] },
-    ],
-  },
-  {
-    id: "voice", label: "ribbon.voice",
-    groups: [
-      { id: "mix", label: "group.mix", commands: [
-        setting("pitch", "pitch", "pitch", "large"), setting("volume", "volume", "volume", "large"),
-        setting("gap", "wordGap", "spacing", "large"), setting("rate", "rate", "rate", "large"),
-      ] },
-      { id: "processing", label: "group.processing", commands: [
-        setting("voicePitch", "voicePitch", "pitch"), setting("loudness", "loudness", "volume"), setting("tension", "tension", "tension"),
-        setting("breathiness", "breathiness", "breath"), setting("formant", "formant", "formant"),
-      ] },
-      { id: "voice", label: "group.voice", commands: [scope("voice", "voice", "voice", "large")] },
-    ],
-  },
-  {
-    id: "timing", label: "ribbon.timing",
-    groups: [
-      { id: "pauses", label: "group.pauses", commands: [
-        marker("pause", "pause", "pause", "large"),
-        scope("offset", "offset", "offset"), scope("duration", "duration", "duration"), scope("spacing", "spacing", "spacing"),
-      ] },
-      { id: "speed", label: "group.speed", commands: [scope("rate", "rate", "rate", "large"), setting("gap", "wordGap", "spacing", "large")] },
-      { id: "reading", label: "group.reading", commands: [
-        { id: "fitSeconds", kind: "number", label: "fitSeconds", icon: "fit", model: "fitSeconds", ...FIT_RANGE, tip: "tip.fit" },
-        { id: "fit", label: "fit", icon: "fit", action: "scope.fit", size: "large", tip: "tip.fit", enabled: canEdit },
-      ] },
-    ],
-  },
-  {
-    id: "export", label: "ribbon.export",
-    groups: [
-      { id: "render", label: "group.render", commands: [renderCommand, cancelCommand] },
-      { id: "download", label: "group.download", commands: [
-        { id: "wav", label: "wavShort", icon: "download", action: "exportWav", size: "large", enabled: (s) => Boolean(s.downloadUrl) },
-        { id: "opus", label: "opusShort", icon: "download", action: "exportOpus", size: "large", enabled: (s) => Boolean(s.rendered) && !s.busy || Boolean(s.opusUrl) },
-      ] },
-    ],
-  },
-  {
-    id: "view", label: "ribbon.view",
-    groups: [
-      { id: "layout", label: "group.layout", commands: [
-        { id: "sidebar", label: "sideBar", icon: "sidebar", action: "toggleSideBar", size: "large", pressed: (s) => s.sideBarOpen },
-        { id: "panel", label: "panel", icon: "panel", action: "togglePanel", size: "large", pressed: (s) => s.panelOpen },
-        { id: "ribbon", label: "ribbonToggle", icon: "ribbon", action: "toggleRibbon", size: "large", pressed: (s) => !s.ribbonCollapsed },
-      ] },
-      { id: "views", label: "group.views", commands: [
-        { id: "outline", label: "outline", icon: "outline", action: "view.outline" },
-        { id: "phonemes", label: "phonemeList", icon: "phoneme", action: "view.phonemes" },
-        { id: "settings", label: "settings", icon: "sliders", action: "view.settings" },
-      ] },
-      { id: "help", label: "group.help", commands: [{ id: "help", label: "help", icon: "help", action: "view.help", size: "large" }] },
-    ],
-  },
+export const RIBBON_GROUPS: RibbonGroup[] = [
+  { id: "render", label: "group.render", commands: [
+    { id: "render", label: "cmd.render", icon: "play", action: "render", size: "large", tip: "tip.render", enabled: canRender },
+    { id: "cancel", label: "cancel", icon: "stop", action: "cancel", enabled: (s) => s.busy },
+    { id: "live", label: "liveRender", icon: "live", action: "toggleLive", pressed: (s) => s.liveRender, tip: "liveHelp" },
+    { id: "synthesis", label: "unrecordedWords", icon: "phoneme", action: "toggleSynthesis", pressed: (s) => s.synthesizeUnrecorded, tip: "unrecordedHelp" },
+  ] },
+  { id: "export", label: "group.export", commands: [
+    { id: "wav", label: "wavShort", icon: "download", action: "exportWav", size: "large", tip: "tip.wav", enabled: (s) => Boolean(s.downloadUrl) },
+    { id: "opus", label: "opusShort", icon: "download", action: "exportOpus", size: "large", tip: "tip.opus", enabled: (s) => Boolean(s.rendered) && !s.busy || Boolean(s.opusUrl) },
+  ] },
+  { id: "markers", label: "group.markers", commands: [
+    marker("start", "start", "flagStart", "large"), marker("end", "end", "flagEnd", "large"),
+    marker("pause", "pause", "pause"), marker("clip", "clip", "clip"), scope("stutter", "stutter", "stutter"),
+  ] },
+  { id: "effects", label: "group.effects", commands: [
+    scope("pitch", "pitch", "pitch"), scope("volume", "volume", "volume"), scope("rate", "rate", "rate"),
+    scope("voice", "voice", "voice", "large"),
+  ] },
+  { id: "timing", label: "group.timing", commands: [
+    scope("offset", "offset", "offset"), scope("duration", "duration", "duration"), scope("spacing", "spacing", "spacing"),
+  ] },
+  { id: "reading", label: "group.reading", commands: [
+    { id: "fitSeconds", kind: "number", label: "fitSeconds", icon: "fit", model: "fitSeconds", ...FIT_RANGE, tip: "tip.fit" },
+    { id: "fit", label: "fit", icon: "fit", action: "scope.fit", size: "large", tip: "tip.fit", enabled: canEdit },
+  ] },
+  { id: "phonemes", label: "group.phonemes", commands: [
+    { id: "insertPhonemes", label: "insertPhonemes", icon: "phoneme", action: "insertPhonemes", size: "large", tip: "tip.phonemes", enabled: canEdit },
+  ] },
+  { id: "view", label: "group.view", commands: [
+    { id: "sidebar", label: "sideBar", icon: "sidebar", action: "toggleSideBar", size: "large", pressed: (s) => s.sideBarOpen },
+    { id: "panel", label: "panel", icon: "panel", action: "togglePanel", size: "large", pressed: (s) => s.panelOpen },
+    { id: "ribbon", label: "ribbonToggle", icon: "ribbon", action: "toggleRibbon", size: "large", pressed: (s) => !s.ribbonCollapsed },
+    { id: "help", label: "help", icon: "help", action: "showHelp", size: "large" },
+  ] },
+  { id: "mix", label: "group.mix", commands: [
+    slider("pitch", "pitch", "pitch", 0.65, 1.35, 0.01),
+    slider("volume", "volume", "volume", 0, 1, 0.01),
+    slider("gap", "wordGap", "spacing", 0, 0.8, 0.01),
+    slider("rate", "rate", "rate", 0.5, 2, 0.01),
+  ] },
+  { id: "processing", label: "group.processing", tip: "voiceHelp", commands: [
+    slider("voicePitch", "voicePitch", "pitch", -12, 12, 0.1),
+    slider("loudness", "loudness", "volume", -24, 12, 0.1),
+    slider("tension", "tension", "tension", -1, 1, 0.01),
+    slider("breathiness", "breathiness", "breath", 0, 1, 0.01),
+    slider("formant", "formant", "formant", -6, 6, 0.1),
+  ] },
 ];

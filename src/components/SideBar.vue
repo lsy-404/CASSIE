@@ -4,7 +4,6 @@ import { SIDE_VIEW_LABELS, useStudio } from "../studio";
 import HelpView from "./HelpView.vue";
 import OutlineView from "./OutlineView.vue";
 import PhonemesView from "./PhonemesView.vue";
-import SettingsView from "./SettingsView.vue";
 
 const studio = useStudio();
 </script>
@@ -16,7 +15,6 @@ const studio = useStudio();
       <div class="sidebar-scroll">
         <OutlineView v-show="studio.sideView === 'outline'" id="sidebar-outline" />
         <PhonemesView v-show="studio.sideView === 'phonemes'" id="sidebar-phonemes" />
-        <SettingsView v-show="studio.sideView === 'settings'" id="sidebar-settings" />
         <HelpView v-show="studio.sideView === 'help'" id="sidebar-help" />
       </div>
     </aside>

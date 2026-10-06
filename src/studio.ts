@@ -1,27 +1,33 @@
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, shallowRef, watch, type InjectionKey } from "vue";
 import { locale, setLocale, t } from "./i18n";
-import { analyzeAnnouncement, encodeWav, loadBank, renderAnnouncement, type AnalysisResult as EngineAnalysisResult, type AnalysisToken as EngineAnalysisToken, type TimelineEntry } from "./audio/engine";
+import { analyzeAnnouncement, encodeWav, loadBank, renderAnnouncement, type AnalysisNotice, type AnalysisResult as EngineAnalysisResult, type AnalysisToken as EngineAnalysisToken, type TimelineEntry } from "./audio/engine";
 import { checkEnglishSpelling } from "./spelling";
 import { defaultAnnouncement } from "./defaultAnnouncement";
 import { boundedNumber, phonemeInsertion } from "./editor";
-import { FIT_RANGE, MARKERS, SCOPES, MARKER_NAMES, SCOPE_NAMES, SETTING_IDS, fitScope, type SettingId } from "./markup";
+import { FIT_RANGE, MARKERS, SCOPES, MARKER_NAMES, SCOPE_NAMES, fitScope } from "./markup";
 import { DEFAULT_GAP } from "./audio/fit";
-import type { ActionId, RibbonTabId } from "./ribbon";
+import type { ActionId } from "./ribbon";
 import type { DecodedUrlState } from "./url-state";
 
-export const SIDE_VIEWS = ["outline", "phonemes", "settings", "help"] as const;
-export const PANEL_TABS = ["player", "problems", "analysis", "export"] as const;
-export type SideView = (typeof SIDE_VIEWS)[number];
+export const ACTIVITY_VIEWS = ["outline", "phonemes"] as const;
+export const PANEL_TABS = ["player", "analysis"] as const;
+export type SideView = (typeof ACTIVITY_VIEWS)[number] | "help";
 export type PanelTab = (typeof PANEL_TABS)[number];
-export const SIDE_VIEW_LABELS: Record<SideView, string> = { outline: "outline", phonemes: "phonemeList", settings: "settings", help: "help" };
+export const SIDE_VIEW_LABELS: Record<SideView, string> = { outline: "outline", phonemes: "phonemeList", help: "help" };
 
 type Bank = Awaited<ReturnType<typeof loadBank>>;
 export type AnalysisToken = EngineAnalysisToken & { spellingMissing?: boolean };
 type AnalysisResult = Omit<EngineAnalysisResult, "tokens"> & { tokens: AnalysisToken[] };
+export type Notice = AnalysisNotice;
 type RenderedAnnouncement = Omit<Awaited<ReturnType<typeof renderAnnouncement>>, "samples"> & { samples: Float32Array<ArrayBuffer>; timeline: TimelineEntry[] };
 
 const statusMessageKeys = new Set(["renderCancelled", "opusCancelled", "opusReady", "loadingOpus", "renderFailed", "opusFailed"]);
 const COMPACT_QUERY = "(max-width: 819px)";
+
+function matchCase(original: string, suggestion: string) {
+  return original === original.toLocaleUpperCase("en-US") && original.length > 1 ? suggestion.toLocaleUpperCase("en-US")
+    : original[0] === original[0].toLocaleUpperCase("en-US") ? suggestion[0].toLocaleUpperCase("en-US") + suggestion.slice(1) : suggestion;
+}
 
 function actionFamily<P extends string, K extends string>(prefix: P, keys: readonly K[], run: (key: K) => void) {
   return Object.fromEntries(keys.map((key) => [`${prefix}.${key}`, () => run(key)])) as Record<`${P}.${K}`, () => void>;
@@ -46,13 +52,13 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
   const tension = ref(initialOptions?.voice.tension ?? 0);
   const fitSeconds = ref<number>(FIT_RANGE.default);
   const liveRender = ref(true);
+  const synthesizeUnrecorded = ref(initialOptions?.phonemes ?? true);
 
   const compact = ref(compactQuery.matches);
   const sideBarOpen = ref(!compact.value);
   const sideView = ref<SideView>("outline");
   const panelOpen = ref(true);
   const panelTab = ref<PanelTab>("player");
-  const ribbonTab = ref<RibbonTabId>("home");
   const ribbonCollapsed = ref(false);
 
   const progress = ref(0);
@@ -80,7 +86,11 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
   let analysisController: AbortController | null = null;
   let liveRenderTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const allWarnings = computed(() => [...new Set([...analysis.value.notices.filter((notice) => notice.severity !== "info").map((notice) => notice.text), ...(rendered.value?.warnings ?? [])])]);
+  const notices = computed<Notice[]>(() => {
+    const known = new Set(analysis.value.notices.map((notice) => notice.text));
+    const renderWarnings = [...new Set(rendered.value?.warnings ?? [])].filter((text) => !known.has(text));
+    return [...analysis.value.notices, ...renderWarnings.map((text): Notice => ({ severity: "warning", text }))];
+  });
   const playbackResult = computed(() => rendered.value ?? previewResult.value);
   const playbackUrl = computed(() => rendered.value ? downloadUrl.value || undefined : previewUrl.value || undefined);
   const playbackDuration = computed(() => playbackResult.value?.duration ?? 0);
@@ -154,22 +164,26 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
       const controller = new AbortController();
       analysisController = controller;
       try {
-        const result = await analyzeAnnouncement(text.value, currentBank, { phonemes: true, gap: gap.value, pitch: pitch.value, rate: rate.value }, controller.signal);
-        let tokens: AnalysisToken[] = result.tokens;
-        const spellingWords = [...new Set(tokens
+        const result = await analyzeAnnouncement(text.value, currentBank, { phonemes: synthesizeUnrecorded.value, gap: gap.value, pitch: pitch.value, rate: rate.value }, controller.signal);
+        if (controller.signal.aborted || revision !== analysisRevision) return;
+        analysis.value = result;
+        const spellingWords = [...new Set(result.tokens
           .filter((token) => (token.kind === "synthesized" || token.kind === "error") && token.spellingWord)
           .map((token) => token.spellingWord!))];
         if (spellingWords.length) {
           try {
             const missing = await checkEnglishSpelling(spellingWords, controller.signal);
-            tokens = tokens.map((token) => token.spellingWord && missing.has(token.spellingWord.toLocaleLowerCase("en-US"))
-              ? { ...token, spellingMissing: true }
-              : token);
+            const tokens = result.tokens.map((token) => {
+              const suggestion = token.spellingWord ? missing.get(token.spellingWord.toLocaleLowerCase("en-US")) : undefined;
+              if (suggestion === undefined) return token;
+              const replacement = suggestion && token.text.toLocaleLowerCase("en-US") === token.spellingWord!.toLocaleLowerCase("en-US") ? matchCase(token.text, suggestion) : "";
+              return { ...token, spellingMissing: true, ...(replacement && !token.fix ? { fix: { replacement } } : {}) };
+            });
+            if (!controller.signal.aborted && revision === analysisRevision) analysis.value = { ...result, tokens };
           } catch (error) {
             if (controller.signal.aborted) throw error;
           }
         }
-        if (!controller.signal.aborted && revision === analysisRevision) analysis.value = { ...result, tokens };
       } catch (error) {
         if (!controller.signal.aborted && revision === analysisRevision) analysis.value = { words: [], notices: [{ severity: "error", text: error instanceof Error ? error.message : "Could not analyze announcement." }], ipa: [], tokens: [] };
       } finally {
@@ -209,7 +223,7 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
     renderController = controller;
     try {
       const result = await renderAnnouncement(text.value, bank.value,
-        { pitch: pitch.value, volume: volume.value, gap: gap.value, rate: rate.value, phonemes: true,
+        { pitch: pitch.value, volume: volume.value, gap: gap.value, rate: rate.value, phonemes: synthesizeUnrecorded.value,
           voice: { pitchSemitones: voicePitch.value, breathiness: breathiness.value, formantSemitones: formant.value, loudnessDb: loudness.value, tension: tension.value } },
         (value) => { progress.value = Math.max(0, Math.min(100, value * 100)); }, controller.signal,
         (snapshot) => {
@@ -270,7 +284,7 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
     link.remove();
   }
   function inputSignature() {
-    return JSON.stringify([text.value, pitch.value, volume.value, gap.value, rate.value, voicePitch.value, loudness.value, tension.value, breathiness.value, formant.value]);
+    return JSON.stringify([text.value, pitch.value, volume.value, gap.value, rate.value, voicePitch.value, loudness.value, tension.value, breathiness.value, formant.value, synthesizeUnrecorded.value]);
   }
   async function exportInitialAnnouncement() {
     const format = props.initialState?.export;
@@ -307,14 +321,13 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
     if (sideBarOpen.value && sideView.value === view) sideBarOpen.value = false;
     else { sideView.value = view; sideBarOpen.value = true; }
   }
-  function focusSetting(id: SettingId) {
-    sideView.value = "settings";
-    sideBarOpen.value = true;
-    void nextTick(() => document.querySelector<HTMLElement>(`[data-setting="${id}"] input`)?.focus());
-  }
   function toggleRibbon() {
     ribbonCollapsed.value = !ribbonCollapsed.value;
-    void nextTick(() => document.getElementById(`ribbon-tab-${ribbonTab.value}`)?.focus());
+    void nextTick(() => document.querySelector<HTMLElement>(ribbonCollapsed.value ? "#ribbon-show" : ".rb-collapse")?.focus());
+  }
+  async function downloadOpus() {
+    if (!opusUrl.value) await exportOpus();
+    if (opusUrl.value) saveUrl(opusUrl.value, "opus");
   }
   function focusEditor() { editorEl.value?.focus(); }
 
@@ -322,8 +335,10 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
     render: () => void compose(),
     cancel: cancelRender,
     toggleLive: () => { liveRender.value = !liveRender.value; },
-    exportWav: () => { if (downloadUrl.value) saveUrl(downloadUrl.value, "wav"); showPanel("export"); },
-    exportOpus: () => { showPanel("export"); if (opusUrl.value) saveUrl(opusUrl.value, "opus"); else void exportOpus(); },
+    toggleSynthesis: () => { synthesizeUnrecorded.value = !synthesizeUnrecorded.value; },
+    exportWav: () => { if (downloadUrl.value) saveUrl(downloadUrl.value, "wav"); },
+    exportOpus: () => void downloadOpus(),
+    showHelp: () => showSideView("help"),
     toggleSideBar: () => { sideBarOpen.value = !sideBarOpen.value; },
     togglePanel: () => { panelOpen.value = !panelOpen.value; },
     toggleRibbon,
@@ -336,8 +351,6 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
     },
     ...actionFamily("marker", MARKER_NAMES, (name) => insertMarker(MARKERS[name])),
     ...actionFamily("scope", SCOPE_NAMES, (name) => insertScope(SCOPES[name].open, SCOPES[name].close)),
-    ...actionFamily("view", SIDE_VIEWS, (view) => { sideView.value = view; sideBarOpen.value = true; }),
-    ...actionFamily("setting", SETTING_IDS, focusSetting),
   } satisfies Record<ActionId, () => void>;
   function run(action: ActionId) { actions[action](); }
 
@@ -366,8 +379,8 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
     sideBarOpen.value = !event.matches;
   }
 
-  watch([text, bank, gap, pitch, rate], scheduleAnalysis, { immediate: true });
-  watch([text, pitch, volume, gap, rate, voicePitch, breathiness, formant, loudness, tension, bank], () => {
+  watch([text, bank, gap, pitch, rate, synthesizeUnrecorded], scheduleAnalysis, { immediate: true });
+  watch([text, pitch, volume, gap, rate, voicePitch, breathiness, formant, loudness, tension, synthesizeUnrecorded, bank], () => {
     invalidateRendered();
     if (renderController) cancelRender();
     if (initialExportPending || !liveRender.value || !bank.value || !text.value.trim()) return;
@@ -413,12 +426,12 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
 
   return reactive({
     urlError: Boolean(props.urlError),
-    bank, loading, loadError, text, pitch, volume, gap, rate, voicePitch, loudness, tension, breathiness, formant, fitSeconds, liveRender,
-    compact, sideBarOpen, sideView, panelOpen, panelTab, ribbonTab, ribbonCollapsed,
+    bank, loading, loadError, text, pitch, volume, gap, rate, voicePitch, loudness, tension, breathiness, formant, fitSeconds, liveRender, synthesizeUnrecorded,
+    compact, sideBarOpen, sideView, panelOpen, panelTab, ribbonCollapsed,
     progress, rendering, renderMessage, rendered, encodingOpus, opusMessage, opusUrl, downloadUrl,
     phoneKeys, phoneIndexError, analysis, audioTime, cursor, editorEl, player,
-    allWarnings, playbackResult, playbackUrl, playbackDuration, hasText, busy, activeTimelineItem,
-    statusText, toggleLocale, syncCursor, goToOffset, insertPhoneme, compose, cancelRender, exportOpus,
+    notices, playbackResult, playbackUrl, playbackDuration, hasText, busy, activeTimelineItem,
+    statusText, toggleLocale, syncCursor, goToOffset, insertPhoneme, compose, cancelRender,
     showPanel, showSideView, toggleRibbon, run,
   });
 }

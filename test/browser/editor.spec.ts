@@ -24,8 +24,6 @@ test('fine numeric fields stay stable when cleared and accept signed decimal voi
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await openStudio(page);
-  await openSideView(page, '声音设置');
-  await expect(page.locator('.voice-processing')).toBeVisible();
   const loudness = page.getByRole('spinbutton', { name: '响度（dB）', exact: true });
   const tension = page.getByRole('spinbutton', { name: '张力', exact: true });
   const breathiness = page.getByRole('spinbutton', { name: '气声', exact: true });
@@ -47,7 +45,7 @@ test('fine numeric fields stay stable when cleared and accept signed decimal voi
 
 test('one long timeline combines rendering and seeking and follows the audio clock between native events', async ({ page }) => {
   await openStudio(page);
-  await page.locator('.live-controls label').click();
+  await page.locator('[data-command="live"]').click();
   await page.locator('textarea').fill('attention all personnel attention all personnel');
   await page.getByRole('button', { name: '生成音频', exact: true }).click();
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('src', /^blob:/, { timeout: 60_000 });
