@@ -1,97 +1,63 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { checkStartupCapabilities, type StartupStep } from '../startup/capabilities';
+import { cellPath, glyphPath, GLYPH_HEIGHT, GLYPH_WIDTH, textCells, textPath } from '../startup/pixel-font';
 
 const SPINNER = ['\\', '|', '/', '-'];
-const FONT: Record<string, string[]> = {
-  C: ['.XXX.', 'X...X', 'X....', 'X....', 'X....', 'X...X', '.XXX.'],
-  A: ['.XXX.', 'X...X', 'X...X', 'XXXXX', 'X...X', 'X...X', 'X...X'],
-  S: ['.XXXX', 'X....', 'X....', '.XXX.', '....X', '....X', 'XXXX.'],
-  I: ['XXXXX', '..X..', '..X..', '..X..', '..X..', '..X..', 'XXXXX'],
-  E: ['XXXXX', 'X....', 'X....', 'XXXX.', 'X....', 'X....', 'XXXXX'],
-};
-const LETTERS = 'CASSIE';
-const FRAME_GAP = 2;
+const SPINNER_MS = 80;
+const DOT_MS = 70;
+const LEADER_DOTS = 160;
+const TICK_MS = 35;
+const HANDOFF_MS = 700;
+const WORDMARK = 'CASSIE+';
 const GLYPH_STRIDE = 8;
-const CELLS_WIDE = LETTERS.length * GLYPH_STRIDE - 1;
-const CELLS_HIGH = 7;
+const FRAME_GAP = 2;
 const RING = FRAME_GAP + 1;
+const CELLS_WIDE = (WORDMARK.length - 1) * GLYPH_STRIDE + GLYPH_WIDTH;
 const GRID_WIDE = CELLS_WIDE + RING * 2;
-const GRID_HIGH = CELLS_HIGH + RING * 2;
+const GRID_HIGH = GLYPH_HEIGHT + RING * 2;
+const CAPTION_SCALE = 2;
+const CAPTION = [`CASSIE+  V${__APP_VERSION__}`, 'INDEPENDENT PROJECT'];
 
 const wordmarkPath = (() => {
   const cells: string[] = [];
-  const cell = (x: number, y: number) => cells.push(`M${x} ${y}h1v1h-1z`);
-  for (let x = 0; x < GRID_WIDE; x += 1) {
-    cell(x, 0);
-    cell(x, GRID_HIGH - 1);
-  }
-  for (let y = 1; y < GRID_HIGH - 1; y += 1) {
-    cell(0, y);
-    cell(GRID_WIDE - 1, y);
-  }
-  [...LETTERS].forEach((letter, index) => {
+  for (let x = 0; x < GRID_WIDE; x += 1) cells.push(cellPath(x, 0), cellPath(x, GRID_HIGH - 1));
+  for (let y = 1; y < GRID_HIGH - 1; y += 1) cells.push(cellPath(0, y), cellPath(GRID_WIDE - 1, y));
+  [...WORDMARK].forEach((char, index) => {
     const left = RING + index * GLYPH_STRIDE;
-    FONT[letter].forEach((row, y) => [...row].forEach((pixel, x) => {
-      if (pixel === 'X') cell(left + x, RING + y);
-    }));
-    cell(left + 6, RING + CELLS_HIGH - 1);
+    cells.push(glyphPath(char, left, RING));
+    if (index < WORDMARK.length - 1) cells.push(cellPath(left + GLYPH_WIDTH + 1, RING + GLYPH_HEIGHT - 1));
   });
   return cells.join('');
 })();
 
+const captionLines = CAPTION.map((text) => ({ text, path: textPath(text), cells: textCells(text) }));
+
 const steps = ref<StartupStep[]>([]);
 const checking = ref(true);
-const unlocking = ref(false);
-const unlocked = ref(false);
+const entered = ref(false);
 const failed = ref(false);
-const frame = ref(0);
+const now = ref(performance.now());
 const log = ref<HTMLElement>();
 const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 const failedStep = computed(() => steps.value.find((step) => step.status === 'fail'));
-const marker = (step: StartupStep) => step.status === 'ok' ? '[ OK ]' : step.status === 'fail' ? '[FAIL]' : `[ ${reducedMotion ? '-' : SPINNER[frame.value]}  ]`;
+const startedAt = new Map<string, number>();
+const marker = (step: StartupStep) => step.status === 'ok' ? '[ OK ]' : step.status === 'fail' ? '[FAIL]' : `[ ${reducedMotion ? '-' : SPINNER[Math.floor(now.value / SPINNER_MS) % SPINNER.length]}  ]`;
 const result = (step: StartupStep) => step.status === 'ok' ? 'OK' : step.status === 'fail' ? 'FAIL' : '';
+const leader = (step: StartupStep) => {
+  if (step.status !== 'pending' || reducedMotion) return '.'.repeat(LEADER_DOTS);
+  const dots = Math.floor((now.value - (startedAt.get(step.id) ?? now.value)) / DOT_MS);
+  return '.'.repeat(Math.min(LEADER_DOTS, Math.max(0, dots)));
+};
 let controller: AbortController | undefined;
-let spinner: ReturnType<typeof setInterval> | undefined;
+let ticker: ReturnType<typeof setInterval> | undefined;
 
 function record(step: StartupStep): void {
   const index = steps.value.findIndex((item) => item.id === step.id);
-  if (index < 0) steps.value.push(step);
-  else steps.value[index] = step;
-}
-
-async function unlock(): Promise<void> {
-  if (checking.value || unlocking.value || failed.value || unlocked.value) return;
-  unlocking.value = true;
-  let context: AudioContext | undefined;
-  const unlockStep = { id: 'unlock', label: 'unlock audio output' };
-  const started = performance.now();
-  const timing = () => `${Math.round(performance.now() - started)} ms`;
-  record({ ...unlockStep, detail: '', status: 'pending' });
-  try {
-    context = new AudioContext();
-    const resumed = context.resume();
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await Promise.race([
-        resumed,
-        new Promise<never>((_, reject) => {
-          timeout = globalThis.setTimeout(() => reject(new Error('Audio unlock timed out.')), 10_000);
-        }),
-      ]);
-    } finally {
-      if (timeout !== undefined) globalThis.clearTimeout(timeout);
-    }
-    if (context.state !== 'running') throw new Error('Audio could not be unlocked.');
-    record({ ...unlockStep, detail: `${context.state} · ${timing()}`, status: 'ok' });
-    unlocked.value = true;
-  } catch (error) {
-    failed.value = true;
-    record({ ...unlockStep, detail: `${error instanceof Error ? error.message : 'Audio unlock failed.'} · ${context?.state ?? 'no context'} · ${timing()}`, status: 'fail' });
-  } finally {
-    await context?.close().catch(() => undefined);
-    unlocking.value = false;
-  }
+  if (index < 0) {
+    startedAt.set(step.id, performance.now());
+    steps.value.push(step);
+  } else steps.value[index] = step;
 }
 
 watch(steps, () => nextTick(() => {
@@ -99,26 +65,33 @@ watch(steps, () => nextTick(() => {
 }), { deep: true });
 
 onMounted(async () => {
-  if (!reducedMotion) spinner = setInterval(() => { frame.value = (frame.value + 1) % SPINNER.length; }, 80);
+  if (!reducedMotion) ticker = setInterval(() => { now.value = performance.now(); }, TICK_MS);
   controller = new AbortController();
+  const { signal } = controller;
   try {
-    await checkStartupCapabilities(controller.signal, record);
-    checking.value = false;
+    await checkStartupCapabilities(signal, record);
   } catch {
-    if (controller.signal.aborted) return;
+    if (signal.aborted) return;
     checking.value = false;
     failed.value = true;
+    clearInterval(ticker);
+    return;
   }
+  checking.value = false;
+  await new Promise((resolve) => setTimeout(resolve, reducedMotion ? 0 : HANDOFF_MS));
+  if (signal.aborted) return;
+  clearInterval(ticker);
+  entered.value = true;
 });
 
 onBeforeUnmount(() => {
   controller?.abort();
-  clearInterval(spinner);
+  clearInterval(ticker);
 });
 </script>
 
 <template>
-  <main v-if="!unlocked" class="terminal-entry" lang="en">
+  <main v-if="!entered" class="terminal-entry" lang="en">
     <div class="terminal-entry__scanlines" data-testid="terminal-scanlines" aria-hidden="true" />
     <section v-if="failed" class="terminal-entry__message" role="alert" data-testid="terminal-error">
       <p v-if="failedStep" class="terminal-entry__fail-line">
@@ -132,7 +105,6 @@ onBeforeUnmount(() => {
         <svg :viewBox="`0 0 ${GRID_WIDE} ${GRID_HIGH}`" shape-rendering="crispEdges" aria-hidden="true" focusable="false">
           <path :d="wordmarkPath" fill="currentColor" />
         </svg>
-        <span class="terminal-entry__plus" aria-hidden="true">+</span>
       </h1>
       <p class="terminal-entry__subtitle">CENTRAL AUTONOMIC SERVICE SYSTEM FOR INTERNAL EMERGENCIES</p>
       <div ref="log" class="terminal-entry__log" data-testid="terminal-log">
@@ -140,26 +112,31 @@ onBeforeUnmount(() => {
           <div class="terminal-entry__line">
             <span class="terminal-entry__marker">{{ marker(step) }}</span>
             <span class="terminal-entry__label">{{ step.label }}</span>
-            <span class="terminal-entry__leader" aria-hidden="true">{{ '.'.repeat(160) }}</span>
+            <span class="terminal-entry__leader" aria-hidden="true">{{ leader(step) }}</span>
             <span class="terminal-entry__result">{{ result(step) }}</span>
           </div>
           <div v-if="step.detail" class="terminal-entry__detail">{{ step.detail }}</div>
         </div>
         <span class="terminal-entry__cursor" aria-hidden="true" />
       </div>
-      <p class="terminal-entry__status" :class="{ 'terminal-entry__status--ready': !checking && !unlocking }" role="status" data-testid="terminal-status">
-        {{ checking ? 'RUNNING STARTUP CHECKS' : unlocking ? 'UNLOCKING AUDIO' : 'SYSTEM READY' }}
+      <p class="terminal-entry__status" :class="{ 'terminal-entry__status--ready': !checking }" role="status" data-testid="terminal-status">
+        {{ checking ? 'RUNNING STARTUP CHECKS' : 'SYSTEM READY' }}
       </p>
-      <button
-        class="terminal-entry__unlock"
-        data-testid="terminal-unlock"
-        type="button"
-        :disabled="checking || unlocking"
-        @click="unlock"
-      >
-        &gt; TAP TO UNLOCK
-      </button>
     </section>
+    <footer class="terminal-entry__caption" data-testid="terminal-caption" :aria-label="CAPTION.join('  ')">
+      <svg
+        v-for="line in captionLines"
+        :key="line.text"
+        :viewBox="`0 0 ${line.cells} ${GLYPH_HEIGHT}`"
+        :width="line.cells * CAPTION_SCALE"
+        :height="GLYPH_HEIGHT * CAPTION_SCALE"
+        shape-rendering="crispEdges"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path :d="line.path" fill="currentColor" />
+      </svg>
+    </footer>
   </main>
   <slot v-else />
 </template>
@@ -171,10 +148,10 @@ onBeforeUnmount(() => {
   position: fixed;
   inset: 0;
   z-index: 1000;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  place-items: center;
-  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px 12px;
   overflow: auto;
   background: #000;
   color: #e5e5e5;
@@ -212,22 +189,13 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   gap: 14px;
+  margin-block: auto;
 }
 
 .terminal-entry__wordmark {
   width: min(100%, 520px);
   margin: 0;
   color: #fff;
-}
-
-.terminal-entry__plus {
-  display: block;
-  margin-top: 8px;
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: 0.6em;
-  text-align: center;
-  text-indent: 0.6em;
 }
 
 .terminal-entry__wordmark svg {
@@ -302,6 +270,20 @@ onBeforeUnmount(() => {
 
 [data-status='fail'] .terminal-entry__marker,
 [data-status='fail'] .terminal-entry__result,
+.terminal-entry__caption {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 24px;
+  align-self: flex-start;
+  margin-top: 16px;
+  color: #5c5c5c;
+}
+
+.terminal-entry__caption svg {
+  display: block;
+  flex: none;
+}
+
 .terminal-entry__fail-line {
   color: var(--fail);
 }
@@ -324,29 +306,9 @@ onBeforeUnmount(() => {
   letter-spacing: 0.18em;
 }
 
-.terminal-entry__unlock {
-  border: 1px solid currentColor;
-  padding: 10px 18px;
-  background: transparent;
-  color: #fff;
-  font: inherit;
-  letter-spacing: 0.18em;
-  cursor: pointer;
-}
-
-.terminal-entry__unlock:disabled {
-  color: #666;
-  cursor: default;
-}
-
-.terminal-entry__unlock:not(:disabled):hover,
-.terminal-entry__unlock:not(:disabled):focus-visible {
-  background: #fff;
-  color: #000;
-}
-
 .terminal-entry__message {
   z-index: 1;
+  margin-block: auto;
   width: min(100%, 46rem);
   line-height: 1.7;
   text-align: center;

@@ -1,4 +1,4 @@
-import { openStudio, unlockTerminal } from './helpers';
+import { openStudio, waitForStudio } from './helpers';
 import { expect, test } from '@playwright/test';
 
 test.use({ locale: 'en-US' });
@@ -22,7 +22,7 @@ test('language follows browser locale and persists the selected translation', as
   await expect(page.getByRole('slider', { name: '音调偏移（半音）' })).toBeVisible();
 
   await page.reload();
-  await unlockTerminal(page);
+  await waitForStudio(page);
   await expect(page.locator('.titlebar .app-title')).toHaveText('公告编辑器');
   await page.getByRole('button', { name: '语言' }).click();
   await expect(page.locator('.titlebar .app-title')).toHaveText('Announcement editor');
