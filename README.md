@@ -6,7 +6,7 @@ CASSIE PLUS is a CASSIE announcement studio for [SCP: Secret Laboratory](https:/
 
 Vue and [platform-kit Fluent](https://github.com/lsy-404/platform-kit) provide the interface. A dedicated Web Worker decodes the supplied Opus clips through `ogg-opus-decoder` WebAssembly and mixes the announcement. FFmpeg WASM loads only for Opus export. Text and rendered audio stay on your device.
 
-The interface supports Chinese and English, initially follows the browser language, and remembers the selected language. The terminal entry checks real module workers and the audio WebAssembly engines before the studio opens automatically. A failed capability check displays a centered device error. Use a standard Chromium browser with full support for the required browser APIs.
+The interface supports Chinese and English, initially follows the browser language, and remembers the selected language. The terminal entry checks real module workers and the audio WebAssembly engines before the studio opens automatically. A failed check stops the boot log in place: the failing step is marked `[FAIL]` and `[ERROR]` lines give the step, the browser environment and the reason. Use a standard Chromium browser with full support for the required browser APIs.
 
 The terminal layout references the game's [official CASSIE monitor](https://en.scpslgame.com/index.php?title=File:LCZ_Screen_CASSIE_Scan_Complete.png). Its editable default is an original SCP recruitment broadcast with markup examples. One long playback bar also shows rendering progress, supports already-rendered audio and updates the current time from the media clock. The ribbon provides WAV and Opus downloads.
 

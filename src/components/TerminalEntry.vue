@@ -43,7 +43,7 @@ const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)'
 const failedStep = computed(() => steps.value.find((step) => step.status === 'fail'));
 const errorLines = computed(() => failure.value === undefined ? [] : [
   `step: ${failedStep.value?.label ?? 'startup'}`,
-  `reason: ${failedStep.value?.detail || failure.value}`,
+  ...(failedStep.value?.detail ? [] : [`reason: ${failure.value}`]),
   `environment: ${navigator.userAgent}`,
   'startup halted',
 ]);

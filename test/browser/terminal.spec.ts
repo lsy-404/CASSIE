@@ -137,7 +137,7 @@ const haltedBoot = async (page: import('@playwright/test').Page, failingStep: st
   await expect(page.getByText('could not load on this device')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect(await log.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
-  return texts;
+  return { texts, detail: (await failLine.locator('.terminal-entry__detail').textContent()) ?? '' };
 };
 
 for (const api of ['Worker', 'WebAssembly'] as const) {
@@ -146,8 +146,8 @@ for (const api of ['Worker', 'WebAssembly'] as const) {
       await page.setViewportSize(size);
       await page.addInitScript((name) => Object.defineProperty(globalThis, name, { configurable: true, value: undefined }), api);
       await page.goto('/');
-      const texts = await haltedBoot(page, 'probe browser capabilities');
-      expect(texts[1]).toContain(`missing ${api}`);
+      const { detail } = await haltedBoot(page, 'probe browser capabilities');
+      expect(detail).toContain(`missing ${api}`);
       await page.waitForTimeout(1500);
       await expect(page.locator('textarea')).toHaveCount(0);
       await page.screenshot({ path: info.outputPath(`halted-${api}-${size.width}.png`) });
@@ -158,16 +158,23 @@ for (const api of ['Worker', 'WebAssembly'] as const) {
 test('a real failed WASM fetch halts the boot log in place', async ({ page }) => {
   await page.route('**/assets/world-*.wasm', (route) => route.abort());
   await page.goto('/');
-  const texts = await haltedBoot(page, 'instantiate WORLD wasm module');
-  expect(texts.join('\n')).toContain('reason:');
+  const { detail } = await haltedBoot(page, 'instantiate WORLD wasm module');
+  expect(detail).not.toBe('');
 });
 
-test('a worker script that cannot be fetched reports the browser error detail, not a generic start failure', async ({ page }) => {
-  await page.route('**/assets/phoneme.worker-*.js', (route) => route.fulfill({ status: 404, body: 'missing' }));
-  await page.goto('/');
-  const texts = await haltedBoot(page, 'spawn phoneme worker');
-  expect(texts[1]).toMatch(/Worker script failed: /);
-});
+const workerFailures = [
+  { name: 'is missing', respond: { status: 404, contentType: 'text/plain', body: 'missing' }, expected: /phoneme\.worker-.*\.js answered HTTP 404 \(text\/plain/ },
+  { name: 'has a syntax error', respond: { status: 200, contentType: 'text/javascript', body: 'export {' }, expected: /was fetched \(HTTP 200, text\/javascript\) but failed to load as a module script/ },
+  { name: 'is served as HTML', respond: { status: 200, contentType: 'text/html', body: '<html></html>' }, expected: /was fetched \(HTTP 200, text\/html\) but failed to load as a module script/ },
+];
+for (const failure of workerFailures) {
+  test(`a phoneme worker that ${failure.name} reports the HTTP cause`, async ({ page }) => {
+    await page.route('**/assets/phoneme.worker-*.js', (route) => route.fulfill({ status: failure.respond.status, contentType: failure.respond.contentType, body: failure.respond.body }));
+    await page.goto('/');
+    const { detail } = await haltedBoot(page, 'spawn phoneme worker');
+    expect(detail).toMatch(failure.expected);
+  });
+}
 
 test('a phonemizer echo cannot pass the startup pronunciation check', async ({ page }) => {
   await page.addInitScript(() => {

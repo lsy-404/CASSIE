@@ -1,3 +1,7 @@
+import phonemeWorkerUrl from '../audio/phoneme.worker.ts?worker&url';
+import renderWorkerUrl from '../audio/render.worker.ts?worker&url';
+import spellingWorkerUrl from '../spelling.worker.ts?worker&url';
+
 export type StepStatus = 'pending' | 'ok' | 'fail';
 export interface StartupStep { id: string; label: string; detail: string; status: StepStatus }
 export type StepHandler = (step: StartupStep) => void;
@@ -9,8 +13,7 @@ interface FfmpegManifest {
   parts: { file: string; bytes: number; sha256: string }[];
 }
 
-// The phoneme worker compiles a 1.3 MB espeak build and low-end phones on slow links need well over 20 s for it.
-const CHECK_TIMEOUT_MS = 90_000;
+const CHECK_TIMEOUT_MS = 20_000;
 const LINE_PACING_MS = 40;
 
 type WorkerReply = { type?: string; proof?: Float32Array; error?: string; message?: string; step?: StartupStep };
@@ -24,12 +27,23 @@ async function sha256(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function describeWorkerError(event: ErrorEvent): string {
-  const where = event.filename ? ` at ${event.filename.split('/').pop()}:${event.lineno}:${event.colno}` : '';
-  return event.message ? `${event.message}${where}` : 'the browser gave no detail, the worker script was blocked or could not be fetched or parsed';
+// A module worker that fails to load fires a plain Event without message or location, so the script is refetched to expose the HTTP cause.
+async function describeWorkerError(event: Event, url: string, signal: AbortSignal): Promise<string> {
+  const { message, filename, lineno, colno } = event as Partial<ErrorEvent>;
+  if (message) return `${message}${filename ? ` at ${filename.split('/').pop()}:${lineno}:${colno}` : ''}`;
+  const name = new URL(url, location.href).pathname.split('/').pop();
+  try {
+    const response = await fetch(url, { signal });
+    const type = response.headers.get('content-type') ?? 'no content-type';
+    return response.ok
+      ? `${name} was fetched (HTTP ${response.status}, ${type}) but failed to load as a module script`
+      : `${name} answered HTTP ${response.status} (${type})`;
+  } catch (error) {
+    return `${name} could not be fetched (${error instanceof Error ? error.message : 'network error'})`;
+  }
 }
 
-function requestWorker(worker: Worker, message: unknown, valid: (reply: WorkerReply) => boolean, signal: AbortSignal, onStep?: StepHandler, transfer: Transferable[] = []): Promise<void> {
+function requestWorker(worker: Worker, url: string, message: unknown, valid: (reply: WorkerReply) => boolean, signal: AbortSignal, onStep?: StepHandler, transfer: Transferable[] = []): Promise<void> {
   return new Promise((resolve, reject) => {
     const started = performance.now();
     const timeout = globalThis.setTimeout(() => finish(new Error(`Worker gave no reply within ${CHECK_TIMEOUT_MS / 1000} s (${elapsed(started)} elapsed).`)), CHECK_TIMEOUT_MS);
@@ -59,9 +73,10 @@ function requestWorker(worker: Worker, message: unknown, valid: (reply: WorkerRe
         finish(new Error('A required audio capability returned an invalid result.'));
       }
     };
-    const onError = (event: ErrorEvent) => {
+    const onError = (event: Event) => {
       event.preventDefault();
-      finish(new Error(`Worker script failed: ${describeWorkerError(event)}.`));
+      worker.removeEventListener('error', onError);
+      void describeWorkerError(event, url, signal).then((detail) => finish(new Error(`Worker script failed: ${detail}.`)));
     };
     const onMessageError = () => finish(new Error('Worker reply could not be deserialized.'));
     worker.addEventListener('message', onMessage);
@@ -178,9 +193,9 @@ export async function checkStartupCapabilities(signal?: AbortSignal, onStep?: St
     });
 
     await step('phoneme-worker', 'spawn phoneme worker', async () => {
-      phonemeWorker = new Worker(new URL('../audio/phoneme.worker.ts', import.meta.url), { type: 'module' });
+      phonemeWorker = new Worker(phonemeWorkerUrl, { type: 'module' });
       let phones = '';
-      await requestWorker(phonemeWorker, { words: ['hello'] }, (reply) => {
+      await requestWorker(phonemeWorker, phonemeWorkerUrl, { words: ['hello'] }, (reply) => {
         const value = (reply as WorkerReply & { phones?: Record<string, unknown> }).phones?.hello;
         if (typeof value !== 'string' || !/^h(?:ə|ɛ|e)l(?:oʊ|əʊ|oː)$/u.test(value.replace(/[ˈˌ\s]/gu, ''))) return false;
         phones = value;
@@ -190,8 +205,8 @@ export async function checkStartupCapabilities(signal?: AbortSignal, onStep?: St
     });
 
     await step('spelling-worker', 'spawn spelling worker', async () => {
-      spellingWorker = new Worker(new URL('../spelling.worker.ts', import.meta.url), { type: 'module' });
-      await requestWorker(spellingWorker, { id: 0, words: ['hello', 'zqxvj'] }, (reply) => {
+      spellingWorker = new Worker(spellingWorkerUrl, { type: 'module' });
+      await requestWorker(spellingWorker, spellingWorkerUrl, { id: 0, words: ['hello', 'zqxvj'] }, (reply) => {
         const misspelled = (reply as WorkerReply & { misspelled?: string[] }).misspelled;
         return Array.isArray(misspelled) && misspelled.length === 1 && misspelled[0] === 'zqxvj';
       }, checks.signal);
@@ -208,8 +223,8 @@ export async function checkStartupCapabilities(signal?: AbortSignal, onStep?: St
     let latestWorkerStep: StartupStep | undefined;
     const spawnLine = { id: 'render-worker', label: 'spawn render worker' };
     try {
-      opusWorldWorker = new Worker(new URL('../audio/render.worker.ts', import.meta.url), { type: 'module' });
-      await requestWorker(opusWorldWorker, { type: 'check', samples }, (reply) => {
+      opusWorldWorker = new Worker(renderWorkerUrl, { type: 'module' });
+      await requestWorker(opusWorldWorker, renderWorkerUrl, { type: 'check', samples }, (reply) => {
         return reply.type === 'ready' && reply.proof instanceof Float32Array && reply.proof.length > 0 &&
           reply.proof.every(Number.isFinite) && reply.proof.some((sample) => Math.abs(sample) > 1e-8);
       }, checks.signal, (workerStep) => {
