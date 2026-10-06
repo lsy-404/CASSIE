@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { unlockTerminal } from './helpers';
+import { openSideView, unlockTerminal } from './helpers';
 
 function launchUrl(payload: unknown, format?: string) {
   const data = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
@@ -89,6 +89,7 @@ test('base64 URL preloads Unicode text, fine voice settings and locale after unl
   await unlockTerminal(page);
   await expect(page.locator('textarea')).toHaveValue('Attention <voice loudness="-2.5" tension="0.27">all personnel</voice> / ə /');
   await expect(page.getByRole('checkbox', { name: 'Live render' })).toBeVisible();
+  await openSideView(page, 'Sound settings');
   await expect(page.locator('.voice-processing')).toBeVisible();
   await expect(page.getByRole('slider', { name: /Loudness/ })).toHaveValue('-3.2');
   await expect(page.getByRole('slider', { name: /Tension/ })).toHaveValue('0.23');

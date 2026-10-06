@@ -40,7 +40,7 @@ test('ordinary English and best-effort phonemes produce audible audio throughout
   await expect(page.locator('.annotated-editor .token-synthesized').filter({ hasText: /^metrics$/ })).toHaveCount(2);
   await expect(page.locator('.annotated-editor .token-synthesized').filter({ hasText: /^beyond$/ })).toHaveCount(1);
   await expect(page.locator('.annotated-editor .token-synthesized').filter({ hasText: /^accuracy$/ })).toHaveCount(1);
-  await expect(page.locator('.annotated-editor .token-error').filter({ hasText: /^explore$/ })).toHaveCount(1);
+  await expect(page.locator('.annotated-editor .token-synthesized').filter({ hasText: /^explore$/ })).toHaveCount(1);
   await expect(page.locator('.annotated-editor span').filter({ hasText: /^behaviour$/ })).not.toHaveClass(/spell-missing/);
   await page.locator('textarea').evaluate((field: HTMLTextAreaElement) => {
     field.scrollTop = field.scrollHeight;

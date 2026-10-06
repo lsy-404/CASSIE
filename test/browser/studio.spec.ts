@@ -245,8 +245,8 @@ test('markup help and insertion preserve exact inline text and selections', asyn
   await expect(page.locator('.highlight-layer')).toHaveText('me<pitch value="1.2">tri</pitch>cs');
   await expect(page.locator('.annotated-editor .token-gap')).toHaveCount(0);
   await expect(page.locator('.annotated-editor .token-marker')).toHaveCount(2);
-  await expect(page.locator('.annotated-editor .token-error')).toHaveCount(3);
-  await expect(page.locator('.annotated-editor .token-error.spell-missing')).toHaveCount(0);
+  await expect(page.locator('.annotated-editor .token-synthesized')).toHaveCount(3);
+  await expect(page.locator('.annotated-editor .token-error')).toHaveCount(0);
 
   await field.fill('<pitch value="1.2">attention</pitch> <volume value="0.7">personnel</volume> <pause seconds="0.5"/>');
   await expect(page.locator('audio[data-complete="true"]')).toHaveAttribute('data-complete', 'true', { timeout: 90_000 });
@@ -271,7 +271,7 @@ test('direct phonemes and unknown English words synthesize locally by default', 
   await waitForReady(page, 90000);
   await openPanel(page, '分析');
   await expect(page.locator('.analysis-details')).toContainText('语音片段');
-  await expect(page.locator('.annotated-editor .token-error')).toHaveText('/ a e: /');
+  await expect(page.locator('.annotated-editor .token-synthesized')).toHaveText('/ a e: /');
   await openPanel(page, /^问题/);
   await expect(page.locator('.warning-item').filter({ hasText: /was stretched from/ })).toBeVisible();
   const phonemePath = info.outputPath('phonemes.wav');

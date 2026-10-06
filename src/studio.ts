@@ -1,6 +1,6 @@
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, shallowRef, watch, type InjectionKey } from "vue";
 import { locale, setLocale, t } from "./i18n";
-import { analyzeAnnouncement, encodeWav, loadBank, renderAnnouncement, type AnalysisToken as EngineAnalysisToken, type TimelineEntry } from "./audio/engine";
+import { analyzeAnnouncement, encodeWav, loadBank, renderAnnouncement, type AnalysisResult as EngineAnalysisResult, type AnalysisToken as EngineAnalysisToken, type TimelineEntry } from "./audio/engine";
 import { checkEnglishSpelling } from "./spelling";
 import { defaultAnnouncement } from "./defaultAnnouncement";
 import { boundedNumber, phonemeInsertion } from "./editor";
@@ -17,6 +17,7 @@ export const SIDE_VIEW_LABELS: Record<SideView, string> = { outline: "outline", 
 
 type Bank = Awaited<ReturnType<typeof loadBank>>;
 export type AnalysisToken = EngineAnalysisToken & { spellingMissing?: boolean };
+type AnalysisResult = Omit<EngineAnalysisResult, "tokens"> & { tokens: AnalysisToken[] };
 type RenderedAnnouncement = Omit<Awaited<ReturnType<typeof renderAnnouncement>>, "samples"> & { samples: Float32Array<ArrayBuffer>; timeline: TimelineEntry[] };
 
 const statusMessageKeys = new Set(["renderCancelled", "opusCancelled", "opusReady", "loadingOpus", "renderFailed", "opusFailed"]);
@@ -66,7 +67,7 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
   const previewUrl = ref("");
   const phoneKeys = ref<string[]>([]);
   const phoneIndexError = ref("");
-  const analysis = shallowRef<{ words: string[]; warnings: string[]; ipa: string[]; tokens: AnalysisToken[] }>({ words: [], warnings: [], ipa: [], tokens: [] });
+  const analysis = shallowRef<AnalysisResult>({ words: [], notices: [], ipa: [], tokens: [] });
   const audioTime = ref(0);
   const cursor = ref({ line: 1, column: 1 });
   const editorEl = shallowRef<HTMLTextAreaElement | null>(null);
@@ -79,7 +80,7 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
   let analysisController: AbortController | null = null;
   let liveRenderTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const allWarnings = computed(() => [...new Set([...analysis.value.warnings, ...(rendered.value?.warnings ?? [])])]);
+  const allWarnings = computed(() => [...new Set([...analysis.value.notices.filter((notice) => notice.severity !== "info").map((notice) => notice.text), ...(rendered.value?.warnings ?? [])])]);
   const playbackResult = computed(() => rendered.value ?? previewResult.value);
   const playbackUrl = computed(() => rendered.value ? downloadUrl.value || undefined : previewUrl.value || undefined);
   const playbackDuration = computed(() => playbackResult.value?.duration ?? 0);
@@ -146,14 +147,14 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
     if (analysisTimer) clearTimeout(analysisTimer);
     analysisController?.abort();
     analysisController = null;
-    if (!bank.value) { analysis.value = { words: [], warnings: [], ipa: [], tokens: [] }; return; }
+    if (!bank.value) { analysis.value = { words: [], notices: [], ipa: [], tokens: [] }; return; }
     analysisTimer = setTimeout(async () => {
       const currentBank = bank.value;
       if (!currentBank) return;
       const controller = new AbortController();
       analysisController = controller;
       try {
-        const result = await analyzeAnnouncement(text.value, currentBank, true, controller.signal, { gap: gap.value, pitch: pitch.value, rate: rate.value });
+        const result = await analyzeAnnouncement(text.value, currentBank, { phonemes: true, gap: gap.value, pitch: pitch.value, rate: rate.value }, controller.signal);
         let tokens: AnalysisToken[] = result.tokens;
         const spellingWords = [...new Set(tokens
           .filter((token) => (token.kind === "synthesized" || token.kind === "error") && token.spellingWord)
@@ -170,7 +171,7 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
         }
         if (!controller.signal.aborted && revision === analysisRevision) analysis.value = { ...result, tokens };
       } catch (error) {
-        if (!controller.signal.aborted && revision === analysisRevision) analysis.value = { words: [], warnings: [error instanceof Error ? error.message : "Could not analyze announcement."], ipa: [], tokens: [] };
+        if (!controller.signal.aborted && revision === analysisRevision) analysis.value = { words: [], notices: [{ severity: "error", text: error instanceof Error ? error.message : "Could not analyze announcement." }], ipa: [], tokens: [] };
       } finally {
         if (analysisController === controller) analysisController = null;
       }
