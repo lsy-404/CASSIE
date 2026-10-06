@@ -1,6 +1,6 @@
-# CASSIE
+# CASSIE PLUS
 
-A CASSIE announcement studio for [SCP: Secret Laboratory](https://scpslgame.com/), running entirely in your browser. Edit an announcement, adjust playback, listen with synchronized text highlighting, and download WAV or Opus audio.
+CASSIE PLUS is a CASSIE announcement studio for [SCP: Secret Laboratory](https://scpslgame.com/), running entirely in your browser. Edit an announcement, adjust playback, listen with synchronized text highlighting, and download WAV or Opus audio.
 
 **Site:** https://cassie.leisiyu.dev
 
@@ -134,3 +134,7 @@ Build the package with `pnpm package:overture`. The packager checks the supporte
 Program code is **AGPL-3.0-only**, see [LICENSE](LICENSE). The supplied SCP:SL voice recordings and their compressed adaptations retain **CC BY-SA 3.0**, with attribution and extraction provenance in `data/` and the served license page. Third-party packages retain their own licenses. No game executable or proprietary game source is included.
 
 Source code and complete build instructions are available in this repository. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for decoder and FFmpeg source locations and licenses.
+
+## Acknowledgements
+
+Thanks to [this video](https://www.bilibili.com/video/BV1vt8G6qEeg). CASSIE PLUS is developed entirely independently: it does not reference that video, involves no cooperation with it, and has no affiliation or subordination to the video, its author or related works.

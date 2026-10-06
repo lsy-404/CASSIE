@@ -99,7 +99,7 @@ export function setLocale(value: 'en' | 'zh') { locale.value = value; }
 
 watch(locale, (value) => {
   i18n.global.locale.value = value;
-  document.title = 'CASSIE · ' + t('appTitle');
+  document.title = 'CASSIE PLUS · ' + t('appTitle');
   document.documentElement.lang = value === 'zh' ? 'zh-CN' : 'en';
   try { localStorage.setItem('cassie-locale', value); } catch { /* storage may be unavailable */ }
 }, { immediate: true });

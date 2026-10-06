@@ -50,8 +50,8 @@ const sha256 = createHash('sha256').update(archive).digest('hex');
 const license = await readFile(path.join(root, 'LICENSE'), 'utf8');
 const recipe = {
   schema: 2,
-  id: 'cassie', name: 'CASSIE',
-  summary: { en: 'Browser CASSIE announcement studio with Fluent UI and WebAssembly audio.', 'zh-CN': '基于 Fluent UI 与 WebAssembly 音频处理的浏览器 CASSIE 广播工作室。' },
+  id: 'cassie', name: 'CASSIE PLUS',
+  summary: { en: 'CASSIE PLUS, a browser CASSIE announcement studio with Fluent UI and WebAssembly audio.', 'zh-CN': '基于 Fluent UI 与 WebAssembly 音频处理的浏览器 CASSIE 广播工作室 CASSIE PLUS。' },
   homepage: 'https://github.com/lsy-404/CASSIE',
   version: pkg.version, tag, buildTime: new Date().toISOString(),
   package: { artifact: 'overture.tar.gz', sha256, bytes: archive.length },
@@ -77,7 +77,7 @@ const recipe = {
     { id: 'domain', label: { en: 'Bind custom domain', 'zh-CN': '绑定自定义域名' }, optional: true },
   ],
   health: { path: '/bank.json' },
-  done: { links: [{ label: { en: 'Open CASSIE', 'zh-CN': '打开 CASSIE' }, href: '${url}' }] },
+  done: { links: [{ label: { en: 'Open CASSIE PLUS', 'zh-CN': '打开 CASSIE PLUS' }, href: '${url}' }] },
 };
 await writeFile(path.join(output, 'overture.json'), JSON.stringify(recipe, null, 2) + '\n');
 await writeFile(path.join(output, 'SHA256SUMS'), `${sha256}  overture.tar.gz\n`);

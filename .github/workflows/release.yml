@@ -22,4 +22,4 @@ jobs:
       - name: Publish deployment assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" work/release/overture.json work/release/overture.tar.gz work/release/SHA256SUMS --title "CASSIE $GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" work/release/overture.json work/release/overture.tar.gz work/release/SHA256SUMS --title "CASSIE PLUS $GITHUB_REF_NAME" --generate-notes
