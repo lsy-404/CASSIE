@@ -7,13 +7,13 @@ test('default recruitment announcement exposes complete editable markup examples
   await openStudio(page);
   const editor = page.locator('textarea');
   const value = await editor.inputValue();
-  expect(value).toContain('managed democracy');
-  expect(value).toContain('Would you like to');
+  expect(value).toContain('Secure. Contain. Protect.');
+  expect(value).toContain('Become Class D.');
   for (const sample of [
     '<start>', '<end>', '<pause seconds="0.5"/>',
     '<pitch value="1.2">', '</pitch>', '<volume value="0.7">', '</volume>',
-    '<stutter repeats="1">', '</stutter>', '<rate value="1.1">', '</rate>',
-    '<fit seconds="4">', '</fit>', '</voice>',
+    '<stutter repeats="2">', '</stutter>', '<rate value="1.1">', '</rate>',
+    '<fit seconds="2.5">', '</fit>', '</voice>',
   ]) expect(value).toContain(sample);
   const typography = await page.locator('.annotated-editor').evaluate((container) => {
     const field = getComputedStyle(container.querySelector('textarea')!);
