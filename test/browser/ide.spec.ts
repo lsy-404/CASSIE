@@ -38,7 +38,9 @@ test('shortcuts toggle the side bar and render, and the outline moves the cursor
   await page.keyboard.press('Control+b');
   await expect(sidebar).toBeVisible();
   await page.locator('textarea').fill('cassie\n<pause seconds="0.5"/>');
-  await page.locator('.outline button').filter({ hasText: '<pause' }).click();
+  const pauseEntry = page.locator('.outline button').filter({ hasText: '<pause' });
+  await expect(pauseEntry).toHaveCount(1);
+  await pauseEntry.click();
   await expect.poll(() => page.locator('textarea').evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(7);
   await expect(page.locator('.statusbar')).toContainText('2');
   await page.locator('[data-command="live"]').click();
