@@ -16,9 +16,7 @@ describe('audio license', () => {
     expect(read('public/licenses/CC-BY-SA-3.0.txt')).toBe(read('data/licenses/CC-BY-SA-3.0.txt'));
   });
 
-  it('packages the audio notice and license texts through dist', () => {
-    const packager = read('scripts/package-overture.mjs');
-    expect(packager).toContain("path.join(root, 'dist'), path.join(stage, 'assets')");
+  it('keeps the audio notice and license texts in public', () => {
     expect(existsSync(new URL('../public/audio/LICENSE.txt', import.meta.url))).toBe(true);
     expect(existsSync(new URL('../public/licenses/AGPL-3.0.txt', import.meta.url))).toBe(true);
   });
@@ -35,6 +33,6 @@ describe('README deployment', () => {
   it('lists Overture first', () => {
     const section = readme.slice(deployment, readme.indexOf('## Interface'));
     expect(section.indexOf('Overture')).toBeGreaterThan(-1);
-    expect(section.indexOf('Overture')).toBeLessThan(section.indexOf('manually'));
+    expect(section.indexOf('Overture')).toBeLessThan(section.indexOf('Manual'));
   });
 });

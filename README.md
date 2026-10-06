@@ -13,7 +13,7 @@ The terminal layout references the game's [official CASSIE monitor](https://en.s
 ## Deployment
 
 - **Use Overture** (default): [Overture](https://github.com/lsy-404/overture)
-- **Deploy manually**: build with pnpm and publish `dist/` to any static host or Cloudflare Static Assets. `wrangler.jsonc` names the maintainer's own worker and domain.
+- **Manual**: see [Cloudflare and Overture packaging](#cloudflare-and-overture-packaging)
 
 ## Interface
 
@@ -43,11 +43,11 @@ Install the browser once with `pnpm exec playwright install chromium` before bro
 
 ### Cloudflare and Overture packaging
 
-`pnpm deploy:check` and `pnpm run deploy` publish **Workers Static Assets** with `wrangler.jsonc`; change its account ID and domain first. There is no server script, database or server-side audio processing, so no R2 bucket is needed. Hashed application assets cache for one year, audio and FFmpeg resources for one day, and the bank manifest revalidates.
+`pnpm deploy:check` and `pnpm run deploy` publish **Workers Static Assets** with `wrangler.jsonc`; change its account ID and domain first. There is no server script, database or server-side audio processing, so no runtime API or R2 bucket is needed. Missing assets return 404. Hashed application assets cache for one year, audio and FFmpeg resources for one day, and the bank manifest revalidates.
 
-FFmpeg's single-thread core exceeds Cloudflare's per-asset limit, so `scripts/prepare-ffmpeg.mjs` gzips the pinned npm core and splits it into pieces of at most 8 MiB; the browser verifies SHA-256 hashes and decompresses locally with `DecompressionStream`.
+FFmpeg's single-thread core exceeds Cloudflare's per-asset limit, so `scripts/prepare-ffmpeg.mjs` gzips the pinned npm core and splits it into pieces of at most 8 MiB; the browser verifies SHA-256 hashes and decompresses locally with `DecompressionStream`. The generated pieces are ignored by Git but included in the deployment output, and FFmpeg stays compressed in the package.
 
-`pnpm package:overture` writes `overture.json`, `overture.tar.gz` and `SHA256SUMS` following the [Overture schema](https://github.com/lsy-404/overture/blob/main/docs/RECIPE.md). The archive holds `dist/` (including `audio/LICENSE.txt` and `licenses/`) and a small Worker that forwards to the assets binding. The packager enforces the 64 MiB asset, 24 MiB archive and 20,000-entry limits.
+`pnpm package:overture` writes `overture.json`, `overture.tar.gz` and `SHA256SUMS` following the [Overture schema](https://github.com/lsy-404/overture/blob/main/docs/RECIPE.md). The archive holds `dist/` (including `audio/LICENSE.txt` and `licenses/`) and a small Worker that forwards to the assets binding; it declares no storage resources or app secrets, and ordinary Wrangler deployment uses assets alone. The Release attaches `overture.json`, `overture.tar.gz` and `SHA256SUMS`, and the Overture entry takes `?src=lsy-404/CASSIE`. The packager enforces the 64 MiB asset, 24 MiB archive and 20,000-entry limits.
 
 ## Announcement syntax
 
@@ -147,7 +147,7 @@ Supported option keys are `pitch` (0.65–1.35), `volume` (0–1), `gap` (0–0.
 | Tab icon (SCP Foundation emblem, modified) | CC BY-SA 3.0, from [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:SCP_Foundation_(emblem).svg) |
 | Third-party packages | Their own licenses, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) |
 
-The AGPL does not relicense the audio or the icon. No game executable or proprietary game source is included. Source and build instructions are in this repository; extraction provenance is in `data/`.
+The licenses are also served on the site at `licenses.html`; the icon is regenerated with `node scripts/build-icons.mjs`; decoder and FFmpeg source locations are listed in THIRD_PARTY_NOTICES.md. The AGPL does not relicense the audio or the icon. No game executable or proprietary game source is included. Source and build instructions are in this repository; extraction provenance is in `data/`.
 
 ## Acknowledgements
 

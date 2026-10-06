@@ -2,7 +2,7 @@ CASSIE audio from SCP: Secret Laboratory (Ogg Opus adaptations)
 
 Work:         SCP: Secret Laboratory CASSIE speech and background audio
 Authors:      Northwood Studios and credited contributors, https://scpslgame.com/
-License:      Creative Commons Attribution-ShareAlike 3.0 (CC BY-SA 3.0)
+License:      Creative Commons Attribution-ShareAlike 3.0 Unported (CC BY-SA 3.0)
 License URL:  https://creativecommons.org/licenses/by-sa/3.0/
 Legal code:   https://creativecommons.org/licenses/by-sa/3.0/legalcode
               (full text: /licenses/CC-BY-SA-3.0.txt on the site)
@@ -21,8 +21,10 @@ data/source-manifest.json and public/bank.json in the source repository.
 Attribution must be retained when you copy, redistribute or adapt these files:
 credit Northwood Studios and credited contributors as above, link to the license,
 and indicate that you changed the material. Under the ShareAlike term, any
-further adaptation you distribute must be licensed under CC BY-SA 3.0 or a
-license that Creative Commons lists as compatible.
+further adaptation you distribute may be licensed under CC BY-SA 3.0, a later
+version with the same License Elements (e.g. CC BY-SA 4.0), a Creative Commons
+jurisdiction license with the same elements, or a Creative Commons Compatible
+License, as section 4(b) of the license provides.
 
 This license applies only to the audio files. The CASSIE PLUS program code is
 licensed separately under AGPL-3.0-only and does not relicense this audio.
