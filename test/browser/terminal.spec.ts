@@ -49,18 +49,63 @@ test('wordmark draws the plus inline after the final dot and the caption shows t
   expect(caption!.x + caption!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 });
 
-test('a pending step grows its dotted leader with elapsed time and fills it when the step finishes', async ({ page }) => {
-  await page.route('**/assets/world-*.wasm', async (route) => { await new Promise((resolve) => setTimeout(resolve, 3000)); await route.continue().catch(() => undefined); });
+const slowWorld = async (page: import('@playwright/test').Page) => page.route('**/assets/world-*.wasm', async (route) => { await new Promise((resolve) => setTimeout(resolve, 3000)); await route.continue().catch(() => undefined); });
+
+for (const size of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+  test(`a pending step is a yellow single-row line whose dots grow every 100 ms with the spinner after them at ${size.width}px`, async ({ page }, info) => {
+    await page.setViewportSize(size);
+    await slowWorld(page);
+    await page.goto('/');
+    const line = page.getByTestId('terminal-step').filter({ hasText: 'instantiate WORLD wasm module' }).locator('.terminal-entry__line');
+    await expect(line.locator('.terminal-entry__marker')).toHaveText('[PEND]');
+    await expect(line.locator('.terminal-entry__marker')).toHaveCSS('color', 'rgb(250, 204, 21)');
+    await expect(line.locator('.terminal-entry__spinner')).toHaveText(/^[\\|/-]$/);
+    const order = await line.evaluate((el) => [...el.children].map((child) => child.className.replace('terminal-entry__', '')));
+    expect(order).toEqual(['marker', 'label', 'dots', 'spinner']);
+    const lineHeight = await line.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight));
+    const samples: { t: number; dots: number }[] = [];
+    const start = Date.now();
+    while (Date.now() - start < 1500) {
+      const dots = (await line.locator('.terminal-entry__dots').textContent())!;
+      expect(dots).toMatch(/^( \.)*$/);
+      expect((await line.boundingBox())!.height).toBeLessThanOrEqual(lineHeight + 1);
+      const spinner = (await line.locator('.terminal-entry__spinner').boundingBox())!;
+      const log = (await page.getByTestId('terminal-log').boundingBox())!;
+      expect(spinner.x + spinner.width).toBeLessThanOrEqual(log.x + log.width);
+      samples.push({ t: Date.now() - start, dots: dots.length / 2 });
+      await page.waitForTimeout(40);
+    }
+    const last = samples.at(-1)!;
+    if (size.width > 400) {
+      expect(last.dots).toBeGreaterThanOrEqual(8);
+      expect(last.dots).toBeLessThanOrEqual(19);
+    }
+    for (let i = 1; i < samples.length; i += 1) expect(samples[i].dots).toBeGreaterThanOrEqual(samples[i - 1].dots);
+    await page.screenshot({ path: info.outputPath(`pending-${size.width}.png`) });
+    await expect(page.getByTestId('terminal-status')).toHaveText('SYSTEM READY', { timeout: 30_000 });
+    const lines = page.locator('.terminal-entry__line');
+    const count = await lines.count();
+    for (let i = 0; i < count; i += 1) {
+      await expect(lines.nth(i).locator('.terminal-entry__marker')).toHaveText('[ OK ]');
+      await expect(lines.nth(i).locator('.terminal-entry__marker')).toHaveCSS('color', 'rgb(74, 222, 128)');
+      await expect(lines.nth(i).locator('.terminal-entry__spinner')).toHaveCount(0);
+      expect((await lines.nth(i).boundingBox())!.height).toBeLessThanOrEqual(lineHeight + 1);
+    }
+  });
+}
+
+test('dots stop growing and stay as they were when a step finishes', async ({ page }) => {
+  await slowWorld(page);
   await page.goto('/');
-  const pending = page.locator('[data-testid="terminal-step"][data-status="pending"] .terminal-entry__leader');
-  const length = async () => (await pending.first().textContent())!.length;
-  await expect(pending.first()).toBeVisible();
-  const first = await length();
-  await expect.poll(length, { timeout: 5000 }).toBeGreaterThan(first + 5);
-  expect(await length()).toBeLessThan(160);
-  await expect(page.getByTestId('terminal-status')).toHaveText('SYSTEM READY', { timeout: 30_000 });
-  const leaders = await page.locator('.terminal-entry__leader').allTextContents();
-  expect(leaders.every((text) => text.length === 160)).toBe(true);
+  const step = page.locator('[data-testid="terminal-step"][data-status="pending"]').first();
+  await expect(step).toBeVisible();
+  const id = await step.locator('.terminal-entry__label').textContent();
+  const done = page.getByTestId('terminal-step').filter({ hasText: id! }).locator('[class*="marker"]', { hasText: '[ OK ]' });
+  const dots = page.getByTestId('terminal-step').filter({ hasText: id! }).locator('.terminal-entry__dots');
+  await expect(done).toBeVisible({ timeout: 30_000 });
+  const frozen = await dots.textContent();
+  await page.waitForTimeout(400);
+  expect(await dots.textContent()).toBe(frozen);
 });
 
 for (const api of ['Worker', 'WebAssembly'] as const) {
@@ -190,11 +235,13 @@ test('reduced motion keeps static scanlines and enters the studio without a beat
   await waitForStudio(page);
 });
 
-test('reduced motion shows the full leader of a pending step immediately', async ({ page }) => {
+test('reduced motion shows PEND with a static spinner and no growing dots', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.route('**/assets/world-*.wasm', async (route) => { await new Promise((resolve) => setTimeout(resolve, 2000)); await route.continue().catch(() => undefined); });
   await page.goto('/');
-  const pending = page.locator('[data-testid="terminal-step"][data-status="pending"] .terminal-entry__leader').first();
-  await expect(pending).toHaveText('.'.repeat(160));
-  await expect(page.locator('[data-status="pending"] .terminal-entry__marker').first()).toHaveText('[ -  ]');
+  const line = page.locator('[data-testid="terminal-step"][data-status="pending"] .terminal-entry__line').first();
+  await expect(line.locator('.terminal-entry__marker')).toHaveText('[PEND]');
+  await expect(line.locator('.terminal-entry__spinner')).toHaveText('-');
+  await page.waitForTimeout(600);
+  await expect(line.locator('.terminal-entry__dots')).toHaveText('');
 });

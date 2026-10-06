@@ -5,8 +5,10 @@ import { cellPath, glyphPath, GLYPH_HEIGHT, GLYPH_WIDTH, textCells, textPath } f
 
 const SPINNER = ['\\', '|', '/', '-'];
 const SPINNER_MS = 80;
-const DOT_MS = 70;
-const LEADER_DOTS = 160;
+const DOT_MS = 100;
+const TAG_COLS = 7;
+const SPINNER_COLS = 2;
+const PROBE_CHARS = 10;
 const TICK_MS = 35;
 const HANDOFF_MS = 700;
 const WORDMARK = 'CASSIE+';
@@ -37,17 +39,25 @@ const checking = ref(true);
 const entered = ref(false);
 const failed = ref(false);
 const now = ref(performance.now());
-const log = ref<HTMLElement>();
 const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 const failedStep = computed(() => steps.value.find((step) => step.status === 'fail'));
 const startedAt = new Map<string, number>();
-const marker = (step: StartupStep) => step.status === 'ok' ? '[ OK ]' : step.status === 'fail' ? '[FAIL]' : `[ ${reducedMotion ? '-' : SPINNER[Math.floor(now.value / SPINNER_MS) % SPINNER.length]}  ]`;
-const result = (step: StartupStep) => step.status === 'ok' ? 'OK' : step.status === 'fail' ? 'FAIL' : '';
-const leader = (step: StartupStep) => {
-  if (step.status !== 'pending' || reducedMotion) return '.'.repeat(LEADER_DOTS);
-  const dots = Math.floor((now.value - (startedAt.get(step.id) ?? now.value)) / DOT_MS);
-  return '.'.repeat(Math.min(LEADER_DOTS, Math.max(0, dots)));
+const log = ref<HTMLElement>();
+const probe = ref<HTMLElement>();
+const columns = ref(0);
+const tag = (step: StartupStep) => step.status === 'ok' ? '[ OK ]' : step.status === 'fail' ? '[FAIL]' : '[PEND]';
+const spinner = () => reducedMotion ? '-' : SPINNER[Math.floor(now.value / SPINNER_MS) % SPINNER.length];
+const dotCap = (step: StartupStep) => Math.max(0, Math.floor((columns.value - TAG_COLS - step.label.length - SPINNER_COLS) / 2));
+const grownDots = (step: StartupStep, at: number) => reducedMotion ? 0 : Math.max(0, Math.floor((at - (startedAt.get(step.id) ?? at)) / DOT_MS));
+const dots = (step: StartupStep) => ' .'.repeat(Math.min(dotCap(step), step.status === 'pending' ? grownDots(step, now.value) : frozenDots.get(step.id) ?? 0));
+const measure = () => {
+  const cell = (probe.value?.getBoundingClientRect().width ?? 0) / PROBE_CHARS;
+  const style = log.value && getComputedStyle(log.value);
+  if (!cell || !log.value || !style) return;
+  columns.value = Math.floor((log.value.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)) / cell);
 };
+const frozenDots = new Map<string, number>();
+let resizer: ResizeObserver | undefined;
 let controller: AbortController | undefined;
 let ticker: ReturnType<typeof setInterval> | undefined;
 
@@ -56,7 +66,10 @@ function record(step: StartupStep): void {
   if (index < 0) {
     startedAt.set(step.id, performance.now());
     steps.value.push(step);
-  } else steps.value[index] = step;
+  } else {
+    if (step.status !== 'pending' && steps.value[index].status === 'pending') frozenDots.set(step.id, Math.min(dotCap(step), grownDots(step, performance.now())));
+    steps.value[index] = step;
+  }
 }
 
 watch(steps, () => nextTick(() => {
@@ -64,6 +77,11 @@ watch(steps, () => nextTick(() => {
 }), { deep: true });
 
 onMounted(async () => {
+  measure();
+  if (log.value && typeof ResizeObserver !== 'undefined') {
+    resizer = new ResizeObserver(measure);
+    resizer.observe(log.value);
+  }
   if (!reducedMotion) ticker = setInterval(() => { now.value = performance.now(); }, TICK_MS);
   controller = new AbortController();
   const { signal } = controller;
@@ -86,6 +104,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   controller?.abort();
   clearInterval(ticker);
+  resizer?.disconnect();
 });
 </script>
 
@@ -109,14 +128,15 @@ onBeforeUnmount(() => {
       <div ref="log" class="terminal-entry__log" data-testid="terminal-log">
         <div v-for="step in steps" :key="step.id" class="terminal-entry__step" :data-status="step.status" data-testid="terminal-step">
           <div class="terminal-entry__line">
-            <span class="terminal-entry__marker">{{ marker(step) }}</span>
+            <span class="terminal-entry__marker">{{ tag(step) }}</span>
             <span class="terminal-entry__label">{{ step.label }}</span>
-            <span class="terminal-entry__leader" aria-hidden="true">{{ leader(step) }}</span>
-            <span class="terminal-entry__result">{{ result(step) }}</span>
+            <span class="terminal-entry__dots" aria-hidden="true">{{ dots(step) }}</span>
+            <span v-if="step.status === 'pending'" class="terminal-entry__spinner" aria-hidden="true">{{ spinner() }}</span>
           </div>
           <div v-if="step.detail" class="terminal-entry__detail">{{ step.detail }}</div>
         </div>
         <span class="terminal-entry__cursor" aria-hidden="true" />
+        <span ref="probe" class="terminal-entry__probe" aria-hidden="true">{{ '0'.repeat(PROBE_CHARS) }}</span>
       </div>
       <p class="terminal-entry__status" :class="{ 'terminal-entry__status--ready': !checking }" role="status" data-testid="terminal-status">
         {{ checking ? 'RUNNING STARTUP CHECKS' : 'SYSTEM READY' }}
@@ -144,6 +164,7 @@ onBeforeUnmount(() => {
 .terminal-entry {
   --ok: #4ade80;
   --fail: #f87171;
+  --pend: #facc15;
   position: fixed;
   inset: 0;
   z-index: 1000;
@@ -215,6 +236,7 @@ onBeforeUnmount(() => {
 }
 
 .terminal-entry__log {
+  position: relative;
   width: 100%;
   height: min(46vh, 380px);
   overflow-y: auto;
@@ -226,32 +248,36 @@ onBeforeUnmount(() => {
 
 .terminal-entry__line {
   display: flex;
-  gap: 0.6ch;
+  white-space: pre;
 }
 
 .terminal-entry__marker {
   flex: none;
-  white-space: pre;
+  margin-right: 1ch;
   color: #fff;
 }
 
 .terminal-entry__label {
   min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.terminal-entry__leader {
-  min-width: 2ch;
-  flex: 1 1 0;
   overflow: hidden;
-  color: #666;
-  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.terminal-entry__result {
+.terminal-entry__dots {
   flex: none;
-  min-width: 2ch;
-  text-align: right;
+  color: #666;
+}
+
+.terminal-entry__spinner {
+  flex: none;
+  margin-left: 1ch;
+  color: #fff;
+}
+
+.terminal-entry__probe {
+  position: absolute;
+  visibility: hidden;
+  white-space: pre;
 }
 
 .terminal-entry__detail {
@@ -261,14 +287,16 @@ onBeforeUnmount(() => {
   overflow-wrap: anywhere;
 }
 
+[data-status='pending'] .terminal-entry__marker {
+  color: var(--pend);
+}
+
 [data-status='ok'] .terminal-entry__marker,
-[data-status='ok'] .terminal-entry__result,
 .terminal-entry__status--ready {
   color: var(--ok);
 }
 
 [data-status='fail'] .terminal-entry__marker,
-[data-status='fail'] .terminal-entry__result,
 .terminal-entry__fail-line {
   color: var(--fail);
 }
