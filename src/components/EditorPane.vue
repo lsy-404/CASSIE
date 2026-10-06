@@ -31,7 +31,7 @@ const parts = computed(() => {
     const kind = token?.kind ?? (timing?.kind === "gap" ? "gap" : "neutral");
     const labelKey = token?.blocked ? "blockedWord" : kind === "recorded" ? "recorded" : kind === "synthesized" ? "synthesized" : kind === "marker" ? "recognizedCommand" : kind === "gap" ? "gapLabel" : kind === "error" ? "cannotSynthesize" : "ordinaryText";
     const fix = token?.fix;
-    const hints = [t(labelKey), token?.spellingMissing ? t("dictionaryMissing") : "", fix ? (fix.replacement ? t("fixSuggestion", { text: fix.replacement }) : t("fixRemove")) : ""];
+    const hints = [t(labelKey), token?.spellingMissing && !token.blocked ? t("dictionaryMissing") : "", fix ? (fix.replacement ? t("fixSuggestion", { text: fix.replacement }) : t("fixRemove")) : ""];
     return {
       key: `${start}-${end}`,
       text: text.slice(start, end),
@@ -146,8 +146,8 @@ textarea::selection { color: transparent; background: var(--ide-selection); }
 .token-synthesized { text-decoration-color: var(--fluent-warning); }
 .token-error { text-decoration-color: var(--fluent-danger); }
 .token-marker { text-decoration-color: var(--token-command); }
-.blocked { text-decoration-style: dashed; }
 .fixable { text-decoration-style: wavy; }
+.blocked { text-decoration-style: dashed; }
 .highlight-layer span.active { color: var(--fluent-accent-text); background: var(--fluent-accent); border-radius: 2px; text-decoration: none; }
 .token-legend { flex: none; display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 6px 14px; border-top: 1px solid var(--ide-border); background: var(--ide-sidebar); color: var(--fluent-muted); font-size: 11px; }
 .token-legend span { text-decoration-line: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }

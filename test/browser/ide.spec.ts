@@ -219,3 +219,24 @@ test('the analysis tab lists phoneme synthesis as info, filters by severity and 
   await expect(info).toBeVisible();
   await expect(page.locator('.panel-tabs').getByRole('tab', { name: /导出|问题/ })).toHaveCount(0);
 });
+
+test('the ribbon stays one row at desktop width and no slider label is clipped', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openStudio(page);
+  const height = await page.locator('.ribbon-groups').evaluate((element) => element.getBoundingClientRect().height);
+  expect(height).toBeLessThanOrEqual(92);
+  const clipped = await page.locator('.rb-slider > span').evaluateAll((spans) => spans.filter((span) => span.scrollWidth > span.clientWidth).length);
+  expect(clipped).toBe(0);
+});
+
+test('the panel button toggles the panel and its label follows the state', async ({ page }) => {
+  await openStudio(page);
+  const button = page.locator('.panel-header .close');
+  await expect(button).toHaveAttribute('aria-expanded', 'true');
+  await button.click();
+  await expect(page.locator('.bottom-panel.closed')).toHaveCount(1);
+  await expect(button).toHaveAttribute('aria-expanded', 'false');
+  await expect(button).toHaveAttribute('aria-label', '显示面板');
+  await button.click();
+  await expect(page.locator('.bottom-panel.closed')).toHaveCount(0);
+});

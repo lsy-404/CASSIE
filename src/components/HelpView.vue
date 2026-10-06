@@ -26,6 +26,7 @@ import { t } from "../i18n";
       <dt><kbd>Ctrl/⌘</kbd> + <kbd>B</kbd></dt><dd>{{ t('shortcutSideBar') }}</dd>
     </dl>
     <h3>{{ t('about') }}</h3>
+    <p>{{ t('localAudio') }}</p>
     <p class="links"><a href="https://github.com/lsy-404/CASSIE" target="_blank" rel="noreferrer">{{ t('sourceFooter') }}</a><a href="/licenses.html">{{ t('licenses') }}</a></p>
   </div>
 </template>

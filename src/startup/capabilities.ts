@@ -1,10 +1,3 @@
-export interface CapabilityReport {
-  audio: true;
-  opus: true;
-  world: true;
-  phonemizer: true;
-}
-
 export type StepStatus = 'pending' | 'ok' | 'fail';
 export interface StartupStep { id: string; label: string; detail: string; status: StepStatus }
 export type StepHandler = (step: StartupStep) => void;
@@ -19,7 +12,7 @@ interface FfmpegManifest {
 const CHECK_TIMEOUT_MS = 20_000;
 const LINE_PACING_MS = 40;
 
-type WorkerReply = { type?: string; proof?: Float32Array; error?: string; step?: StartupStep };
+type WorkerReply = { type?: string; proof?: Float32Array; error?: string; message?: string; step?: StartupStep };
 
 const sleep = (ms: number) => new Promise<void>((resolve) => globalThis.setTimeout(resolve, ms));
 const elapsed = (start: number) => `${Math.round(performance.now() - start)} ms`;
@@ -51,7 +44,7 @@ function requestWorker(worker: Worker, message: unknown, valid: (reply: WorkerRe
       if (reply?.type === 'step' && reply.step) {
         onStep?.(reply.step);
       } else if (reply?.type === 'error' || reply?.error) {
-        finish(new Error('A required audio capability failed.'));
+        finish(new Error(reply.error ?? reply.message ?? 'A required audio capability failed.'));
       } else if (valid(reply ?? {})) {
         finish();
       } else {
@@ -87,7 +80,7 @@ function browserVersion(): string {
   return brand ? `${brand.brand} ${brand.version}` : (/(?:Chrome|Firefox|Version)\/[\d.]+/.exec(navigator.userAgent)?.[0] ?? 'unknown browser');
 }
 
-export async function checkStartupCapabilities(signal?: AbortSignal, onStep?: StepHandler): Promise<CapabilityReport> {
+export async function checkStartupCapabilities(signal?: AbortSignal, onStep?: StepHandler): Promise<void> {
   const checks = new AbortController();
   const abort = () => checks.abort();
   signal?.addEventListener('abort', abort, { once: true });
@@ -199,6 +192,7 @@ export async function checkStartupCapabilities(signal?: AbortSignal, onStep?: St
     }
     const spawnStart = await begin('render-worker', 'spawn render worker');
     let spawned = false;
+    let latestWorkerStep: StartupStep | undefined;
     const spawnLine = { id: 'render-worker', label: 'spawn render worker' };
     try {
       opusWorldWorker = new Worker(new URL('../audio/render.worker.ts', import.meta.url), { type: 'module' });
@@ -210,15 +204,18 @@ export async function checkStartupCapabilities(signal?: AbortSignal, onStep?: St
           spawned = true;
           onStep?.({ ...spawnLine, detail: `module worker booted · ${elapsed(spawnStart)}`, status: 'ok' });
         }
+        latestWorkerStep = workerStep;
         onStep?.(workerStep);
       }, [samples.buffer]);
     } catch (error) {
-      if (!spawned) onStep?.({ ...spawnLine, detail: error instanceof Error ? error.message : 'failed', status: 'fail' });
+      if (latestWorkerStep?.status !== 'fail') {
+        const target = spawned && latestWorkerStep?.status === 'pending' ? latestWorkerStep : spawnLine;
+        onStep?.({ ...target, detail: error instanceof Error ? error.message : 'failed', status: 'fail' });
+      }
       throw error;
     }
 
     if (signal?.aborted) throw cancelled();
-    return { audio: true, opus: true, world: true, phonemizer: true };
   } catch (error) {
     checks.abort();
     throw error;

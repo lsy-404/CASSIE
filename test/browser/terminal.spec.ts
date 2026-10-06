@@ -40,7 +40,7 @@ for (const api of ['Worker', 'WebAssembly'] as const) {
     await page.goto('/');
     const error = page.getByTestId('terminal-error');
     await expect(error).toBeVisible();
-    await expect(error).toContainText('CASSIE could not load on this device');
+    await expect(error).toContainText('CASSIE PLUS could not load on this device');
     await expect(error).toContainText('[FAIL]');
     await expect(error).toContainText('Chromium');
     await expect(page.locator('textarea')).toHaveCount(0);
@@ -162,4 +162,17 @@ test('reduced motion keeps static scanlines and a fixed marker', async ({ page }
   await expect(page.getByTestId('terminal-unlock')).toBeEnabled({ timeout: 30_000 });
   await expect(page.getByTestId('terminal-scanlines')).toBeVisible();
   await expect.poll(() => page.getByTestId('terminal-scanlines').evaluate((el) => getComputedStyle(el, '::after').display)).toBe('none');
+});
+
+test('a blocked audio unlock shows the failing step and its reason', async ({ page }) => {
+  await page.addInitScript(() => {
+    AudioContext.prototype.resume = () => Promise.reject(new Error('resume blocked by policy'));
+  });
+  await page.goto('/');
+  const unlock = page.getByTestId('terminal-unlock');
+  await expect(unlock).toBeEnabled({ timeout: 30_000 });
+  await unlock.click();
+  const error = page.getByTestId('terminal-error');
+  await expect(error).toContainText('[FAIL] unlock audio output');
+  await expect(error).toContainText('resume blocked by policy');
 });

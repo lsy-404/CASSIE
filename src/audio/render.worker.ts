@@ -40,8 +40,8 @@ scope.onmessage = async ({ data }) => {
     try {
       const proof = await checkAudioCapability(data.samples);
       scope.postMessage({ type: 'ready', proof }, [proof.buffer]);
-    } catch {
-      scope.postMessage({ type: 'error', message: 'Required audio processing is unavailable.' });
+    } catch (error) {
+      scope.postMessage({ type: 'error', message: error instanceof Error ? error.message : 'Required audio processing is unavailable.' });
     }
     return;
   }

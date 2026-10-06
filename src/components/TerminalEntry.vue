@@ -2,12 +2,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { checkStartupCapabilities, type StartupStep } from '../startup/capabilities';
 
-const emit = defineEmits<{
-  ready: [];
-  unlocked: [];
-  error: [error: Error];
-}>();
-
 const SPINNER = ['\\', '|', '/', '-'];
 const FONT: Record<string, string[]> = {
   C: ['.XXX.', 'X...X', 'X....', 'X....', 'X....', 'X...X', '.XXX.'],
@@ -55,7 +49,7 @@ const frame = ref(0);
 const log = ref<HTMLElement>();
 const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 const failedStep = computed(() => steps.value.find((step) => step.status === 'fail'));
-const marker = (step: StartupStep) => step.status === 'ok' ? '[ OK ]' : step.status === 'fail' ? '[FAIL]' : `[ ${reducedMotion ? '-' : SPINNER[frame.value]} ]`;
+const marker = (step: StartupStep) => step.status === 'ok' ? '[ OK ]' : step.status === 'fail' ? '[FAIL]' : `[ ${reducedMotion ? '-' : SPINNER[frame.value]}  ]`;
 const result = (step: StartupStep) => step.status === 'ok' ? 'OK' : step.status === 'fail' ? 'FAIL' : '';
 let controller: AbortController | undefined;
 let spinner: ReturnType<typeof setInterval> | undefined;
@@ -70,6 +64,10 @@ async function unlock(): Promise<void> {
   if (checking.value || unlocking.value || failed.value || unlocked.value) return;
   unlocking.value = true;
   let context: AudioContext | undefined;
+  const unlockStep = { id: 'unlock', label: 'unlock audio output' };
+  const started = performance.now();
+  const timing = () => `${Math.round(performance.now() - started)} ms`;
+  record({ ...unlockStep, detail: '', status: 'pending' });
   try {
     context = new AudioContext();
     const resumed = context.resume();
@@ -85,11 +83,11 @@ async function unlock(): Promise<void> {
       if (timeout !== undefined) globalThis.clearTimeout(timeout);
     }
     if (context.state !== 'running') throw new Error('Audio could not be unlocked.');
+    record({ ...unlockStep, detail: `${context.state} · ${timing()}`, status: 'ok' });
     unlocked.value = true;
-    emit('unlocked');
   } catch (error) {
     failed.value = true;
-    emit('error', error instanceof Error ? error : new Error('Audio unlock failed.'));
+    record({ ...unlockStep, detail: `${error instanceof Error ? error.message : 'Audio unlock failed.'} · ${context?.state ?? 'no context'} · ${timing()}`, status: 'fail' });
   } finally {
     await context?.close().catch(() => undefined);
     unlocking.value = false;
@@ -106,12 +104,10 @@ onMounted(async () => {
   try {
     await checkStartupCapabilities(controller.signal, record);
     checking.value = false;
-    emit('ready');
-  } catch (error) {
+  } catch {
     if (controller.signal.aborted) return;
     checking.value = false;
     failed.value = true;
-    emit('error', error instanceof Error ? error : new Error('Capability check failed.'));
   }
 });
 
@@ -129,13 +125,14 @@ onBeforeUnmount(() => {
         [FAIL] {{ failedStep.label }}<br>
         <span class="terminal-entry__detail">{{ failedStep.detail }}</span>
       </p>
-      CASSIE could not load on this device. CASSIE requires a standard Chromium browser with full support for the required capabilities.
+      CASSIE PLUS could not load on this device. CASSIE PLUS requires a standard Chromium browser with full support for the required capabilities.
     </section>
-    <section v-else class="terminal-entry__card" aria-label="CASSIE Terminal">
-      <h1 class="terminal-entry__wordmark" aria-label="C.A.S.S.I.E.">
+    <section v-else class="terminal-entry__card" aria-label="CASSIE PLUS Terminal">
+      <h1 class="terminal-entry__wordmark" aria-label="C.A.S.S.I.E. PLUS">
         <svg :viewBox="`0 0 ${GRID_WIDE} ${GRID_HIGH}`" shape-rendering="crispEdges" aria-hidden="true" focusable="false">
           <path :d="wordmarkPath" fill="currentColor" />
         </svg>
+        <span class="terminal-entry__plus" aria-hidden="true">PLUS</span>
       </h1>
       <p class="terminal-entry__subtitle">CENTRAL AUTONOMIC SERVICE SYSTEM FOR INTERNAL EMERGENCIES</p>
       <div ref="log" class="terminal-entry__log" data-testid="terminal-log">
@@ -223,6 +220,16 @@ onBeforeUnmount(() => {
   color: #fff;
 }
 
+.terminal-entry__plus {
+  display: block;
+  margin-top: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.6em;
+  text-align: center;
+  text-indent: 0.6em;
+}
+
 .terminal-entry__wordmark svg {
   display: block;
   width: 100%;
@@ -242,7 +249,7 @@ onBeforeUnmount(() => {
 
 .terminal-entry__log {
   width: 100%;
-  max-height: min(46vh, 380px);
+  height: min(46vh, 380px);
   overflow-y: auto;
   border: 1px solid #333;
   padding: 10px 12px;

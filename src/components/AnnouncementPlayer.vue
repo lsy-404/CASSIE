@@ -206,5 +206,5 @@ onBeforeUnmount(stopPlayback);
 .timeline-cue { background: var(--fluent-accent); }
 .timeline-playhead { position: absolute; z-index: 2; top: 2px; bottom: 2px; width: 2px; background: var(--fluent-accent); }
 .timeline-progress { position: absolute; z-index: 0; top: 7px; left: 0; height: 6px; background: var(--fluent-accent); opacity: .3; }
-.timeline-track :deep(.fluent-slider) { position: relative; z-index: 0; }
+.timeline-track :deep(.fluent-slider) { position: relative; z-index: 2; }
 </style>

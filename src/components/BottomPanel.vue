@@ -50,7 +50,7 @@ function onKeydown(event: KeyboardEvent) {
         @click="studio.showPanel(tab)"
       >{{ t(LABELS[tab]) }}<template v-if="tab === 'analysis'"><span v-for="severity in SEVERITIES" v-show="counts[severity]" :key="severity" :class="['badge', `sev-${severity}`]" :data-severity="severity">{{ counts[severity] }}</span></template></button>
     </div>
-    <button class="close" type="button" :aria-label="t('panelClose')" :title="t('panelClose')" @click="studio.panelOpen = false"><AppIcon name="panel" /></button>
+    <button class="close" type="button" :aria-label="t(studio.panelOpen ? 'panelClose' : 'panelOpen')" :title="t(studio.panelOpen ? 'panelClose' : 'panelOpen')" :aria-expanded="studio.panelOpen" @click="studio.panelOpen = !studio.panelOpen"><AppIcon name="panel" /></button>
     </div>
     <div v-show="studio.panelOpen" class="panel-content">
       <div v-show="studio.panelTab === 'player'" id="panel-player" class="pane" role="tabpanel" aria-labelledby="panel-tab-player">

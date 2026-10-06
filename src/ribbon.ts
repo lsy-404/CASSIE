@@ -57,8 +57,8 @@ function marker(name: MarkerName, label: string, icon: IconName, size: "large" |
 function scope(name: ScopeName, label: string, icon: IconName, size: "large" | "small" = "small"): ButtonCommand {
   return { id: `scope.${name}`, label, icon, action: `scope.${name}`, size, enabled: canEdit };
 }
-function slider(model: SliderModel, label: string, icon: IconName, min: number, max: number, step: number): SliderCommand {
-  return { id: `slider.${model}`, kind: "slider", label, icon, model, min, max, step };
+function slider(model: SliderModel, label: string, icon: IconName, min: number, max: number, step: number, tip?: string): SliderCommand {
+  return { id: `slider.${model}`, kind: "slider", label, icon, model, min, max, step, ...(tip ? { tip } : {}) };
 }
 
 export const RIBBON_GROUPS: RibbonGroup[] = [
@@ -104,8 +104,8 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
   ] },
   { id: "processing", label: "group.processing", tip: "voiceHelp", commands: [
     slider("voicePitch", "voicePitch", "pitch", -12, 12, 0.1),
-    slider("loudness", "loudness", "volume", -24, 12, 0.1),
-    slider("tension", "tension", "tension", -1, 1, 0.01),
+    slider("loudness", "loudness", "volume", -24, 12, 0.1, "tip.loudness"),
+    slider("tension", "tension", "tension", -1, 1, 0.01, "tip.tension"),
     slider("breathiness", "breathiness", "breath", 0, 1, 0.01),
     slider("formant", "formant", "formant", -6, 6, 0.1),
   ] },

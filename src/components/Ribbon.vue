@@ -62,7 +62,7 @@ function commitNumber(command: NumberCommand) {
   <section class="ribbon" :aria-label="t('ribbonAria')">
     <button v-if="studio.ribbonCollapsed" id="ribbon-show" class="ribbon-show" type="button" :aria-label="t('ribbonExpand')" :title="t('ribbonExpand')" @click="studio.toggleRibbon"><AppIcon name="chevronDown" :size="14" /><span>{{ t('ribbonToggle') }}</span></button>
     <div v-else class="ribbon-row">
-      <button v-show="overflow.left" class="rb-scroll" type="button" tabindex="-1" :aria-label="t('ribbonScrollLeft')" @click="scrollBody(-1)"><AppIcon name="chevronLeft" /></button>
+      <button :class="['rb-scroll', { idle: !overflow.left }]" type="button" tabindex="-1" :aria-label="t('ribbonScrollLeft')" @click="scrollBody(-1)"><AppIcon name="chevronLeft" /></button>
       <div id="ribbon-body" ref="body" class="ribbon-body" @scroll.passive="measure">
         <div ref="groupsEl" class="ribbon-groups">
           <div v-for="group in RIBBON_GROUPS" :key="group.id" class="rb-group" role="group" :aria-label="t(group.label)" :title="group.tip ? t(group.tip) : undefined">
@@ -97,7 +97,7 @@ function commitNumber(command: NumberCommand) {
                     </label>
                     <div v-else-if="command.kind === 'slider'" class="rb-slider" :data-command="command.id">
                       <AppIcon :name="command.icon" />
-                      <span :title="t(command.label)">{{ t(command.label) }}</span>
+                      <span :title="tip(command)">{{ t(command.label) }}</span>
                       <FineControl v-model="studio[command.model]" class="compact" :min="command.min" :max="command.max" :step="command.step" :label="t(command.label)" />
                     </div>
                     <button
@@ -118,7 +118,7 @@ function commitNumber(command: NumberCommand) {
           </div>
         </div>
       </div>
-      <button v-show="overflow.right" class="rb-scroll" type="button" tabindex="-1" :aria-label="t('ribbonScrollRight')" @click="scrollBody(1)"><AppIcon name="chevronRight" /></button>
+      <button :class="['rb-scroll', { idle: !overflow.right }]" type="button" tabindex="-1" :aria-label="t('ribbonScrollRight')" @click="scrollBody(1)"><AppIcon name="chevronRight" /></button>
       <button class="rb-scroll rb-collapse" type="button" :aria-label="t('ribbonCollapse')" :title="t('ribbonCollapse')" @click="studio.toggleRibbon"><AppIcon name="chevronUp" /></button>
     </div>
   </section>
@@ -130,7 +130,7 @@ function commitNumber(command: NumberCommand) {
 .ribbon-show:hover { color: #fff; background: var(--ide-hover); }
 .ribbon-row { display: flex; align-items: stretch; background: var(--ide-ribbon); }
 .ribbon-body { flex: 1; min-width: 0; padding: 2px 6px 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
-.ribbon-groups { display: flex; flex-wrap: wrap; align-items: stretch; }
+.ribbon-groups { display: flex; flex-wrap: nowrap; align-items: stretch; width: max-content; }
 .rb-scroll { flex: none; width: 24px; display: grid; place-items: center; align-self: stretch; border: 0; background: transparent; color: #b0b0b0; cursor: pointer; }
 .rb-scroll:hover { color: #fff; background: var(--ide-hover); }
 .rb-collapse { align-self: flex-end; height: 24px; }
@@ -147,9 +147,6 @@ function commitNumber(command: NumberCommand) {
 .rb-small { height: 22px; padding: 0 8px; font-size: 12px; }
 .rb-number, .rb-slider { display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; font-size: 12px; color: #d4d4d4; white-space: nowrap; }
 .rb-number input { width: 64px; height: 20px; min-height: 0; padding: 0 4px; border: 1px solid var(--ide-border-strong); border-radius: 2px; background: #1e1e1e; color: #fff; font: 12px var(--ide-mono); }
-.rb-slider > span { width: 9.5em; overflow: hidden; text-overflow: ellipsis; }
 .rb-btn:focus-visible, .rb-scroll:focus-visible, .ribbon-show:focus-visible, .rb-number input:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
-@media (max-width: 819px) {
-  .ribbon-groups { flex-wrap: nowrap; width: max-content; }
-}
+.rb-scroll.idle { visibility: hidden; }
 </style>

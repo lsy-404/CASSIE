@@ -113,6 +113,27 @@ describe('automatic fix suggestions', () => {
     expect(analyzeText('<pitch value="1"><volume value="1">word</pitch>', bank).tokens.at(-1)?.fix).toBeUndefined();
   });
 
+  const applyFixes = (text: string) => analyzeText(text, bank).tokens
+    .filter((token) => token.fix)
+    .sort((left, right) => right.sourceStart - left.sourceStart)
+    .reduce((current, token) => current.slice(0, token.sourceStart) + token.fix!.replacement + current.slice(token.sourceEnd), text);
+
+  it.each([
+    '<pitch value="20">word</pitch>',
+    '<pitch value="1.2"><volume value="20">word</volume></pitch>',
+  ])('pairs the closing tag of an out-of-range opener in %s', (text) => {
+    const result = analyzeText(text, bank);
+    expect(result.tokens.filter((token) => token.text.startsWith('</')).map((token) => token.fix)).toEqual(result.tokens.filter((token) => token.text.startsWith('</')).map(() => undefined));
+    expect(result.notices.some((notice) => notice.text.startsWith('Mismatched closing tag'))).toBe(false);
+    expect(analyzeText(applyFixes(text), bank).notices.filter((notice) => notice.severity === 'error')).toEqual([]);
+  });
+
+  it('keeps pairing closing tags past the nesting limit without offering fixes', () => {
+    const result = analyzeText(`${'<pitch value="1">'.repeat(33)}word${'</pitch>'.repeat(33)}`, bank);
+    expect(result.notices.map((notice) => notice.text)).toEqual(['Markup nesting exceeds the 32-level limit.']);
+    expect(result.tokens.filter((token) => token.fix)).toEqual([]);
+  });
+
   it('suggests a clip id only for a single close match', () => {
     expect(fixOf('<clip id="cassy"/>')).toEqual({ replacement: '<clip id="cassie"/>' });
     expect(fixOf('<clip id="applx"/>')).toBeUndefined();
@@ -123,6 +144,40 @@ describe('automatic fix suggestions', () => {
   it('gives every notice about a bad tag the tag source range', () => {
     const result = analyzeText('word <pitch value="20">', bank);
     expect(result.notices[0]).toMatchObject({ severity: 'error', sourceStart: 5, sourceEnd: 23 });
+  });
+});
+
+describe('multi-part and inline-fragment words', () => {
+  const numberBank: Bank = { ...bank, clips: [...bank.clips, { id: 'two', file: '/audio/two.opus', duration: 0.5, kind: 'word' as const, sha256: 'a'.repeat(64) }] };
+  const spoken = new Map([['forty', 'j'], ['four', 'ʒ']]);
+  const number = (text: string, strict = false) => createWordPlan(text, numberBank, undefined, catalog, spoken, true, strict);
+
+  it('classifies a number token from all of its parts', () => {
+    const mixed = number('42');
+    expect(mixed.plan.map((item) => item.display)).toEqual(['forty', 'two']);
+    expect(mixed.tokens[0]).toMatchObject({ kind: 'synthesized' });
+    expect(mixed.tokens[0].blocked).toBeUndefined();
+  });
+
+  it('skips the whole number in strict mode instead of playing a partial number', () => {
+    const strict = number('42', true);
+    expect(strict.plan).toHaveLength(0);
+    expect(strict.tokens[0]).toMatchObject({ kind: 'synthesized', blocked: true });
+  });
+
+  it('marks a number with an unsynthesizable part as an error and plays nothing of it', () => {
+    for (const strict of [false, true]) {
+      const result = number('44', strict);
+      expect(result.plan).toHaveLength(0);
+      expect(result.tokens[0]).toMatchObject({ kind: 'error' });
+      expect(result.tokens[0].blocked).toBeUndefined();
+    }
+  });
+
+  it('reports a synthesized info notice for inline fragments only when all of them render', () => {
+    const failing = createWordPlan('new<pitch value="1.2">word</pitch>', bank, undefined, catalog, pronunciations, true);
+    expect(failing.tokens[0].kind).toBe('error');
+    expect(infos(failing.notices)).toEqual([]);
   });
 });
 

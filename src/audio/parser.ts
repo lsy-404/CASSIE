@@ -229,6 +229,7 @@ function tokenizeInput(text: string): ScanResult {
     }
   }
   const stack: number[] = [];
+  const unusableOpeners = new Set<number>();
   for (let index = 0; index < tokens.length; index += 1) {
     const tag = tags.get(index);
     if (!tag) continue;
@@ -254,6 +255,10 @@ function tokenizeInput(text: string): ScanResult {
       noticeAt('error', `Invalid markup tag: ${tokens[index]}`, index);
       const replacement = validShape ? numericFix(tag, tokens[index]) : undefined;
       if (replacement) fixes.set(index, { replacement });
+      if (validShape && !tag.closing && SCOPED_TAGS.has(tag.name)) {
+        unusableOpeners.add(index);
+        stack.push(index);
+      }
       continue;
     }
     if (tag.closing) {
@@ -271,12 +276,12 @@ function tokenizeInput(text: string): ScanResult {
       stack.pop();
       open.pairedIndex = index;
       tag.pairedIndex = openIndex;
-      tag.valid = true;
-      open.valid = true;
+      tag.valid = !unusableOpeners.has(openIndex!);
+      open.valid = tag.valid;
     } else if (SCOPED_TAGS.has(tag.name)) {
       if (stack.length >= 32) {
         noticeAt('error', 'Markup nesting exceeds the 32-level limit.', index);
-        continue;
+        unusableOpeners.add(index);
       }
       stack.push(index);
     } else {
@@ -657,7 +662,6 @@ function compileWordPlan(
         continue;
       }
       notifyAll('warning', completeResolution.warnings, inlineIndexes[0], lastFragment, `“${fullWord}”: `);
-      reportSynthesized(fullWord, completeResolution.units, complete.phones.length, inlineIndexes[0], lastFragment);
       const boundaries = [0];
       for (let fragment = 0; fragment < inlineIndexes.length - 1; fragment += 1) {
         const prefix = inlineIndexes.slice(0, fragment + 1).map((part) => tokens[part]).join('').toLocaleLowerCase('en-US');
@@ -678,12 +682,14 @@ function compileWordPlan(
       }
       boundaries.push(complete.phones.length);
       notify('warning', `Scoped pronunciation boundaries in “${fullWord}” use nearest IPA-phone alignment.`, inlineIndexes[0], lastFragment);
+      let allFragmentsRendered = true;
       for (let fragment = 0; fragment < inlineIndexes.length; fragment += 1) {
         const sourceToken = inlineIndexes[fragment];
         const units = completeResolution.units.slice(boundaries[fragment], boundaries[fragment + 1]);
         if (!units.length) {
           notify('error', `The scoped text fragment “${tokens[sourceToken]}” maps to no IPA phones.`, sourceToken);
           classifications.set(sourceToken, 'error');
+          allFragmentsRendered = false;
           continue;
         }
         const fragmentScope = scanned.scopeAtToken[sourceToken];
@@ -699,6 +705,7 @@ function compileWordPlan(
           ...(fragment > 0 ? { joinPrevious: true } : {}),
         }, sourceToken, sourceToken, 'word', 'synthesized');
       }
+      if (allFragmentsRendered) reportSynthesized(fullWord, completeResolution.units, complete.phones.length, inlineIndexes[0], lastFragment);
       tokenIndex = inlineIndexes.at(-1)!;
       continue;
     }
@@ -738,6 +745,8 @@ function compileWordPlan(
     }
     const expanded = /^-?\d/.test(token) ? numberWords(token) : [raw === 'I' ? 'I' : token.replace(/[’]/g, "'")];
     const nextToken = tokens.slice(tokenIndex + 1).find((candidate) => !candidate.startsWith('$') && !candidate.startsWith('/') && !candidate.startsWith('<'));
+    const planStart = plan.length;
+    const outcomes: Array<'recorded' | 'synthesized' | 'blocked' | 'error'> = [];
     for (const spoken of expanded) {
       if (plan.length >= MAX_TOKENS) throw new Error(`Announcement exceeds the ${MAX_TOKENS}-token limit.`);
       const inlineFragment = scanned.inlineFragment[tokenIndex];
@@ -752,10 +761,12 @@ function compileWordPlan(
             : resolvePhoneUnits(parsed.phones, phonemeCatalog, bank);
           if (!resolved.units.length) {
             notifyAll('error', resolved.warnings, tokenIndex, tokenIndex, `“${spoken}”: `);
+            outcomes.push('error');
             continue;
           }
           if (strict) {
             block(spoken, tokenIndex);
+            outcomes.push('blocked');
             continue;
           }
           notifyAll('warning', resolved.warnings, tokenIndex, tokenIndex, `“${spoken}”: `);
@@ -772,11 +783,13 @@ function compileWordPlan(
             ...(spacing !== undefined ? { spacing } : {}),
             ...(inlineFragment && plan.length ? { joinPrevious: true } : {}),
           }, tokenIndex, tokenIndex, 'word', 'synthesized');
+          outcomes.push('synthesized');
           continue;
         }
         unresolvedWords.add(raw === 'I' ? 'I' : spoken.toLocaleLowerCase('en-US'));
         notify('error', `No audio clip for “${spoken}”.`, tokenIndex);
         classifications.set(tokenIndex, 'error');
+        outcomes.push('error');
         continue;
       }
       const item: WordPlan = {
@@ -789,6 +802,13 @@ function compileWordPlan(
         ...(spacing !== undefined ? { spacing } : {}),
       };
       pushPlan(item, tokenIndex, tokenIndex, 'word', 'recorded');
+      outcomes.push('recorded');
+    }
+    if (outcomes.length > 1) {
+      const failed = outcomes.includes('error');
+      if (failed || outcomes.includes('blocked')) plan.length = planStart;
+      if (failed) blocked.delete(tokenIndex);
+      classifications.set(tokenIndex, failed ? 'error' : outcomes.includes('blocked') || outcomes.includes('synthesized') ? 'synthesized' : 'recorded');
     }
   }
   for (const [tokenIndex, id] of scanned.stutterEnds) {
