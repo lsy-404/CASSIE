@@ -23,6 +23,7 @@ const FONT: Record<string, string[]> = {
   '8': ['.XXX.', 'X...X', 'X...X', '.XXX.', 'X...X', 'X...X', '.XXX.'],
   '9': ['.XXX.', 'X...X', 'X...X', '.XXXX', '....X', '....X', '.XXX.'],
   '.': ['.....', '.....', '.....', '.....', '.....', '.....', '..X..'],
+  '-': ['.....', '.....', '.....', 'XXXXX', '.....', '.....', '.....'],
   '+': ['.....', '..X..', '..X..', 'XXXXX', '..X..', '..X..', '.....'],
   ' ': ['.....', '.....', '.....', '.....', '.....', '.....', '.....'],
 };
@@ -34,7 +35,7 @@ const ADVANCE = GLYPH_WIDTH + 1;
 export const cellPath = (x: number, y: number) => `M${x} ${y}h1v1h-1z`;
 
 export function glyphPath(char: string, left: number, top: number): string {
-  return FONT[char].map((row, y) => [...row].map((pixel, x) => (pixel === 'X' ? cellPath(left + x, top + y) : '')).join('')).join('');
+  return (FONT[char] ?? FONT[' ']).map((row, y) => [...row].map((pixel, x) => (pixel === 'X' ? cellPath(left + x, top + y) : '')).join('')).join('');
 }
 
 export function textPath(text: string): string {

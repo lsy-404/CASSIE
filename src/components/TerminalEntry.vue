@@ -16,8 +16,7 @@ const RING = FRAME_GAP + 1;
 const CELLS_WIDE = (WORDMARK.length - 1) * GLYPH_STRIDE + GLYPH_WIDTH;
 const GRID_WIDE = CELLS_WIDE + RING * 2;
 const GRID_HIGH = GLYPH_HEIGHT + RING * 2;
-const CAPTION_SCALE = 2;
-const CAPTION = [`CASSIE+  V${__APP_VERSION__}`, 'INDEPENDENT PROJECT'];
+const CAPTION = [`CASSIE+  V${__APP_VERSION__}`.toUpperCase(), 'INDEPENDENT PROJECT'];
 
 const wordmarkPath = (() => {
   const cells: string[] = [];
@@ -123,13 +122,13 @@ onBeforeUnmount(() => {
         {{ checking ? 'RUNNING STARTUP CHECKS' : 'SYSTEM READY' }}
       </p>
     </section>
-    <footer class="terminal-entry__caption" data-testid="terminal-caption" :aria-label="CAPTION.join('  ')">
+    <footer class="terminal-entry__caption" role="img" data-testid="terminal-caption" :aria-label="CAPTION.join('  ')">
       <svg
         v-for="line in captionLines"
         :key="line.text"
         :viewBox="`0 0 ${line.cells} ${GLYPH_HEIGHT}`"
-        :width="line.cells * CAPTION_SCALE"
-        :height="GLYPH_HEIGHT * CAPTION_SCALE"
+        :width="line.cells"
+        :height="GLYPH_HEIGHT"
         shape-rendering="crispEdges"
         aria-hidden="true"
         focusable="false"
@@ -270,6 +269,10 @@ onBeforeUnmount(() => {
 
 [data-status='fail'] .terminal-entry__marker,
 [data-status='fail'] .terminal-entry__result,
+.terminal-entry__fail-line {
+  color: var(--fail);
+}
+
 .terminal-entry__caption {
   display: flex;
   flex-wrap: wrap;
@@ -282,10 +285,6 @@ onBeforeUnmount(() => {
 .terminal-entry__caption svg {
   display: block;
   flex: none;
-}
-
-.terminal-entry__fail-line {
-  color: var(--fail);
 }
 
 .terminal-entry__cursor {

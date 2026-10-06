@@ -6,7 +6,7 @@ CASSIE PLUS is a CASSIE announcement studio for [SCP: Secret Laboratory](https:/
 
 Vue and [platform-kit Fluent](https://github.com/lsy-404/platform-kit) provide the interface. A dedicated Web Worker decodes the supplied Opus clips through `ogg-opus-decoder` WebAssembly and mixes the announcement. FFmpeg WASM loads only for Opus export. Text and rendered audio stay on your device.
 
-The interface supports Chinese and English, initially follows the browser language, and remembers the selected language. The terminal entry checks real module workers and the audio WebAssembly engines before **Tap to unlock** enables the studio. A failed capability check displays a centered device error. Use a standard Chromium browser with full support for the required browser APIs.
+The interface supports Chinese and English, initially follows the browser language, and remembers the selected language. The terminal entry checks real module workers and the audio WebAssembly engines before the studio opens automatically. A failed capability check displays a centered device error. Use a standard Chromium browser with full support for the required browser APIs.
 
 The terminal layout references the game's [official CASSIE monitor](https://en.scpslgame.com/index.php?title=File:LCZ_Screen_CASSIE_Scan_Complete.png). Its editable default is an original SCP recruitment broadcast with markup examples. One long playback bar also shows rendering progress, supports already-rendered audio and updates the current time from the media clock. The ribbon provides WAV and Opus downloads.
 
@@ -93,7 +93,7 @@ Generation code, timestamp selection and composition code are AGPL-3.0-only. The
 
 ## URL loading and direct export
 
-`?data=<base64url>` preloads a UTF-8 JSON object containing `text`, optional `options`, optional `locale` (`zh` or `en`), and within `options` an optional `phonemes` boolean (default `true`; `false` selects strict mode). `&export=wav` or `&export=opus` renders and downloads the supplied announcement once after terminal unlock. An export requires valid `data`; invalid input produces an input error and never exports the default example. Importing does not play audio automatically.
+`?data=<base64url>` preloads a UTF-8 JSON object containing `text`, optional `options`, optional `locale` (`zh` or `en`), and within `options` an optional `phonemes` boolean (default `true`; `false` selects strict mode). `&export=wav` or `&export=opus` renders and downloads the supplied announcement once after the startup checks. An export requires valid `data`; invalid input produces an input error and never exports the default example. Importing does not play audio automatically.
 
 ```js
 const payload = {

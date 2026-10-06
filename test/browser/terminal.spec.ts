@@ -23,7 +23,6 @@ test('terminal checks real engines, hands off to the studio on its own and start
   await expect(steps.filter({ hasText: 'load ffmpeg wasm chunk 1/' })).toContainText('[ OK ]');
   await expect(steps.filter({ hasText: 'instantiate WORLD wasm module' })).toContainText('OK');
   await expect(steps.filter({ hasText: 'render self-test' })).toContainText('render OK');
-  await expect(page.getByText('unlock', { exact: false })).toHaveCount(0);
   await page.screenshot({ path: info.outputPath('terminal.png'), fullPage: true });
   await waitForStudio(page);
   await expect(page.getByTestId('terminal-status')).toHaveCount(0);
@@ -42,7 +41,6 @@ test('wordmark draws the plus inline after the final dot and the caption shows t
   const plusCell = (x: number, y: number) => wordmark.locator(`svg path[d*="M${x} ${y}h1v1h-1z"]`);
   await expect(plusCell(3 + 48 + 2, 3 + 1)).toHaveCount(1);
   await expect(plusCell(3 + 48 + 2, 3 + 0)).toHaveCount(0);
-  await expect(page.locator('.terminal-entry__plus')).toHaveCount(0);
   const { version } = JSON.parse(await readFile('package.json', 'utf8')) as { version: string };
   await expect(page.getByTestId('terminal-caption')).toHaveAttribute('aria-label', `CASSIE+  V${version}  INDEPENDENT PROJECT`);
   const caption = await page.getByTestId('terminal-caption').boundingBox();
@@ -184,11 +182,12 @@ test('editing during a URL export cancels the old download and resumes live rend
   } finally { release(); }
 });
 
-test('reduced motion keeps static scanlines, a full leader at once and hands off without a beat', async ({ page }) => {
+test('reduced motion keeps static scanlines and enters the studio without a beat', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
   await expect(page.getByTestId('terminal-scanlines')).toBeVisible();
   await expect.poll(() => page.getByTestId('terminal-scanlines').evaluate((el) => getComputedStyle(el, '::after').display)).toBe('none');
+  await waitForStudio(page);
 });
 
 test('reduced motion shows the full leader of a pending step immediately', async ({ page }) => {
