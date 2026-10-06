@@ -65,6 +65,12 @@ The effects simplify the [documented modern CASSIE behavior](https://en.scpslgam
 
 A `<sync>` block starts where the next item after the preceding one would start, using the same gap and spacing rules, so `X <sync>Y</sync> Z` makes Y and Z start together when Z is a word; before a pause or cue Y starts one word gap later. After `</sync>` the main track continues from where it was, and the total length is that of the longest track. Pitch, volume, rate and voice are inherited and every scoped tag works inside, including nested `<sync>` blocks, which anchor at their parent track. A `<fit>` group measures only the track it was opened on, so sync content inside it follows the derived rate but does not count toward the duration. Sync tracks mix additively with the main track.
 
+Examples of `<sync>`:
+
+- Harmony: `<sync><voice pitch="4">contain</voice></sync> contain` sings `contain` twice at once, one voice four semitones higher.
+- Echo: `<sync><volume value="0.5"><pause seconds="0.15"/>contain</volume></sync> contain` repeats a quieter `contain` a moment later on the extra track.
+- Call and response: `<voice pitch="-3">Is it open?</voice> <sync><voice pitch="4">It is open.</voice></sync> <pause seconds="1"/>` answers the question on its own track while the main track waits.
+
 Inside `<fit>`, the rate is derived so the enclosed words and the gaps between them take the requested time; gaps, pauses and cues keep their length and count toward it. The derived rate is limited to 0.25–4× and a warning states the closest achievable duration when the limit applies. Content outside the tag is unaffected, and a stutter inside a fit group is not counted. Speech rate defaults to 1×. The global control and scoped rate each accept 0.5–2× and multiply when combined. Speech uses pitch-preserving time stretching; word gaps, measured gaps inside phrase recordings, explicit pauses, and effect clips including announcement boundary cues keep their duration.
 
 Voice post-processing uses [WORLD](https://github.com/mmorise/World) compiled to WebAssembly in the audio worker. Pitch accepts −12 to +12 semitones; loudness accepts −24 to +12 dB; tension accepts −1 to +1; breathiness accepts 0–1; formant accepts −6 to +6 semitones. The Fluent sliders and numeric fields allow fine adjustments. Scoped attributes override the corresponding global or enclosing voice setting, and closing the tag restores it. Omitted attributes inherit. `<pitch>` remains the game's combined speed/pitch effect; `<voice pitch="3">` raises pitch while keeping speech duration fixed.

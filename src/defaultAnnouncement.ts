@@ -3,7 +3,7 @@ export const defaultAnnouncement = [
   'Secure. Contain. Protect.',
   '<rate value="1.1">The Foundation will keep the world</rate> <pitch value="1.2">normal.</pitch>',
   'Every day. Every site. Every anomaly.',
-  '<voice pitch="-3" loudness="3" tension="0.2">Warning. Containment breach.</voice>',
+  '<voice pitch="-3" loudness="3" tension="0.2">Warning. <sync><voice pitch="4" loudness="2">Containment breach.</voice></sync>Containment breach.</voice>',
   '<voice pitch="-3" loudness="3" tension="0.2">Control is lost.</voice> <pause seconds="0.5"/>',
   '<volume value="0.7">No one can <stutter repeats="2">contain</stutter> it.</volume>',
   'Right now, the door is open.',

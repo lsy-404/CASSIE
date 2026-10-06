@@ -22,10 +22,15 @@ describe('default announcement', () => {
   });
 
   it('showcases the editor tags with exactly one fit tag', () => {
-    for (const tag of ['<start>', '<end>', '<pause', '<stutter', '<pitch', '<volume', '<rate', '<voice', '<fit seconds=']) {
+    for (const tag of ['<start>', '<end>', '<pause', '<stutter', '<pitch', '<volume', '<rate', '<voice', '<fit seconds=', '<sync>']) {
       expect(defaultAnnouncement).toContain(tag);
     }
     expect(defaultAnnouncement.match(/<fit\b/g)).toHaveLength(1);
+    const opens = defaultAnnouncement.match(/<sync>/g)?.length ?? 0;
+    expect(opens).toBeGreaterThanOrEqual(1);
+    expect(opens).toBeLessThanOrEqual(2);
+    expect(defaultAnnouncement.match(/<\/sync>/g)).toHaveLength(opens);
+    expect(new Set(result.plan.map((item) => item.track ?? 0)).size).toBeGreaterThan(1);
   });
 
   it('is an original Foundation recruitment ad', () => {

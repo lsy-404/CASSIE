@@ -34,7 +34,7 @@ import { t } from "../i18n";
       <p>{{ t('markupVolume') }} <code>&lt;volume value="0.7"&gt;attention&lt;/volume&gt;</code>{{ t('fullStop') }}</p>
       <p>{{ t('markupTiming') }} <code>&lt;offset seconds="0.1"&gt;attention&lt;/offset&gt;</code>{{ t('comma') }} <code>&lt;duration seconds="0.3"&gt;attention&lt;/duration&gt;</code>{{ t('comma') }} <code>&lt;spacing seconds="0.2"&gt;attention&lt;/spacing&gt;</code>{{ t('fullStop') }}</p>
       <p>{{ t('voiceExample') }} <code>&lt;voice pitch="3" loudness="2" tension="0.2" breathiness="0.3" formant="-2"&gt;attention&lt;/voice&gt;</code>{{ t('fullStop') }} {{ t('voiceTagHelp') }}</p>
-      <p>{{ t('syncExample') }} <code>&lt;sync&gt;&lt;voice pitch="4"&gt;contain&lt;/voice&gt;&lt;/sync&gt; contain</code>{{ t('fullStop') }} {{ t('syncHelp') }}</p>
+      <p>{{ t('syncExample') }} <code>&lt;sync&gt;&lt;voice pitch="4"&gt;contain&lt;/voice&gt;&lt;/sync&gt; contain</code>{{ t('fullStop') }} {{ t('syncEchoExample') }} <code>&lt;sync&gt;&lt;volume value="0.5"&gt;&lt;pause seconds="0.15"/&gt;contain&lt;/volume&gt;&lt;/sync&gt; contain</code>{{ t('fullStop') }} {{ t('syncHelp') }}</p>
       <p>{{ t('strictHelp') }}</p>
     </div>
     <h3>{{ t('shortcuts') }}</h3>

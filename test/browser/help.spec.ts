@@ -8,7 +8,7 @@ test('the help view lists every tag and hosts the colour legend, which is gone f
   await expect(page.locator('.sidebar-title')).toHaveText('帮助');
   const help = page.locator('#sidebar-help');
   await expect(help).toBeVisible();
-  for (const tag of ['<fit seconds="2">', '<sync><voice pitch="4">contain</voice></sync> contain', '<stutter', '<pause', '<clip']) await expect(help).toContainText(tag);
+  for (const tag of ['<fit seconds="2">', '<sync><voice pitch="4">contain</voice></sync> contain', '<sync><volume value="0.5"><pause seconds="0.15"/>contain</volume></sync> contain', '<stutter', '<pause', '<clip']) await expect(help).toContainText(tag);
   await expect(help).toContainText('严格模式');
   const legend = help.getByTestId('legend');
   for (const label of ['识别命令', '原始录音', '合成音频', '无法合成', '有修复建议', '被严格模式阻止', '提示音与效果', '同步音轨']) await expect(legend).toContainText(label);

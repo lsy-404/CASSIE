@@ -13,7 +13,7 @@ test('default recruitment announcement exposes complete editable markup examples
     '<start>', '<end>', '<pause seconds="0.5"/>',
     '<pitch value="1.2">', '</pitch>', '<volume value="0.7">', '</volume>',
     '<stutter repeats="2">', '</stutter>', '<rate value="1.1">', '</rate>',
-    '<fit seconds="2.5">', '</fit>', '</voice>',
+    '<fit seconds="2.5">', '</fit>', '</voice>', '<sync>', '</sync>',
   ]) expect(value).toContain(sample);
   const typography = await page.locator('.annotated-editor').evaluate((container) => {
     const field = getComputedStyle(container.querySelector('textarea')!);
@@ -25,6 +25,7 @@ test('default recruitment announcement exposes complete editable markup examples
   await expect(page.locator('.announcement-player')).toBeVisible();
   await expect(page.locator('.annotated-editor .token-error')).toHaveCount(0);
   await expect(page.locator('.annotated-editor .token-synthesized').filter({ hasText: /^(Become|Class-D|legend)$/ })).toHaveCount(4);
+  await expect(page.locator('.timeline-segment.timeline-sync[data-track="1"]').first()).toBeVisible();
 });
 
 test('voice post-processing controls default neutral and the ribbon has no voice scope button', async ({ page }) => {
