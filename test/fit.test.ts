@@ -4,7 +4,7 @@ import { OUTPUT_SAMPLE_RATE, stretchSpeechRate } from '../src/audio/dsp';
 import { fitGroupsOf, solveFitRates } from '../src/audio/fit';
 import type { FitItem } from '../src/audio/fit';
 import { analyzeText, createWordPlan } from '../src/audio/parser';
-import type { Bank } from '../src/audio/types';
+import type { AnalysisOptions, Bank } from '../src/audio/types';
 
 const bank: Bank = {
   version: '1',
@@ -27,7 +27,7 @@ describe('fit tag parsing', () => {
   it.each(['0.04', '120.5', '0', '-1', 'abc', ''])('rejects seconds="%s"', (value) => {
     const result = analyzeText(`<fit seconds="${value}">cassie</fit>`, bank);
     expect(result.tokens[0].kind).toBe('error');
-    expect(result.warnings.join(' ')).toContain('Invalid markup tag');
+    expect(texts(result.notices).join(' ')).toContain('Invalid markup tag');
   });
 
   it.each(['0.05', '120'])('accepts the boundary seconds="%s"', (value) => {
@@ -36,7 +36,7 @@ describe('fit tag parsing', () => {
 
   it('rejects unknown attributes and unclosed tags', () => {
     expect(analyzeText('<fit value="1">cassie</fit>', bank).tokens[0].kind).toBe('error');
-    expect(analyzeText('<fit seconds="1">cassie', bank).warnings.join(' ')).toContain('Unclosed markup tag');
+    expect(texts(analyzeText('<fit seconds="1">cassie', bank).notices).join(' ')).toContain('Unclosed markup tag');
   });
 
   it('lets an inner group replace the outer one and keeps the rate tag independent', () => {
@@ -169,29 +169,31 @@ describe('fit output length', () => {
   });
 });
 
+const analysis = (text: string, extra: Partial<AnalysisOptions> = {}) => analyzeAnnouncement(text, bank, { phonemes: false, gap: 0.24, pitch: 1, rate: 1, ...extra });
+const texts = (notices: Array<{ text: string }>) => notices.map((notice) => notice.text);
+
 describe('fit warnings in analysis', () => {
   it('uses the supplied gap and pitch instead of the defaults', async () => {
     const text = '<fit seconds="0.3">cassie word</fit>';
-    expect((await analyzeAnnouncement(text, bank, false)).warnings).toHaveLength(1);
-    expect((await analyzeAnnouncement(text, bank, false, undefined, { gap: 0 })).warnings).toEqual([]);
-    const pitched = await analyzeAnnouncement('<fit seconds="0.1">cassie word</fit>', bank, false, undefined, { pitch: 2 });
-    expect(pitched.warnings[0]).toContain('0.36 s');
+    expect((await analysis(text)).notices).toHaveLength(1);
+    expect((await analysis(text, { gap: 0 })).notices).toEqual([]);
+    const pitched = await analysis('<fit seconds="0.1">cassie word</fit>', { pitch: 2 });
+    expect(pitched.notices[0].text).toContain('0.36 s');
   });
 
   it('reports the requested and achievable duration when the rate is clamped', async () => {
-    const result = await analyzeAnnouncement('<fit seconds="0.1">cassie word</fit>', bank, false, undefined, { gap: 0.24 });
-    expect(result.warnings).toHaveLength(1);
-    expect(result.warnings[0]).toContain('0.10 s');
-    expect(result.warnings[0]).toContain('4×');
+    const result = await analysis('<fit seconds="0.1">cassie word</fit>');
+    expect(result.notices).toHaveLength(1);
+    expect(result.notices[0]).toMatchObject({ severity: 'warning' });
+    expect(result.notices[0].text).toContain('0.10 s');
+    expect(result.notices[0].text).toContain('4×');
   });
 
   it('stays silent when the duration is reachable', async () => {
-    const result = await analyzeAnnouncement('<fit seconds="1">cassie word</fit>', bank, false);
-    expect(result.warnings).toEqual([]);
+    expect((await analysis('<fit seconds="1">cassie word</fit>')).notices).toEqual([]);
   });
 
   it('treats cues as fixed time', async () => {
-    const result = await analyzeAnnouncement('<fit seconds="0.2"><clip id="chime"/> cassie</fit>', bank, false);
-    expect(result.warnings).toHaveLength(1);
+    expect((await analysis('<fit seconds="0.2"><clip id="chime"/> cassie</fit>')).notices).toHaveLength(1);
   });
 });

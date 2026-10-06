@@ -1,7 +1,7 @@
 import { createWordPlan } from './parser';
-import type { AnalysisToken, Bank, BankClip, RenderOptions, RenderResult } from './types';
+import type { AnalysisNotice, AnalysisOptions, AnalysisResult, AnalysisToken, Bank, BankClip, RenderOptions, RenderResult, WordPlan } from './types';
 import { DEFAULT_GAP, estimateFitWarnings } from './fit';
-import { hasDirectPhonemeInput, loadPhonemeCatalog, phonemizeWords } from './phonemes';
+import { loadPhonemeCatalog, phonemizeWords } from './phonemes';
 
 const BANK_URL = '/bank.json';
 let cachedBank: Promise<Bank> | undefined;
@@ -42,25 +42,22 @@ export function loadBank(): Promise<Bank> {
   return cachedBank;
 }
 
-async function preparePlan(text: string, bank: Bank, phonemesEnabled: boolean, signal?: AbortSignal): Promise<{ plan: ReturnType<typeof createWordPlan>['plan']; warnings: string[]; tokens: AnalysisToken[] }> {
+async function preparePlan(text: string, bank: Bank, synthesize: boolean, signal?: AbortSignal): Promise<{ plan: WordPlan[]; notices: AnalysisNotice[]; tokens: AnalysisToken[] }> {
   if (signal?.aborted) throw new DOMException('The audio render was cancelled.', 'AbortError');
-  if (!text.trim()) return { plan: [], warnings: [], tokens: [] };
-  const needsCatalog = phonemesEnabled || hasDirectPhonemeInput(text);
+  if (!text.trim()) return { plan: [], notices: [], tokens: [] };
   let catalog;
-  if (needsCatalog) {
-    try {
-      catalog = await loadPhonemeCatalog(bank);
-    } catch {
-      catalog = undefined;
-    }
-    if (signal?.aborted) throw new DOMException('The audio render was cancelled.', 'AbortError');
+  try {
+    catalog = await loadPhonemeCatalog(bank);
+  } catch {
+    catalog = undefined;
   }
+  if (signal?.aborted) throw new DOMException('The audio render was cancelled.', 'AbortError');
 
   const initial = createWordPlan(text, bank, undefined, catalog, new Map(), true);
-  if (!phonemesEnabled || !catalog || !initial.unresolvedWords.length) {
-    const warnings = [...initial.warnings];
-    if (phonemesEnabled && !catalog && initial.unresolvedWords.length) warnings.push('The phoneme catalog is unavailable; unrecorded words were skipped.');
-    return { plan: initial.plan, warnings, tokens: initial.tokens };
+  if (!catalog || !initial.unresolvedWords.length) {
+    const notices = [...initial.notices];
+    if (!catalog && initial.unresolvedWords.length) notices.push({ severity: 'warning', text: 'The phoneme catalog is unavailable; unrecorded words were skipped.' });
+    return { plan: initial.plan, notices, tokens: initial.tokens };
   }
 
   try {
@@ -68,32 +65,32 @@ async function preparePlan(text: string, bank: Bank, phonemesEnabled: boolean, s
     const spokenWords = initial.unresolvedWords.filter((word) => !word.startsWith('letter:'));
     const phonemized = await phonemizeWords(spokenWords, signal, letterNames);
     if (signal?.aborted) throw new DOMException('The audio render was cancelled.', 'AbortError');
-    const resolved = createWordPlan(text, bank, undefined, catalog, phonemized, true);
-    return { plan: resolved.plan, warnings: resolved.warnings, tokens: resolved.tokens };
+    const resolved = createWordPlan(text, bank, undefined, catalog, phonemized, true, !synthesize);
+    return { plan: resolved.plan, notices: resolved.notices, tokens: resolved.tokens };
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
-    return { plan: initial.plan, warnings: [...initial.warnings, 'English phonemizer could not run; unmatched words were skipped.'], tokens: initial.tokens };
+    return { plan: initial.plan, notices: [...initial.notices, { severity: 'warning', text: 'English phonemizer could not run; unmatched words were skipped.' }], tokens: initial.tokens };
   }
 }
 
 export async function analyzeAnnouncement(
   text: string,
   bank: Bank,
-  phonemesEnabled = true,
+  options: AnalysisOptions,
   signal?: AbortSignal,
-  options?: Partial<Pick<RenderOptions, 'gap' | 'pitch' | 'rate'>>,
-): Promise<{ words: string[]; warnings: string[]; ipa: string[]; tokens: AnalysisToken[] }> {
+): Promise<AnalysisResult> {
   try {
-    const { plan, warnings, tokens } = await preparePlan(text, bank, phonemesEnabled, signal);
+    const { plan, notices, tokens } = await preparePlan(text, bank, options.phonemes, signal);
+    const fit = estimateFitWarnings(plan, bank, options).map((warning): AnalysisNotice => ({ severity: 'warning', text: warning }));
     return {
       words: plan.map((word) => word.display),
-      warnings: [...warnings, ...estimateFitWarnings(plan, bank, { gap: options?.gap ?? DEFAULT_GAP, pitch: options?.pitch ?? 1, rate: options?.rate ?? 1 })],
+      notices: [...notices, ...fit],
       ipa: plan.map((word) => word.phonemeUnits?.map((unit) => unit.ipa).join(' ') ?? '').filter(Boolean),
       tokens,
     };
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
-    return { words: [], warnings: [error instanceof Error ? error.message : 'Could not analyze announcement.'], ipa: [], tokens: [] };
+    return { words: [], notices: [{ severity: 'error', text: error instanceof Error ? error.message : 'Could not analyze announcement.' }], ipa: [], tokens: [] };
   }
 }
 
@@ -120,7 +117,8 @@ export async function renderAnnouncement(
       tension: Number.isFinite(options.voice?.tension) ? Math.min(1, Math.max(-1, options.voice!.tension!)) : 0,
     },
   };
-  const { plan, warnings } = await preparePlan(text, bank, safeOptions.phonemes === true, signal);
+  const { plan, notices } = await preparePlan(text, bank, safeOptions.phonemes === true, signal);
+  const warnings = notices.filter((notice) => notice.severity !== 'info').map((notice) => notice.text);
   if (signal?.aborted) throw new DOMException('The audio render was cancelled.', 'AbortError');
   if (!plan.length) throw new Error(warnings[0] ?? 'No playable words were found in the announcement.');
   const words = plan.map((word) => word.display);
@@ -185,4 +183,4 @@ export async function renderAnnouncement(
 }
 
 export { encodeWav } from './dsp';
-export type { AnalysisToken, Bank, BankClip, RenderOptions, RenderResult, TimelineEntry, VoiceOptions } from './types';
+export type { AnalysisNotice, AnalysisOptions, AnalysisResult, AnalysisToken, Bank, BankClip, RenderOptions, RenderResult, TimelineEntry, VoiceOptions } from './types';
