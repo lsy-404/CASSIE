@@ -15,8 +15,8 @@ importers:
         specifier: 0.12.15
         version: 0.12.15
       '@platform-kit/fluent':
-        specifier: https://github.com/lsy-404/platform-kit/releases/download/fluent-v0.2.6/platform-kit-fluent-0.2.6.tgz
-        version: https://github.com/lsy-404/platform-kit/releases/download/fluent-v0.2.6/platform-kit-fluent-0.2.6.tgz(vue@3.5.43(typescript@6.0.3))
+        specifier: https://github.com/lsy-404/platform-kit/releases/download/fluent-v0.2.10/platform-kit-fluent-0.2.10.tgz
+        version: https://github.com/lsy-404/platform-kit/releases/download/fluent-v0.2.10/platform-kit-fluent-0.2.10.tgz(vue@3.5.43(typescript@6.0.3))
       '@soundtouchjs/core':
         specifier: 2.1.1
         version: 2.1.1
@@ -504,9 +504,9 @@ packages:
   '@oxc-project/types@0.152.0':
     resolution: {integrity: sha512-oM/5rLBm2tPkg0iBgkH/FOeR3PCDpY19GTgAZjMFM8h9WI9VW7cLgzp6nwtarYKmovavIQZ+Fe/RKX/8C8O/Rw==}
 
-  '@platform-kit/fluent@https://github.com/lsy-404/platform-kit/releases/download/fluent-v0.2.6/platform-kit-fluent-0.2.6.tgz':
-    resolution: {integrity: sha512-/YvzOrW8onrv4ffbx7BMbLFKqPCRBBdZ8Ql3s4F2eoAMgR1pQbyEFuJs/P2ac98Uq/5YVkVXqG9RzPezNm5OZw==, tarball: https://github.com/lsy-404/platform-kit/releases/download/fluent-v0.2.6/platform-kit-fluent-0.2.6.tgz}
-    version: 0.2.6
+  '@platform-kit/fluent@https://github.com/lsy-404/platform-kit/releases/download/fluent-v0.2.10/platform-kit-fluent-0.2.10.tgz':
+    resolution: {tarball: https://github.com/lsy-404/platform-kit/releases/download/fluent-v0.2.10/platform-kit-fluent-0.2.10.tgz}
+    version: 0.2.10
     peerDependencies:
       vue: ^3.5.0
 
@@ -1446,7 +1446,7 @@ snapshots:
 
   '@oxc-project/types@0.152.0': {}
 
-  '@platform-kit/fluent@https://github.com/lsy-404/platform-kit/releases/download/fluent-v0.2.6/platform-kit-fluent-0.2.6.tgz(vue@3.5.43(typescript@6.0.3))':
+  '@platform-kit/fluent@https://github.com/lsy-404/platform-kit/releases/download/fluent-v0.2.10/platform-kit-fluent-0.2.10.tgz(vue@3.5.43(typescript@6.0.3))':
     dependencies:
       vue: 3.5.43(typescript@6.0.3)
 
