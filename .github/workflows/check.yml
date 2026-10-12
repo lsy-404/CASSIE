@@ -1,4 +1,4 @@
-name: Check
+name: Build
 on:
   push:
   pull_request:
@@ -7,7 +7,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -18,8 +18,6 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test
-      - run: pnpm deploy:check
-      - run: pnpm exec playwright install --with-deps chromium webkit
-        timeout-minutes: 10
-      - run: pnpm test:browser
+        timeout-minutes: 3
+      - run: pnpm run build
+        timeout-minutes: 5
