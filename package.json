@@ -12,9 +12,9 @@
     "test": "vitest run",
     "test:browser": "playwright test",
     "preview": "vite preview --host 127.0.0.1",
-    "deploy:check": "pnpm run build && wrangler deploy --dry-run",
-    "deploy": "pnpm run build && wrangler deploy",
-    "package:overture": "pnpm run build && node scripts/package-overture.mjs"
+    "deploy:check": "pnpm run build --base=/ && wrangler deploy --dry-run",
+    "deploy": "pnpm run build --base=/ && wrangler deploy",
+    "package:overture": "pnpm run build --base=/ && node scripts/package-overture.mjs"
   },
   "dependencies": {
     "@ffmpeg/core": "0.12.10",

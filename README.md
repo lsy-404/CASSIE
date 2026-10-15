@@ -2,7 +2,7 @@
 
 CASSIE PLUS is a CASSIE announcement studio for [SCP: Secret Laboratory](https://scpslgame.com/), running entirely in your browser. Edit an announcement, adjust playback, listen with synchronized text highlighting, and download WAV or Opus audio.
 
-**Site:** https://cassie.leisiyu.dev
+**Site:** https://tiny.leisiyu.dev/projects/cassie/
 
 Vue and [platform-kit Fluent](https://github.com/lsy-404/platform-kit) provide the interface. A dedicated Web Worker decodes the supplied Opus clips through `ogg-opus-decoder` WebAssembly and mixes the announcement. FFmpeg WASM loads only for Opus export. Text and rendered audio stay on your device.
 
@@ -43,7 +43,7 @@ Install the browser once with `pnpm exec playwright install chromium` before bro
 
 ### Cloudflare and Overture packaging
 
-`pnpm deploy:check` and `pnpm run deploy` publish **Workers Static Assets** with `wrangler.jsonc`; change its account ID and domain first. There is no server script, database or server-side audio processing, so no runtime API or R2 bucket is needed. Missing assets return 404. Hashed application assets cache for one year, audio and FFmpeg resources for one day, and the bank manifest revalidates.
+The public site is built by [Tiny Projects](https://github.com/lsy-404/tiny) from a pinned submodule at `/projects/cassie/`. For standalone hosting, `pnpm deploy:check`, `pnpm run deploy` and `pnpm package:overture` explicitly build for `/`; change the account ID and domain in `wrangler.jsonc` before deploying. There is no server script, database or server-side audio processing. Missing assets return 404. Hashed application assets cache for one year, audio and FFmpeg resources for one day, and the bank manifest revalidates.
 
 FFmpeg's single-thread core exceeds Cloudflare's per-asset limit, so `scripts/prepare-ffmpeg.mjs` gzips the pinned npm core and splits it into pieces of at most 8 MiB; the browser verifies SHA-256 hashes and decompresses locally with `DecompressionStream`. The generated pieces are ignored by Git but included in the deployment output, and FFmpeg stays compressed in the package.
 
