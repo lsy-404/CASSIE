@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { t } from "../i18n";
+import { publicUrl } from "../public-url";
 </script>
 
 <template>
@@ -46,7 +47,7 @@ import { t } from "../i18n";
     </dl>
     <h3>{{ t('about') }}</h3>
     <p>{{ t('localAudio') }}</p>
-    <p class="links"><a href="https://github.com/lsy-404/CASSIE" target="_blank" rel="noreferrer">{{ t('sourceFooter') }}</a><a href="/licenses.html">{{ t('licenses') }}</a></p>
+    <p class="links"><a href="https://github.com/lsy-404/CASSIE" target="_blank" rel="noreferrer">{{ t('sourceFooter') }}</a><a :href="publicUrl('/licenses.html')">{{ t('licenses') }}</a></p>
   </div>
 </template>
 

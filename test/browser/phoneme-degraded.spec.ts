@@ -39,7 +39,7 @@ async function breakWorker(page: Page, script: (real: string) => string) {
 for (const broken of CASES) {
   test(`a phoneme worker that ${broken.name} degrades boot to a warning and opens the studio`, async ({ page }) => {
     await breakWorker(page, broken.script);
-    await page.goto('/');
+    await page.goto('./');
     const step = page.locator('[data-testid="terminal-step"]', { hasText: 'spawn phoneme worker' });
     await expect(step).toContainText('[WARN]', { timeout: 45_000 });
     await expect(step).toContainText(broken.reason);
@@ -67,7 +67,7 @@ for (const broken of CASES) {
 test('a halted boot leaves no pending phoneme line', async ({ page }) => {
   await breakWorker(page, () => '');
   await page.route(/spelling\.worker-[^/]*\.js$/, (route) => route.fulfill({ status: 404, body: 'missing' }));
-  await page.goto('/');
+  await page.goto('./');
   await expect(page.locator('[data-testid="terminal-step"]', { hasText: 'spawn spelling worker' })).toContainText('[FAIL]', { timeout: 45_000 });
   const step = page.locator('[data-testid="terminal-step"]', { hasText: 'spawn phoneme worker' });
   await expect(step).toContainText('[WARN]');

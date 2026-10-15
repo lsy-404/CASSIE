@@ -1,5 +1,6 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { encodeWav } from './engine';
+import { publicUrl } from '../public-url';
 
 type CoreManifest = {
   bytes: number;
@@ -28,7 +29,7 @@ export async function encodeOpus(
   const progress = (value: number) => onProgress?.(Math.min(1, Math.max(0, value)));
   try {
     progress(0);
-    const response = await fetch('/ffmpeg/manifest.json', { signal });
+    const response = await fetch(publicUrl('/ffmpeg/manifest.json'), { signal });
     if (!response.ok) throw new Error('Could not load the Opus encoder. Please retry.');
     const manifest = await response.json() as CoreManifest;
     if (!Number.isInteger(manifest.bytes) || manifest.bytes <= 0 || manifest.bytes > 64 * 1024 * 1024
@@ -41,7 +42,7 @@ export async function encodeOpus(
     let bytes = 0;
     for (const [index, part] of manifest.parts.entries()) {
       if (!/^ffmpeg-core\.wasm\.gz\.\d{2}$/.test(part.file)) throw new Error('Invalid encoder chunk path.');
-      const chunkResponse = await fetch(`/ffmpeg/${part.file}`, { signal });
+      const chunkResponse = await fetch(publicUrl(`/ffmpeg/${part.file}`), { signal });
       if (!chunkResponse.ok) throw new Error('Could not load an Opus encoder chunk. Please retry.');
       const chunk = new Uint8Array(await chunkResponse.arrayBuffer());
       if (chunk.byteLength !== part.bytes || await sha256(chunk) !== part.sha256) {
@@ -58,7 +59,7 @@ export async function encodeOpus(
     if (await sha256(wasm) !== manifest.sha256) throw new Error('Opus encoder integrity check failed.');
     signal?.throwIfAborted();
     wasmURL = URL.createObjectURL(new Blob([wasm], { type: 'application/wasm' }));
-    await ffmpeg.load({ coreURL: '/ffmpeg/ffmpeg-core.js', wasmURL }, { signal });
+    await ffmpeg.load({ coreURL: publicUrl('/ffmpeg/ffmpeg-core.js'), wasmURL }, { signal });
     progress(0.5);
     ffmpeg.on('progress', ({ progress: value }) => progress(0.5 + value * 0.49));
     await ffmpeg.writeFile('announcement.wav', new Uint8Array(await encodeWav(samples, sampleRate).arrayBuffer()), { signal });

@@ -4,13 +4,15 @@ import { test, waitForStudio } from './helpers';
 
 function launchUrl(payload: unknown, format?: string) {
   const data = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
-  return `/?data=${data}${format ? `&export=${format}` : ''}`;
+  return `./?data=${data}${format ? `&export=${format}` : ''}`;
 }
 
 test('terminal checks real engines, hands off to the studio on its own and starts no announcement playback', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/');
+  await page.goto('./');
+  await expect(page.getByRole('link', { name: /返回主菜单.*Tiny Projects/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /返回主菜单.*Tiny Projects/ })).toHaveAttribute('href', '/');
   await expect(page.getByRole('heading', { name: 'C.A.S.S.I.E.+' })).toBeVisible();
   await expect(page.getByText('CENTRAL AUTONOMIC SERVICE SYSTEM FOR INTERNAL EMERGENCIES')).toBeVisible();
   await expect(page.getByTestId('terminal-scanlines')).toHaveCSS('pointer-events', 'none');
@@ -33,7 +35,7 @@ test('terminal checks real engines, hands off to the studio on its own and start
 
 test('wordmark draws the plus inline after the final dot and the caption shows the package version', async ({ page }) => {
   await page.route('**/assets/world-*.wasm', async (route) => { await new Promise((resolve) => setTimeout(resolve, 3000)); await route.continue().catch(() => undefined); });
-  await page.goto('/');
+  await page.goto('./');
   const wordmark = page.getByRole('heading', { name: 'C.A.S.S.I.E.+' });
   await expect(wordmark).toBeVisible();
   await expect(wordmark.locator('svg')).toHaveCount(1);
@@ -60,7 +62,7 @@ for (const size of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) 
   test(`a pending step is a yellow single-row line whose dots grow every 100 ms with the spinner after them at ${size.width}px`, async ({ page }, info) => {
     await page.setViewportSize(size);
     const release = await slowWorld(page);
-    await page.goto('/');
+    await page.goto('./');
     const line = page.getByTestId('terminal-step').filter({ hasText: 'instantiate WORLD wasm module' }).locator('.terminal-entry__line');
     await expect(line.locator('.terminal-entry__marker')).toHaveText('[PEND]', { timeout: 30_000 });
     await expect(line.locator('.terminal-entry__marker')).toHaveCSS('color', 'rgb(250, 204, 21)');
@@ -109,7 +111,7 @@ for (const size of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) 
 
 test('dots stop growing and stay as they were when a step finishes', async ({ page }) => {
   const release = await slowWorld(page);
-  await page.goto('/');
+  await page.goto('./');
   const step = page.locator('[data-testid="terminal-step"][data-status="pending"]').first();
   await expect(step).toBeVisible({ timeout: 30_000 });
   release();
@@ -159,7 +161,7 @@ for (const api of ['Worker', 'WebAssembly'] as const) {
     test(`missing ${api} keeps the boot log, marks FAIL and appends ERROR lines at ${size.width}px`, async ({ page }, info) => {
       await page.setViewportSize(size);
       await page.addInitScript((name) => Object.defineProperty(globalThis, name, { configurable: true, value: undefined }), api);
-      await page.goto('/');
+      await page.goto('./');
       const { detail } = await haltedBoot(page, 'probe browser capabilities');
       expect(detail).toContain(`missing ${api}`);
       await page.waitForTimeout(1500);
@@ -171,7 +173,7 @@ for (const api of ['Worker', 'WebAssembly'] as const) {
 
 test('a real failed WASM fetch halts the boot log in place', async ({ page }) => {
   await page.route('**/assets/world-*.wasm', (route) => route.abort());
-  await page.goto('/');
+  await page.goto('./');
   const { detail } = await haltedBoot(page, 'instantiate WORLD wasm module');
   expect(detail).not.toBe('');
 });
@@ -193,7 +195,7 @@ const workerFailures = [
 for (const failure of workerFailures) {
   test(`a phoneme worker that ${failure.name} reports the HTTP cause`, async ({ page }) => {
     await page.route('**/assets/phoneme.worker-*.js', (route) => route.fulfill({ status: failure.respond.status, contentType: failure.respond.contentType, body: failure.respond.body }));
-    await page.goto('/');
+    await page.goto('./');
     await warnedBoot(page, failure.expected);
   });
 }
@@ -213,7 +215,7 @@ test('a phonemizer echo cannot pass the startup pronunciation check', async ({ p
       }
     };
   });
-  await page.goto('/');
+  await page.goto('./');
   await warnedBoot(page, /returned an invalid result\. \(last stage: never started\)/);
 });
 
@@ -254,7 +256,7 @@ test('URL direct export downloads the provided announcement once', async ({ page
 test('invalid URL payload reports an input error and does not download default content', async ({ page }) => {
   const downloads: string[] = [];
   page.on('download', (download) => downloads.push(download.suggestedFilename()));
-  await page.goto('/?data=not-base64!&export=wav');
+  await page.goto('./?data=not-base64!&export=wav');
   await waitForStudio(page);
   await expect(page.getByTestId('url-state-error')).toBeVisible();
   expect(downloads).toEqual([]);
@@ -293,7 +295,7 @@ test('editing during a URL export cancels the old download and resumes live rend
 
 test('reduced motion keeps static scanlines and enters the studio without a beat', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto('./');
   await expect(page.getByTestId('terminal-scanlines')).toBeVisible();
   await expect.poll(() => page.getByTestId('terminal-scanlines').evaluate((el) => getComputedStyle(el, '::after').display)).toBe('none');
   await waitForStudio(page);
@@ -302,7 +304,7 @@ test('reduced motion keeps static scanlines and enters the studio without a beat
 test('reduced motion shows PEND with a static spinner and no growing dots', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.route('**/assets/world-*.wasm', async (route) => { await new Promise((resolve) => setTimeout(resolve, 2000)); await route.continue().catch(() => undefined); });
-  await page.goto('/');
+  await page.goto('./');
   const line = page.locator('[data-testid="terminal-step"][data-status="pending"] .terminal-entry__line').first();
   await expect(line.locator('.terminal-entry__marker')).toHaveText('[PEND]');
   await expect(line.locator('.terminal-entry__spinner')).toHaveText('-');

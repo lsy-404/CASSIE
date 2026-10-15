@@ -3,8 +3,9 @@ import type { AnalysisNotice, AnalysisOptions, AnalysisResult, AnalysisToken, Ba
 import { DEFAULT_GAP, estimateFitWarnings } from './fit';
 import { phonemeEngineError } from '../phoneme-engine';
 import { loadPhonemeCatalog, phonemizeWords } from './phonemes';
+import { publicUrl } from '../public-url';
 
-const BANK_URL = '/bank.json';
+const BANK_URL = publicUrl('/bank.json');
 let cachedBank: Promise<Bank> | undefined;
 
 function validateBank(value: unknown, manifestSha256: string): Bank {
@@ -35,7 +36,8 @@ export function loadBank(): Promise<Bank> {
     const bytes = await response.arrayBuffer();
     const digest = await crypto.subtle.digest('SHA-256', bytes);
     const manifestSha256 = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
-    return validateBank(JSON.parse(new TextDecoder().decode(bytes)), manifestSha256);
+    const bank = validateBank(JSON.parse(new TextDecoder().decode(bytes)), manifestSha256);
+    return { ...bank, clips: bank.clips.map((clip) => ({ ...clip, file: publicUrl(clip.file) })) };
   }).catch((error) => {
     cachedBank = undefined;
     throw error;

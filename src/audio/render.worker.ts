@@ -8,6 +8,7 @@ import { checkAudioCapability } from '../startup/check-audio';
 import type { WorldVocoder } from './world';
 import type { Bank, BankClip, ClipKind, RenderOptions, TimelineEntry, VoiceOptions, WordPlan } from './types';
 import type { TimelineSpan } from './dsp';
+import { publicUrl } from '../public-url';
 
 type RequestMessage =
   | { type: 'check'; samples: Float32Array }
@@ -24,8 +25,8 @@ const scope = self as unknown as {
 };
 
 async function fetchClip(clip: BankClip, decoder: OggOpusDecoder): Promise<Float32Array> {
-  if (!clip.file.startsWith('/audio/') || clip.file.includes('..')) throw new Error(`Unsafe audio path for ${clip.id}.`);
-  const response = await fetch(new URL(clip.file, self.location.origin));
+  if (!clip.file.startsWith(`${import.meta.env.BASE_URL}audio/`) || clip.file.includes('..')) throw new Error(`Unsafe audio path for ${clip.id}.`);
+  const response = await fetch(new URL(publicUrl(clip.file), self.location.origin));
   if (!response.ok) throw new Error(`Could not load audio clip ${clip.id} (${response.status}).`);
   const buffer = await response.arrayBuffer();
   if (!buffer.byteLength || buffer.byteLength > 32 * 1024 * 1024) throw new Error(`Audio clip ${clip.id} has an invalid file size.`);

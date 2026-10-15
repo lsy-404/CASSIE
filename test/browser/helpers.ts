@@ -11,7 +11,7 @@ export async function waitForStudio(page: Page) {
   await expect(page.locator('textarea')).toBeEnabled({ timeout: 30_000 });
 }
 
-export async function openStudio(page: Page, path = '/') {
+export async function openStudio(page: Page, path = './') {
   await page.goto(path);
   await waitForStudio(page);
 }

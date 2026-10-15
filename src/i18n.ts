@@ -3,7 +3,7 @@ import { createI18n } from 'vue-i18n';
 
 const messages = {
   en: {
-    appTitle: "Announcement editor", source: "Source code", lang: "Language",
+    appTitle: "Announcement editor", source: "Source code", lang: "Language", returnMenu: "Tiny Projects menu", returnMenuText: "Tiny Projects",
     loadingBank: "Preparing the local voice library…", urlStateInvalid: "Invalid announcement URL data. No automatic export was started.", retry: "Retry",
     bankLoadError: "Could not load the voice library", phonemeIndexError: "Could not load the phoneme index",
     ribbonAria: "Ribbon", ribbonCollapse: "Collapse the ribbon (Ctrl+F1)", ribbonExpand: "Show the ribbon (Ctrl+F1)", ribbonScrollLeft: "Scroll the ribbon left", ribbonScrollRight: "Scroll the ribbon right",
@@ -50,7 +50,7 @@ const messages = {
     player: { play: "Play", pause: "Pause", seek: "Playback position", generate: "Generate audio", cancel: "Cancel render", rendering: "Rendering audio", audioPlayer: "Announcement audio player", timeline: "Rendered audio timeline" },
   },
   zh: {
-    appTitle: "公告编辑器", source: "项目源码", lang: "语言",
+    appTitle: "公告编辑器", source: "项目源码", lang: "语言", returnMenu: "返回主菜单 · Tiny Projects", returnMenuText: "返回主菜单",
     loadingBank: "正在准备本地语音素材库…", urlStateInvalid: "URL 公告数据无效，未启动自动导出。", retry: "重试",
     bankLoadError: "语音素材库无法加载", phonemeIndexError: "无法加载音素索引",
     ribbonAria: "功能区", ribbonCollapse: "折叠功能区 (Ctrl+F1)", ribbonExpand: "显示功能区 (Ctrl+F1)", ribbonScrollLeft: "向左滚动功能区", ribbonScrollRight: "向右滚动功能区",

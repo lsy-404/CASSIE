@@ -1,5 +1,6 @@
 import phonemeWorkerUrl from '../audio/phoneme.worker.ts?worker&url';
 import renderWorkerUrl from '../audio/render.worker.ts?worker&url';
+import { publicUrl } from '../public-url';
 import spellingWorkerUrl from '../spelling.worker.ts?worker&url';
 import { phonemeEngineError } from '../phoneme-engine';
 import { withStage, type StagedError } from './worker-stage';
@@ -170,14 +171,14 @@ export async function checkStartupCapabilities(signal?: AbortSignal, onStep?: St
 
     let manifest!: FfmpegManifest;
     await step('ffmpeg-manifest', 'fetch ffmpeg wasm manifest', async () => {
-      manifest = (await fetchJson<FfmpegManifest>('/ffmpeg/manifest.json', checks.signal)).data;
+      manifest = (await fetchJson<FfmpegManifest>(publicUrl('/ffmpeg/manifest.json'), checks.signal)).data;
       if (!Array.isArray(manifest.parts) || !manifest.parts.length) throw new Error('manifest has no chunks');
       return `ffmpeg-core ${manifest.version} · ${manifest.parts.length} chunks · ${size(manifest.compressedBytes)} gzip / ${size(manifest.bytes)} wasm`;
     });
     for (const [index, part] of manifest.parts.entries()) {
       await step(`ffmpeg-chunk-${index}`, `load ffmpeg wasm chunk ${index + 1}/${manifest.parts.length}`, async () => {
         if (!/^ffmpeg-core\.wasm\.gz\.\d{2}$/.test(part.file)) throw new Error('invalid chunk path');
-        const response = await fetch(`/ffmpeg/${part.file}`, { signal: checks.signal });
+        const response = await fetch(publicUrl(`/ffmpeg/${part.file}`), { signal: checks.signal });
         if (!response.ok) throw new Error(`${part.file} returned HTTP ${response.status}`);
         const chunk = new Uint8Array(await response.arrayBuffer());
         if (chunk.byteLength !== part.bytes) throw new Error(`${part.file} size mismatch`);
@@ -187,13 +188,13 @@ export async function checkStartupCapabilities(signal?: AbortSignal, onStep?: St
     }
 
     await step('bank', 'fetch voice bank manifest', async () => {
-      const { data, bytes } = await fetchJson<{ clips: unknown[] }>('/bank.json', checks.signal);
+      const { data, bytes } = await fetchJson<{ clips: unknown[] }>(publicUrl('/bank.json'), checks.signal);
       if (!Array.isArray(data.clips) || !data.clips.length) throw new Error('voice bank has no clips');
       return `${data.clips.length} clips · ${size(bytes)}`;
     });
 
     await step('phoneme-index', 'index phoneme catalog', async () => {
-      const { data, bytes } = await fetchJson<{ phones?: Record<string, unknown> }>('/phonemes.json', checks.signal);
+      const { data, bytes } = await fetchJson<{ phones?: Record<string, unknown> }>(publicUrl('/phonemes.json'), checks.signal);
       const count = Object.keys(data.phones ?? {}).length;
       if (!count) throw new Error('phoneme catalog is empty');
       return `${count} phones · ${size(bytes)}`;

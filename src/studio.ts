@@ -7,6 +7,7 @@ import { defaultAnnouncement } from "./defaultAnnouncement";
 import { boundedNumber, phonemeInsertion } from "./editor";
 import { FIT_RANGE, MARKERS, SCOPES, MARKER_NAMES, SCOPE_NAMES, fitScope } from "./markup";
 import { DEFAULT_GAP } from "./audio/fit";
+import { publicUrl } from "./public-url";
 import type { ActionId } from "./ribbon";
 import type { DecodedUrlState } from "./url-state";
 
@@ -395,7 +396,7 @@ export function createStudio(props: { initialState?: DecodedUrlState | null; url
   onMounted(async () => {
     window.addEventListener("keydown", onGlobalKeydown);
     compactQuery.addEventListener("change", onCompactChange);
-    void fetch("/phonemes.json").then(async (response) => {
+    void fetch(publicUrl("/phonemes.json")).then(async (response) => {
       if (!response.ok) throw new Error(t("phonemeIndexError"));
       const data = await response.json() as { phones?: Record<string, unknown> };
       phoneKeys.value = Object.keys(data.phones ?? {}).sort((left, right) => left.localeCompare(right));

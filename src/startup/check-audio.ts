@@ -2,6 +2,7 @@ import { OggOpusDecoder } from 'ogg-opus-decoder';
 import { createWorldVocoder } from '../audio/world';
 import worldWasmAssetUrl from '../audio/world/runtime/world.wasm?url';
 import type { StartupStep, StepHandler } from './capabilities';
+import { publicUrl } from '../public-url';
 
 const postStep: StepHandler = (step) => self.postMessage({ type: 'step', step });
 
@@ -33,7 +34,7 @@ export async function checkAudioCapability(samples: Float32Array, onStep: StepHa
     }, () => 'ogg-opus-decoder wasm ready');
 
     await step('opus-fixture', 'decode Opus fixture', async () => {
-      const response = await fetch(new URL('/audio/cassie.opus', self.location.origin));
+      const response = await fetch(publicUrl('/audio/cassie.opus'));
       if (!response.ok) throw new Error('Opus fixture is unavailable.');
       const declaredLength = Number(response.headers.get('content-length'));
       if (Number.isFinite(declaredLength) && declaredLength > 32 * 1024 * 1024) throw new Error('Opus fixture is too large.');

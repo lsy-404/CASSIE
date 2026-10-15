@@ -1,4 +1,5 @@
 import nspell from 'nspell';
+import { publicUrl } from './public-url';
 
 type Request = { id: number; words: string[] };
 const scope = self as unknown as {
@@ -7,7 +8,7 @@ const scope = self as unknown as {
 };
 
 async function loadDocument(language: string, extension: string): Promise<string> {
-  const response = await fetch(new URL(`/spelling/${language}.${extension}`, self.location.origin));
+  const response = await fetch(publicUrl(`/spelling/${language}.${extension}`));
   if (!response.ok) throw new Error('The English spelling dictionary could not be loaded.');
   return response.text();
 }

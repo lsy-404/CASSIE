@@ -1,4 +1,5 @@
 import type { Bank, BankClip, PhonemeUnit } from './types';
+import { publicUrl } from '../public-url';
 
 export interface PhonemeWindow {
   clipId: string;
@@ -55,7 +56,7 @@ function validCatalog(value: unknown, bank: Bank): PhonemeCatalog {
 }
 
 export function loadPhonemeCatalog(bank: Bank): Promise<PhonemeCatalog> {
-  catalogRequest ??= fetch('/phonemes.json').then(async (response) => {
+  catalogRequest ??= fetch(publicUrl('/phonemes.json')).then(async (response) => {
     if (!response.ok) throw new Error(`Could not load phoneme catalog (${response.status}).`);
     return validCatalog(await response.json(), bank);
   }).catch((error) => {

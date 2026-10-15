@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { checkStartupCapabilities, type StartupStep } from '../startup/capabilities';
 import { cellPath, glyphPath, GLYPH_HEIGHT, GLYPH_WIDTH, textCells, textPath } from '../startup/pixel-font';
+import { t } from '../i18n';
 
 const SPINNER = ['\\', '|', '/', '-'];
 const SPINNER_MS = 80;
@@ -126,6 +127,7 @@ onBeforeUnmount(() => {
 <template>
   <main v-if="!entered" class="terminal-entry" lang="en">
     <div class="terminal-entry__scanlines" data-testid="terminal-scanlines" aria-hidden="true" />
+    <a class="terminal-entry__menu" href="/" :aria-label="t('returnMenu')">{{ t('returnMenuText') }}</a>
     <section class="terminal-entry__card" aria-label="CASSIE PLUS Terminal">
       <h1 class="terminal-entry__wordmark" aria-label="C.A.S.S.I.E.+">
         <svg :viewBox="`0 0 ${GRID_WIDE} ${GRID_HIGH}`" shape-rendering="crispEdges" aria-hidden="true" focusable="false">
@@ -199,6 +201,26 @@ onBeforeUnmount(() => {
   pointer-events: none;
   background: repeating-linear-gradient(to bottom, rgb(255 255 255 / 0.045) 0 1px, transparent 1px 3px);
 }
+
+.terminal-entry__menu {
+  position: fixed;
+  z-index: 3;
+  top: max(16px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  border: 1px solid rgb(85 85 85);
+  border-radius: 4px;
+  background: rgb(17 17 17);
+  color: #e5e5e5;
+  font-family: system-ui, sans-serif;
+  text-decoration: none;
+}
+
+.terminal-entry__menu:hover { background: rgb(38 38 38); }
+.terminal-entry__menu:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 .terminal-entry__scanlines::after {
   content: '';

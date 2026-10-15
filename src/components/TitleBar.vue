@@ -14,6 +14,7 @@ const studio = useStudio();
     </div>
     <h1 class="doc-title"><span class="doc-name">announcement.cassie</span><span class="app-title">{{ t('appTitle') }}</span></h1>
     <div class="actions">
+      <a class="menu" href="/" :aria-label="t('returnMenu')">{{ t('returnMenuText') }}</a>
       <a class="source" href="https://github.com/lsy-404/CASSIE" target="_blank" rel="noreferrer" :aria-label="t('source')" :title="t('source')"><AppIcon name="external" /><span>{{ t('source') }}</span></a>
       <button class="globe" type="button" :aria-label="t('lang')" :title="studio.compact ? undefined : t('lang')" @click="studio.toggleLocale"><AppIcon name="globe" :size="18" /></button>
     </div>
@@ -29,9 +30,9 @@ const studio = useStudio();
 .doc-name { font-family: var(--ide-mono); }
 .app-title::before { content: "—"; margin-right: 8px; color: #8c8c8c; }
 .actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
-.source, .globe { height: 26px; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; border: 0; border-radius: 3px; background: transparent; color: #cccccc; font-size: 12px; text-decoration: none; cursor: pointer; }
-.source:hover, .globe:hover { background: var(--ide-hover); color: #fff; }
-.source:focus-visible, .globe:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+.menu, .source, .globe { min-height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; border: 1px solid transparent; border-radius: 3px; background: transparent; color: #cccccc; font-size: 12px; text-decoration: none; cursor: pointer; }
+.menu:hover, .source:hover, .globe:hover { background: var(--ide-hover); color: #fff; }
+.menu:focus-visible, .source:focus-visible, .globe:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
 @media (max-width: 1100px) { .brand-full { display: none; } }
 @media (max-width: 819px) {
   .titlebar { grid-template-columns: auto minmax(0, 1fr) auto; }
