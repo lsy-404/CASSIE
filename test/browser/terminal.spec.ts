@@ -1,4 +1,4 @@
-import { expect } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { test, waitForStudio } from './helpers';
 
@@ -7,12 +7,38 @@ function launchUrl(payload: unknown, format?: string) {
   return `./?data=${data}${format ? `&export=${format}` : ''}`;
 }
 
+// The hosting site writes <meta name="home-url">; serve the page with the given one, or with none.
+async function serveWithHomeUrl(page: Page, homeUrl?: string) {
+  await page.route((url) => /\/(?:index\.html)?$/.test(url.pathname), async (route) => {
+    const response = await route.fetch();
+    const html = (await response.text()).replace(/<meta name="home-url"[^>]*>\n?/, '');
+    await route.fulfill({ response, body: homeUrl ? html.replace('</head>', `<meta name="home-url" content="${homeUrl}">\n</head>`) : html });
+  });
+}
+
+test('return links follow the home-url meta and are absent without one', async ({ page }) => {
+  const menu = page.getByRole('link', { name: /返回主菜单.*Tiny Projects/ });
+  await serveWithHomeUrl(page, 'https://tiny.example/');
+  await page.goto('./');
+  await expect(menu).toBeVisible();
+  await expect(menu).toHaveAttribute('href', 'https://tiny.example/');
+  await waitForStudio(page);
+  await expect(menu).toBeVisible();
+  await expect(menu).toHaveAttribute('href', 'https://tiny.example/');
+
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  await serveWithHomeUrl(page);
+  await page.goto('./');
+  await expect(page.getByRole('heading', { name: 'C.A.S.S.I.E.+' })).toBeVisible();
+  await expect(menu).toHaveCount(0);
+  await waitForStudio(page);
+  await expect(menu).toHaveCount(0);
+});
+
 test('terminal checks real engines, hands off to the studio on its own and starts no announcement playback', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('./');
-  await expect(page.getByRole('link', { name: /返回主菜单.*Tiny Projects/ })).toBeVisible();
-  await expect(page.getByRole('link', { name: /返回主菜单.*Tiny Projects/ })).toHaveAttribute('href', '/');
   await expect(page.getByRole('heading', { name: 'C.A.S.S.I.E.+' })).toBeVisible();
   await expect(page.getByText('CENTRAL AUTONOMIC SERVICE SYSTEM FOR INTERNAL EMERGENCIES')).toBeVisible();
   await expect(page.getByTestId('terminal-scanlines')).toHaveCSS('pointer-events', 'none');

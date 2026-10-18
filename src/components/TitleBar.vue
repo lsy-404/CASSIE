@@ -2,8 +2,10 @@
 import { t } from "../i18n";
 import { useStudio } from "../studio";
 import AppIcon from "./AppIcon.vue";
+import { readHomeUrl } from "../home-url";
 
 const studio = useStudio();
+const homeUrl = readHomeUrl();
 </script>
 
 <template>
@@ -14,7 +16,7 @@ const studio = useStudio();
     </div>
     <h1 class="doc-title"><span class="doc-name">announcement.cassie</span><span class="app-title">{{ t('appTitle') }}</span></h1>
     <div class="actions">
-      <a class="menu" href="/" :aria-label="t('returnMenu')">{{ t('returnMenuText') }}</a>
+      <a v-if="homeUrl" class="menu" :href="homeUrl" :aria-label="t('returnMenu')">{{ t('returnMenuText') }}</a>
       <a class="source" href="https://github.com/lsy-404/CASSIE" target="_blank" rel="noreferrer" :aria-label="t('source')" :title="t('source')"><AppIcon name="external" /><span>{{ t('source') }}</span></a>
       <button class="globe" type="button" :aria-label="t('lang')" :title="studio.compact ? undefined : t('lang')" @click="studio.toggleLocale"><AppIcon name="globe" :size="18" /></button>
     </div>

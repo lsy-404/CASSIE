@@ -3,7 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { checkStartupCapabilities, type StartupStep } from '../startup/capabilities';
 import { cellPath, glyphPath, GLYPH_HEIGHT, GLYPH_WIDTH, textCells, textPath } from '../startup/pixel-font';
 import { t } from '../i18n';
+import { readHomeUrl } from '../home-url';
 
+const homeUrl = readHomeUrl();
 const SPINNER = ['\\', '|', '/', '-'];
 const SPINNER_MS = 80;
 const DOT_MS = 100;
@@ -127,7 +129,7 @@ onBeforeUnmount(() => {
 <template>
   <main v-if="!entered" class="terminal-entry" lang="en">
     <div class="terminal-entry__scanlines" data-testid="terminal-scanlines" aria-hidden="true" />
-    <a class="terminal-entry__menu" href="/" :aria-label="t('returnMenu')">{{ t('returnMenuText') }}</a>
+    <a v-if="homeUrl" class="terminal-entry__menu" :href="homeUrl" :aria-label="t('returnMenu')">{{ t('returnMenuText') }}</a>
     <section class="terminal-entry__card" aria-label="CASSIE PLUS Terminal">
       <h1 class="terminal-entry__wordmark" aria-label="C.A.S.S.I.E.+">
         <svg :viewBox="`0 0 ${GRID_WIDE} ${GRID_HIGH}`" shape-rendering="crispEdges" aria-hidden="true" focusable="false">

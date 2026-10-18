@@ -43,7 +43,7 @@ Install the browser once with `pnpm exec playwright install chromium` before bro
 
 ### Cloudflare and Overture packaging
 
-The public site is built by [Tiny Projects](https://github.com/lsy-404/tiny) from a pinned submodule at `/projects/cassie/`. For standalone hosting, `pnpm deploy:check`, `pnpm run deploy` and `pnpm package:overture` explicitly build for `/`; change the account ID and domain in `wrangler.jsonc` before deploying. There is no server script, database or server-side audio processing. Missing assets return 404. Hashed application assets cache for one year, audio and FFmpeg resources for one day, and the bank manifest revalidates.
+The public site is built by [Tiny Projects](https://github.com/lsy-404/tiny) from a pinned submodule at `/projects/cassie/`. The menu link back to the hosting site appears only when the page carries `<meta name="home-url" content="…">`, which Tiny Projects writes from its `HOME_URL` setting; standalone builds have no menu link. For standalone hosting, `pnpm deploy:check`, `pnpm run deploy` and `pnpm package:overture` explicitly build for `/`; change the account ID and domain in `wrangler.jsonc` before deploying. There is no server script, database or server-side audio processing. Missing assets return 404. Hashed application assets cache for one year, audio and FFmpeg resources for one day, and the bank manifest revalidates.
 
 FFmpeg's single-thread core exceeds Cloudflare's per-asset limit, so `scripts/prepare-ffmpeg.mjs` gzips the pinned npm core and splits it into pieces of at most 8 MiB; the browser verifies SHA-256 hashes and decompresses locally with `DecompressionStream`. The generated pieces are ignored by Git but included in the deployment output, and FFmpeg stays compressed in the package.
 
