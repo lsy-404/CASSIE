@@ -1,5 +1,5 @@
 import { OggOpusDecoder } from 'ogg-opus-decoder';
-import { appendTimelineEntry, clipTimelineToDuration, mapSourceTimeline, mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchSpeechPreservingGaps, stretchSpeechRate, stretchVowelLoop, transformWord } from './dsp';
+import { appendTimelineEntry, clipTimelineToDuration, mapSourceTimeline, MAX_RENDER_SECONDS, mixLayers, monoFromChannels, nextClipStart, OUTPUT_SAMPLE_RATE, splicePhonemeWindows, stretchSpeechPreservingGaps, stretchSpeechRate, stretchVowelLoop, transformWord } from './dsp';
 import { applyVoiceLoudness, blendVoiceEdges, editWorldFeatures, hasWorldVoiceEffects, isNeutralVoice, processVoicePreservingGaps } from './voice-dsp';
 import { fitGroupsOf, fitItemOf, fitOwnersOf, fitWarning, solveFitRates } from './fit';
 import type { FitItem } from './fit';
@@ -289,7 +289,7 @@ scope.onmessage = async ({ data }) => {
         Object.assign(cursor, { end: start + samples.length / OUTPUT_SAMPLE_RATE, start, kind: 'pause', started: true });
         timelineEnd = Math.max(timelineEnd, cursor.end);
         if (samples.length) publishPreview(index);
-        if (timelineEnd > 120) throw new Error('Rendered audio exceeds the 120-second limit.');
+        if (timelineEnd > MAX_RENDER_SECONDS) throw new Error(`Rendered audio exceeds the ${MAX_RENDER_SECONDS}-second limit.`);
         completedCount += 1;
         reportProgress();
         continue;
@@ -347,7 +347,7 @@ scope.onmessage = async ({ data }) => {
       Object.assign(cursor, { end: start + samples.length / OUTPUT_SAMPLE_RATE, start, kind: sourceClip.kind, started: true });
       timelineEnd = Math.max(timelineEnd, cursor.end);
       if (samples.length) publishPreview(index);
-      if (timelineEnd > 120) throw new Error('Rendered audio exceeds the 120-second limit.');
+      if (timelineEnd > MAX_RENDER_SECONDS) throw new Error(`Rendered audio exceeds the ${MAX_RENDER_SECONDS}-second limit.`);
       completedCount += 1;
       reportProgress();
     }

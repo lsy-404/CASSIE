@@ -2,13 +2,14 @@ import type { ClipKind, TimelineEntry, WordPlan } from './types';
 import { FifoSampleBuffer, Stretch } from '@soundtouchjs/core';
 
 export const OUTPUT_SAMPLE_RATE = 48_000;
-export const MAX_RENDER_SECONDS = 120;
+export const MAX_CLIP_SECONDS = 120;
+export const MAX_RENDER_SECONDS = 300;
 
 export function stretchSpeechRate(samples: Float32Array, sampleRate: number, rate: number): Float32Array {
   if (rate === 1 || samples.length === 0) return samples;
   if (!Number.isFinite(rate) || rate < 0.25 || rate > 4) throw new Error('Speech rate is outside the supported range.');
   const outputFrames = Math.ceil(samples.length / rate);
-  if (outputFrames > MAX_RENDER_SECONDS * sampleRate) throw new Error('Speech rate adjustment exceeds the 120-second render limit.');
+  if (outputFrames > MAX_CLIP_SECONDS * sampleRate) throw new Error('Speech rate adjustment exceeds the 120-second clip limit.');
 
   const stereo = new Float32Array(samples.length * 2);
   for (let index = 0; index < samples.length; index += 1) stereo[index * 2] = stereo[index * 2 + 1] = samples[index];
@@ -44,7 +45,7 @@ export function stretchSpeechPreservingGaps(
     .sort((left, right) => left.start - right.start);
   const preservedGapFrames = gaps.reduce((sum, gap) => sum + Math.max(0, gap.end - gap.start), 0);
   const predictedFrames = Math.ceil((samples.length - preservedGapFrames) / rate) + preservedGapFrames;
-  if (predictedFrames > MAX_RENDER_SECONDS * sampleRate) throw new Error('Speech rate adjustment exceeds the 120-second render limit.');
+  if (predictedFrames > MAX_CLIP_SECONDS * sampleRate) throw new Error('Speech rate adjustment exceeds the 120-second clip limit.');
   const output: Float32Array[] = [];
   const segments: Array<{ sourceStart: number; sourceEnd: number; outputStart: number; outputEnd: number; gap: boolean }> = [];
   let sourceCursor = 0;
@@ -65,7 +66,7 @@ export function stretchSpeechPreservingGaps(
     sourceCursor = end;
   }
   append(sourceCursor, samples.length, false);
-  if (outputCursor > MAX_RENDER_SECONDS * sampleRate) throw new Error('Speech rate adjustment exceeds the 120-second render limit.');
+  if (outputCursor > MAX_CLIP_SECONDS * sampleRate) throw new Error('Speech rate adjustment exceeds the 120-second clip limit.');
   const stretched = new Float32Array(outputCursor);
   let offset = 0;
   for (const part of output) {
@@ -176,7 +177,7 @@ export function monoFromChannels(channels: Float32Array[]): Float32Array {
 const STUTTER_FADE_SECONDS = 0.004;
 
 export function applyStutter(samples: Float32Array, sampleRate: number, stutter?: WordPlan['stutter']): Float32Array {
-  if (!Number.isFinite(sampleRate) || sampleRate <= 0 || samples.length > MAX_RENDER_SECONDS * sampleRate) {
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0 || samples.length > MAX_CLIP_SECONDS * sampleRate) {
     throw new Error('Audio clip exceeds rendering limits.');
   }
   if (!stutter) return samples;
@@ -184,7 +185,7 @@ export function applyStutter(samples: Float32Array, sampleRate: number, stutter?
   const segmentLength = Math.min(samples.length - point, Math.max(1, Math.floor(stutter.length * sampleRate)));
   if (!segmentLength) return samples;
   const outputLength = samples.length + segmentLength * stutter.repeats;
-  if (outputLength > MAX_RENDER_SECONDS * sampleRate) throw new Error('Stutter exceeds the 120-second clip limit.');
+  if (outputLength > MAX_CLIP_SECONDS * sampleRate) throw new Error('Stutter exceeds the 120-second clip limit.');
   const repeated = new Float32Array(outputLength);
   repeated.set(samples.subarray(0, point));
   let offset = point;
@@ -307,7 +308,7 @@ export function transformWord(samples: Float32Array, sampleRate: number, plan: W
   const source = applyStutter(samples.subarray(first, end), sampleRate, plan.stutter);
   if (!source.length) return new Float32Array(0);
   const outputLength = Math.max(1, Math.ceil(source.length / pitch));
-  if (outputLength > MAX_RENDER_SECONDS * sampleRate) throw new Error('Pitch adjustment exceeds the 120-second clip limit.');
+  if (outputLength > MAX_CLIP_SECONDS * sampleRate) throw new Error('Pitch adjustment exceeds the 120-second clip limit.');
   const output = new Float32Array(outputLength);
   const gain = plan.volume * globalGain;
   for (let index = 0; index < output.length; index += 1) {
