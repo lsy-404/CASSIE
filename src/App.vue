@@ -15,7 +15,7 @@ provideStudio(createStudio(props));
 </script>
 
 <template>
-  <FluentTheme mode="dark">
+  <FluentTheme mode="dark" curve="spring">
     <div class="ide">
       <TitleBar />
       <Ribbon />
