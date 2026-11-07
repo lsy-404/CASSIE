@@ -99,7 +99,7 @@ function chooseWindow(phone: string, catalog: PhonemeCatalog, bankById: Map<stri
         Number(Boolean(next && window.nextIpa !== null && stressless(window.nextIpa) !== stressless(next)));
       const contiguous = prior?.clip.id === clip.id && Math.abs(prior.window.endSeconds - window.startSeconds) <= 0.005 ? 0 : 1;
       const durationClass = duration < 0.08 ? 1 : duration > 0.3 ? 2 : 0;
-      return [position, context, contiguous, durationClass, Math.abs(duration - target)];
+      return [position, context, durationClass, contiguous, Math.abs(duration - target)];
     };
     const leftRank = rank(left);
     const rightRank = rank(right);
